@@ -71,6 +71,25 @@ def test_from_state_reads_cost_mode():
     assert p.mode == "balanced"
 
 
+def test_yaml_inline_comments_are_stripped(tmp_path: Path, monkeypatch):
+    """Regression: the parser used to capture `# ...` inline comments as
+    part of the value, which broke `float(daily_usd_cap)` for the literal
+    HUMAN_CONFIG.md template."""
+    hc = tmp_path / "HUMAN_CONFIG.md"
+    hc.write_text(
+        "cost:\n"
+        "  mode: balanced                       # cheap | balanced | premium\n"
+        "  daily_usd_cap: 0                     # 0 = no spend\n"
+        "  anthropic_sdk_api_allowed: false     # do NOT call API\n"
+    )
+    import autodev.cost_policy as cp
+    monkeypatch.setattr(cp, "human_config_path", lambda: hc)
+    cfg = CostPolicy._read_human_config()
+    assert cfg["mode"] == "balanced"
+    assert cfg["daily_usd_cap"] == 0
+    assert cfg["anthropic_sdk_api_allowed"] is False
+
+
 def test_denied_call_writes_audit(tmp_path: Path):
     audit = tmp_path / "decisions.md"
     p = CostPolicy(

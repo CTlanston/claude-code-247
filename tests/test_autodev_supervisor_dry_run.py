@@ -49,6 +49,11 @@ def repo(tmp_path, monkeypatch):
     monkeypatch.setattr(cm, "processed_path", lambda: tmp_path / "commands" / "processed.md")
     monkeypatch.setattr(cm, "backlog_path", lambda: tmp_path / "tasks" / "backlog.md")
     monkeypatch.setattr(sup, "hold_file_path", lambda: tmp_path / "reports" / "human-hold.md")
+    # Isolate from the real HUMAN_CONFIG.md so the new config-mirror sync
+    # doesn't leak the developer's live_allowed=true into tests that need
+    # the default-state baseline. Individual tests can override this back.
+    import autodev.cost_policy as _cp
+    monkeypatch.setattr(_cp, "human_config_path", lambda: tmp_path / "_no_human_config.md")
 
     return tmp_path
 
@@ -96,3 +101,28 @@ def test_critical_blocker_halts_cycle(repo: Path):
     s.save()
     rc = sup.run_once(dry_run=True)
     assert rc == 2  # held with no work done
+
+
+def test_human_config_mirrors_into_state(repo: Path, monkeypatch):
+    """Regression: live_allowed/autostart_allowed/mode in HUMAN_CONFIG.md
+    must be authoritative — the supervisor was previously dry-running silently
+    when HUMAN_CONFIG said live_allowed=true but state.json still said false."""
+    # Stash a HUMAN_CONFIG.md beside the tmp repo and have CostPolicy read it.
+    hc = repo / "HUMAN_CONFIG.md"
+    hc.write_text(
+        "## Cost policy\n```yaml\ncost:\n  mode: balanced\n```\n"
+        "## Live\n```yaml\nruntime:\n  live_allowed: true\n  autostart_allowed: true\n```\n"
+    )
+    import autodev.cost_policy as cp
+    monkeypatch.setattr(cp, "human_config_path", lambda: hc)
+    # state.json starts with the safe defaults
+    s = ps.ProjectState.load()
+    assert s["live_allowed"] is False
+    assert s["autostart_allowed"] is False
+    assert s["mode"] == "cheap"
+    sup.run_once(dry_run=True)
+    s2 = ps.ProjectState.load()
+    assert s2["live_allowed"] is True
+    assert s2["autostart_allowed"] is True
+    assert s2["mode"] == "balanced"
+    assert s2["cost_mode"] == "balanced"

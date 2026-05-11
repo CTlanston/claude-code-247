@@ -49,16 +49,50 @@ def hold_file_path() -> Path:
     return _project_root() / "reports" / "human-hold.md"
 
 
+# Keys we propagate from HUMAN_CONFIG.md into ProjectState every cycle.
+_HUMAN_CONFIG_MIRROR_KEYS = (
+    "live_allowed",
+    "autostart_allowed",
+)
+_HUMAN_CONFIG_MODE_KEY = "mode"  # cost.mode → state.mode / state.cost_mode
+
+
+def _sync_human_config(state: ProjectState) -> None:
+    """Pull live/autostart/mode flags from HUMAN_CONFIG.md into state.
+
+    Without this, state.json drifts from HUMAN_CONFIG and the supervisor
+    would silently dry-run while the user expected live mode (or vice versa).
+    """
+    cfg = CostPolicy._read_human_config()  # already module-internal; safe to share
+    for key in _HUMAN_CONFIG_MIRROR_KEYS:
+        if cfg.get(key) is not None:
+            state[key] = bool(cfg[key])
+    mode = cfg.get(_HUMAN_CONFIG_MODE_KEY)
+    if isinstance(mode, str) and mode in ("cheap", "balanced", "premium"):
+        state["mode"] = mode
+        state["cost_mode"] = mode
+
+
 # ----- the one-cycle entry point -----------------------------------------
 
 
 def run_once(*, dry_run: bool = False, report_only_override: bool = False) -> int:
     """Run exactly one supervisor cycle. Returns a process exit code."""
     state = ProjectState.load()
+
+    # HUMAN_CONFIG.md is the authoritative source for runtime + cost flags.
+    # Mirror it into state at the top of every cycle so commands and
+    # automatic state updates can layer on top, but the human config wins
+    # over stale state.json values.
+    _sync_human_config(state)
+
     cost_policy = CostPolicy.from_state(state)
     reporter = ReportManager(state)
 
     # Phase 1 of cycle: ingest commands from inbox.
+    # Commands take precedence over HUMAN_CONFIG (transient overrides), so
+    # process them AFTER the sync — a /pause command issued mid-cycle still
+    # wins this cycle.
     cmd_results = CommandManager(state).process_inbox()
     if not report_only_override:
         # /report command forces a report-only cycle.

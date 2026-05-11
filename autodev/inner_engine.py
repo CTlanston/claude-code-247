@@ -187,4 +187,13 @@ class InnerEngine:
         env = dict(os.environ)
         # Make sure the inner engine sees the supervisor's intent.
         env.setdefault("AUTODEV_CONTEXT", "1")
+        # The inner engine's `orchestrator/main.py` defaults STATE_DIR=/state
+        # which is read-only on macOS hosts. When the supervisor runs on host
+        # (not inside the compose container), point STATE_DIR/WORKSPACE_ROOT
+        # at the project-local dirs the compose stack also bind-mounts.
+        proj = _project_root()
+        env.setdefault("STATE_DIR", str(proj / "state"))
+        env.setdefault("STATE_DIR_HOST", str(proj / "state"))
+        env.setdefault("WORKSPACE_ROOT", str(proj / "workspaces"))
+        env.setdefault("WORKSPACE_ROOT_HOST", str(proj / "workspaces"))
         return env

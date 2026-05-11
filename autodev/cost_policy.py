@@ -206,6 +206,11 @@ class CostPolicy:
             return
         key, _, value = line.partition(":")
         key = key.strip()
+        # Strip YAML-style inline comments BEFORE parsing the value.
+        # `daily_usd_cap: 0  # 0 = no spend allowed` would otherwise be parsed
+        # as the literal string "0  # 0 = no spend allowed".
+        if "#" in value:
+            value = value.split("#", 1)[0]
         value = value.strip().strip("\"'")
         if not value:
             return

@@ -51,7 +51,14 @@ def list_auto_issues():
                 continue
             out.append(_StubIssue(data))
         return out
-    return list(_gh().get_issues(state="open", labels=["agent:auto"]))
+    # IMPORTANT: GitHub's REST `/repos/.../issues` endpoint returns BOTH
+    # issues and pull requests (a PR is internally an issue). Without the
+    # pull_request filter, the orchestrator picks up its own newly-opened
+    # PRs (which carry the agent:auto label from add_pr_label) as if they
+    # were fresh tasks and loops infinitely. Discovered when issue #6 spawned
+    # 4 duplicate PRs (#7-#10) in <1 hour.
+    return [i for i in _gh().get_issues(state="open", labels=["agent:auto"])
+            if i.pull_request is None]
 
 
 def add_label(issue_number: int, label: str) -> None:
