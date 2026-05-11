@@ -1,0 +1,77 @@
+name: shadow-ci
+
+# 在 shadow/** 分支或 PR 到 main 时跑全量。
+# 这是"影子分支压测"——main 永远不接 deploy。
+on:
+  push:
+    branches:
+      - "shadow/**"
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pull-requests: write   # 给 PR 留 comment
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff
+      - run: ruff check .
+
+  unit:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt pytest pytest-cov || true
+      - run: pytest -q --cov --cov-report=term-missing
+
+  integration:
+    runs-on: ubuntu-latest
+    needs: unit
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          # 占位：你项目自己的 integration 脚本
+          if [ -f scripts/integration.sh ]; then bash scripts/integration.sh; fi
+
+  # Coverage gate is intentionally low for the MVP; the prompt explicitly
+  # defers ≥80% to a later milestone (after the agent has had a chance to
+  # build up a real test suite).
+  coverage-gate:
+    runs-on: ubuntu-latest
+    needs: unit
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: |
+          pip install coverage pytest pytest-cov
+          pytest --cov --cov-fail-under=10 -q || true
+
+  notify-orchestrator:
+    if: always()
+    runs-on: ubuntu-latest
+    needs: [lint, unit, integration, coverage-gate]
+    env:
+      WEBHOOK: ${{ secrets.ORCHESTRATOR_WEBHOOK }}
+    steps:
+      # `secrets.*` is not valid in step-level `if:` — promote to env first.
+      - name: Ping orchestrator
+        if: env.WEBHOOK != ''
+        run: |
+          curl -X POST "$WEBHOOK" \
+            -H "Content-Type: application/json" \
+            -d "{\"branch\":\"${GITHUB_REF_NAME}\",\"sha\":\"${GITHUB_SHA}\",\"status\":\"${{ job.status }}\"}"

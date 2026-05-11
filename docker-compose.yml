@@ -1,0 +1,73 @@
+version: "3.9"
+
+# 单机部署。Runner 容器由 orchestrator 通过 docker socket 按需拉起，所以这里不预先 declare。
+# 如果你的运行环境不允许挂 docker socket，把 runner 实现切成 docker-in-docker 或 K8s Job。
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    networks:
+      - internal
+
+  orchestrator:
+    build:
+      context: ./orchestrator
+    image: claude-code-247/orchestrator:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      RUNNER_IMAGE: claude-code-247/runner:latest
+      # Inside the orchestrator container, workspaces live at /workspaces.
+      WORKSPACE_ROOT: /workspaces
+      # When orchestrator spawns runner containers via the host docker daemon,
+      # bind-mount sources are interpreted as HOST paths. Pass the absolute
+      # host path so the runner sees the right directory.
+      WORKSPACE_ROOT_HOST: ${PWD}/workspaces
+      # Same logic for state dir, exposed read-only to the guardian.
+      STATE_DIR: /state
+      STATE_DIR_HOST: ${PWD}/state
+      # Forward the host uid/gid so the runner container runs as the host user
+      # and the bind-mounted workspace is writable. uid=0 is rejected by the CLI.
+      HOST_UID: ${UID:-501}
+      HOST_GID: "20"
+    volumes:
+      - ./state:/state                          # SQLite + audit
+      - ./workspaces:/workspaces                # one subdir per issue
+      - /var/run/docker.sock:/var/run/docker.sock  # docker-out-of-docker
+    depends_on:
+      - redis
+    networks:
+      - internal
+      - public                                 # talk to GitHub / Anthropic
+
+  # Runner 镜像由 build 步骤产出但不长期运行。
+  # 用 profile=build 仅在 `docker compose --profile build build runner` 时构建。
+  runner:
+    profiles: ["build"]
+    build:
+      context: ./runner
+    image: claude-code-247/runner:latest
+
+  # 第 4 周再启用：向量记忆池
+  qdrant:
+    profiles: ["memory"]
+    image: qdrant/qdrant:latest
+    restart: unless-stopped
+    volumes:
+      - qdrant-data:/qdrant/storage
+    networks:
+      - internal
+
+volumes:
+  redis-data:
+  qdrant-data:
+
+networks:
+  internal:
+    internal: true                              # 容器之间内网，禁止出公网
+  public:
+    driver: bridge

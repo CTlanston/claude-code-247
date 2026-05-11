@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Secrets — .env.example stays tracked
+.env
+
+# Orchestrator state (operational data, not source)
+state/*.db
+state/*.db-*
+state/*.bak.*
+state/PAUSED
+state/PAUSED.human
+state/metrics.json
+workspaces/
+
+# macOS
+.DS_Store
