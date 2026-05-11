@@ -1,0 +1,27 @@
+{
+  "_comment_": "Example .claude/settings.local.json for AutoDev v3. Copy to settings.local.json and customise. settings.local.json is gitignored by Claude Code's defaults.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": {"tool_name": "Bash"},
+        "hooks": [
+          {"type": "command", "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/pre_tool_guard.sh"}
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {"type": "command", "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/stop_summary.sh"}
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {"type": "command", "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/notify.sh \"AutoDev v3 notification\""}
+        ]
+      }
+    ]
+  }
+}

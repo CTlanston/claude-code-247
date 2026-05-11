@@ -17,3 +17,14 @@ workspaces/
 
 # macOS
 .DS_Store
+
+# AutoDev v3 operational files (regenerated each cycle)
+reports/heartbeat.json
+reports/notify.log
+reports/supervisor.stdout.log
+reports/supervisor.stderr.log
+reports/supervisor.log
+reports/state.corrupt.*.json
+reports/com.autodev.supervisor.plist
+state/.autodev_supervisor.lock
+tasks/current.md
