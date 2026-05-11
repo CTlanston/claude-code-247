@@ -57,6 +57,33 @@ _HUMAN_CONFIG_MIRROR_KEYS = (
 _HUMAN_CONFIG_MODE_KEY = "mode"  # cost.mode → state.mode / state.cost_mode
 
 
+def _inner_engine_has_pending_work() -> bool:
+    """Return True if the inner engine's SQLite tasks table has at least one
+    row in a non-terminal state. Used by SELECT_NEW to decide whether to
+    short-circuit (V1 defect #2 fix).
+
+    Defensive: any error (DB missing, lock contention, import failure) means
+    "assume no pending work" — we do NOT want this helper to be the new way
+    the supervisor crashes.
+    """
+    try:
+        # Lazy import: orchestrator.db pulls in sqlite + state paths;
+        # importing it eagerly would couple the supervisor module load to
+        # the inner-engine repo layout.
+        import sys
+        from pathlib import Path
+        root = Path(__file__).resolve().parent.parent
+        if str(root) not in sys.path:
+            sys.path.insert(0, str(root))
+        from orchestrator import db as inner_db  # type: ignore
+        for status in ("queued", "coding", "ci_running", "reviewing"):
+            if inner_db.list_tasks_by_status(status):
+                return True
+    except Exception:  # noqa: BLE001
+        return False
+    return False
+
+
 def _sync_human_config(state: ProjectState) -> None:
     """Pull live/autostart/mode flags from HUMAN_CONFIG.md into state.
 
@@ -161,6 +188,24 @@ def _execute_decision(
         backlog = BacklogManager()
         task = backlog.next_unblocked()
         if not task:
+            # V1 defect #2: the supervisor used to return "no work in backlog"
+            # here, even though the inner engine's own SQLite tasks table had
+            # rows in queued/coding/ci_running/reviewing. Now: if the inner
+            # engine has pending work, build a synthetic tick task and let
+            # the engine drain its own queue. Only short-circuit if BOTH
+            # surfaces are empty.
+            if _inner_engine_has_pending_work():
+                synthetic = BacklogTask(
+                    task_id=f"TASK-INNER-{int(time.time())}",
+                    title="inner-engine tick (no backlog item available)",
+                    details="synthetic task to drain inner engine pending work",
+                    priority="P0",
+                    status=".",
+                )
+                state["current_task_id"] = synthetic.task_id
+                state["current_task_title"] = synthetic.title
+                state["current_phase"] = "inner_tick"
+                return _run_inner_engine(synthetic, state, cost_policy, dry_run=dry_run)
             return "no work in backlog", True
         backlog.mark_in_progress(task.task_id)
         backlog.write_current(task)
@@ -198,6 +243,13 @@ def _run_inner_engine(
     state["last_completed_step"] = "inner_engine_tick"
     if result.success:
         state["current_phase"] = "tick_ok"
+        # V1 defect #3: state.blocked + blocker_reason were never cleared
+        # after a successful cycle. The grader (and any operator) read the
+        # stale "exit 4" flag forever. Clear all three blocker fields on
+        # genuine success so the next cycle's grader sees a clean slate.
+        state["blocked"] = False
+        state["blocker_reason"] = None
+        state["repair_attempts_for_current_task"] = 0
         summary = f"inner engine ok ({result.duration_seconds:.1f}s)"
         if result.extra.get("dry_run"):
             summary = "[dry-run] " + summary
