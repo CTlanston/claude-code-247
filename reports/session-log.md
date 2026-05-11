@@ -34,3 +34,23 @@ Outcome: ready for Phase 1.
 - 2026-05-11T07:00:10Z  cli.timeout  classify=timeout  exit=None  duration=0.0s  cost~$0.0000  summary=CLI timed out
 - 2026-05-11T07:00:11Z  cycle.ok  task=TASK-001  mode=cheap  summary=[dry-run] inner engine ok (0.0s)
   notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T08:47:35Z  cli.execution  classify=rate_limited  exit=0  duration=0.0s  cost~$0.0000  summary=Rate limit exceeded
+- 2026-05-11T08:47:35Z  cli.execution  classify=permission_needed  exit=0  duration=0.0s  cost~$0.0000  summary=permission denied
+- 2026-05-11T08:47:35Z  cli.execution  classify=success  exit=0  duration=0.0s  cost~$0.0000  summary=all good
+- 2026-05-11T08:47:35Z  cli.timeout  classify=timeout  exit=None  duration=0.0s  cost~$0.0000  summary=CLI timed out
+- 2026-05-11T08:48:01Z  cli.execution  classify=rate_limited  exit=0  duration=0.0s  cost~$0.0000  summary=Rate limit exceeded
+- 2026-05-11T08:48:01Z  cli.execution  classify=permission_needed  exit=0  duration=0.0s  cost~$0.0000  summary=permission denied
+- 2026-05-11T08:48:01Z  cli.execution  classify=success  exit=0  duration=0.0s  cost~$0.0000  summary=all good
+- 2026-05-11T08:48:01Z  cli.timeout  classify=timeout  exit=None  duration=0.0s  cost~$0.0000  summary=CLI timed out
+- 2026-05-11T08:48:52Z  cli.execution  classify=rate_limited  exit=0  duration=0.0s  cost~$0.0000  summary=Rate limit exceeded
+- 2026-05-11T08:48:52Z  cli.execution  classify=permission_needed  exit=0  duration=0.0s  cost~$0.0000  summary=permission denied
+- 2026-05-11T08:48:52Z  cli.execution  classify=success  exit=0  duration=0.0s  cost~$0.0000  summary=all good
+- 2026-05-11T08:48:52Z  cli.timeout  classify=timeout  exit=None  duration=0.0s  cost~$0.0000  summary=CLI timed out
+- 2026-05-11T08:52:33Z  cycle.warn  task=TASK-001  mode=cheap  summary=inner engine blocked: inner engine exit 1
+  notes: action=continue_current_task reason=task TASK-001 is active
+- 2026-05-11T08:53:28Z  cycle.warn  task=TASK-002  mode=cheap  summary=inner engine blocked: inner engine exit 2
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T08:53:50Z  cli.execution  classify=rate_limited  exit=0  duration=0.0s  cost~$0.0000  summary=Rate limit exceeded
+- 2026-05-11T08:53:50Z  cli.execution  classify=permission_needed  exit=0  duration=0.0s  cost~$0.0000  summary=permission denied
+- 2026-05-11T08:53:50Z  cli.execution  classify=success  exit=0  duration=0.0s  cost~$0.0000  summary=all good
+- 2026-05-11T08:53:50Z  cli.timeout  classify=timeout  exit=None  duration=0.0s  cost~$0.0000  summary=CLI timed out

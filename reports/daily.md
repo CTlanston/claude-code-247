@@ -1,16 +1,16 @@
 # AutoDev Daily Report
 
-> Generated: 2026-05-11T07:00:11Z
+> Generated: 2026-05-11T08:53:28Z
 
 ## Current Status
 
-idle — phase=tick_ok task=TASK-001
+continue_current_task — phase=selected task=TASK-002
 
 ## Active Task
 
-- ID: TASK-001
-- Title: Smoke-test AutoDev outer loop dry-run
-- Phase: tick_ok
+- ID: TASK-002
+- Title: Wire Auto-Evo inner engine into `autodev/inner_engine.py`
+- Phase: selected
 - Branch: -
 
 ## Last test / CI / Guardian
@@ -26,8 +26,8 @@ idle — phase=tick_ok task=TASK-001
 
 ## Blockers
 
-- blocked: False
-- blocker_reason: -
+- blocked: True
+- blocker_reason: inner engine exit 2
 - human_needed: True
 
 For detail see `reports/human-hold.md`.
@@ -44,4 +44,4 @@ select_new_task
 
 ## Health
 
-green
+warn

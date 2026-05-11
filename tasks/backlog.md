@@ -14,7 +14,7 @@ Status:
 
 ## P1
 
-- [ ] TASK-002: Wire Auto-Evo inner engine into `autodev/inner_engine.py` :: Replace the stub `InnerEngine.run_task()` with a real call to the existing `orchestrator/main.py` state machine, mapping AutoDev states → orchestrator states. Until done, live mode short-circuits to dry-run.
+- [.] TASK-002: Wire Auto-Evo inner engine into `autodev/inner_engine.py` :: Replace the stub `InnerEngine.run_task()` with a real call to the existing `orchestrator/main.py` state machine, mapping AutoDev states → orchestrator states. Until done, live mode short-circuits to dry-run.
 - [ ] TASK-003: Address the phantom-cost root fix from issue #6 :: Make `orchestrator/db.py:record_run` idempotent (UNIQUE constraint on issue_id+role+started_at). See https://github.com/CTlanston/auto-evo-playground/issues/6.
 
 ## P2

@@ -5,6 +5,37 @@ entry. Resolve in any order; remove the entry once unblocked.
 
 ---
 
+## HOLD-5: Inner engine auto-paused + parallel compose stack already running
+
+- Severity: medium
+- Category: safety
+- Task affected: Phase 17 — `AUTODEV_LIVE=1 ./scripts/autodev_once.sh`
+- What I tried:
+  - Confirmed `HUMAN_CONFIG.md:runtime.live_allowed=true`
+  - Fixed a Phase-15 defect where supervisor wasn't mirroring HUMAN_CONFIG → state (commit pending)
+  - Investigated repo state before launch:
+    - `state/PAUSED` set 2026-05-11 05:49 (no `PAUSED.human` companion — automatic, not human)
+    - `state/orchestrator.db` shows active runs through 08:47 UTC (runs 70–74 on issue #10)
+    - Live containers: `claude-code-247-orchestrator-1` (compose, up 3h) + `claude-reviewer-10-e79a33` (runner, up 2min)
+- Why I could not continue safely:
+  - The inner engine is already running in a parallel compose stack. Clearing `PAUSED` would let BOTH systems
+    race against the same SQLite + GitHub state.
+  - `PAUSED` was Guardian-set after a failure loop on issue #10 (3 reviewer rejections + 1 CI fail).
+    Conditions that triggered it may not have resolved.
+  - Per HUMAN_CONFIG.md hold policy + user constraint: "如果遇到 blocker, 记到 reports/human-hold.md 然后停下来等我"
+- Exact human action needed: pick ONE of:
+  - **(A) Hand off to my autodev supervisor**: `docker compose down`, then `rm state/PAUSED`, then re-run `AUTODEV_LIVE=1 ./scripts/autodev_once.sh`
+  - **(B) Keep the compose stack as-is**: `rm state/PAUSED` and let the compose orchestrator pick up issue #10 — my autodev/supervisor stays in dry-run-only mode
+  - **(C) Investigate first**: `sqlite3 state/orchestrator.db "SELECT detail FROM audit WHERE actor='guardian' ORDER BY id DESC LIMIT 1;"` — read why Guardian paused before deciding
+- Workaround used: ran Phase 17 with PAUSED in place. The supervisor correctly detected the block:
+  - Inner engine subprocess exit code 2 (PAUSED path in `main_oneshot.py`)
+  - supervisor reported `blocked=True`, `blocker_reason="inner engine exit 2"`
+  - state.json updated, reports written, no GitHub mutation, no quota burn
+- Next safe task chosen: stop here, report to user.
+- Timestamp: 2026-05-11T08:50:00Z
+
+---
+
 ## HOLD-1: HUMAN_CONFIG.md missing
 
 - Severity: low
