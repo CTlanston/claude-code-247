@@ -32,6 +32,9 @@ tasks/current.md
 # Claude Code session lock files
 .claude/scheduled_tasks.lock
 
+# Hypothesis property-testing database (cache + statistics)
+.hypothesis/
+
 # L7 transient + scratch (the cycles/ folder is committed; scratch inside it is not)
 cycles/*/scratch/
 
