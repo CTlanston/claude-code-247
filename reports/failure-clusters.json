@@ -1,0 +1,146 @@
+{
+  "n_entries": 10,
+  "threshold": 0.2,
+  "clusters": [
+    {
+      "cluster_id": 1,
+      "members": [
+        "FAIL-0001"
+      ],
+      "shared_keywords": [
+        "_check_tdd_invariant",
+        "commit_prefix_gate",
+        "edge_case_test",
+        "false_reject",
+        "reviewer"
+      ],
+      "pattern_name": "_check_tdd_invariant"
+    },
+    {
+      "cluster_id": 2,
+      "members": [
+        "FAIL-0002"
+      ],
+      "shared_keywords": [
+        "_do_planning",
+        "blocked_impossible",
+        "coding_loop",
+        "forbidden_file",
+        "impossible_spec"
+      ],
+      "pattern_name": "_do_planning"
+    },
+    {
+      "cluster_id": 3,
+      "members": [
+        "FAIL-0003"
+      ],
+      "shared_keywords": [
+        "2x_moving_average",
+        "billable",
+        "cost_mask",
+        "daily_cost_spike",
+        "false_pause"
+      ],
+      "pattern_name": "2x_moving_average"
+    },
+    {
+      "cluster_id": 4,
+      "members": [
+        "FAIL-0004"
+      ],
+      "shared_keywords": [
+        "/state",
+        "_resolve_state_db_path",
+        "autodev_state_db",
+        "env_var_precedence",
+        "macos"
+      ],
+      "pattern_name": "/state"
+    },
+    {
+      "cluster_id": 5,
+      "members": [
+        "FAIL-0005"
+      ],
+      "shared_keywords": [
+        "defensive_exception",
+        "dispatch_freeze",
+        "github_client",
+        "indexerror",
+        "latest_workflow_run_status"
+      ],
+      "pattern_name": "defensive_exception"
+    },
+    {
+      "cluster_id": 6,
+      "members": [
+        "FAIL-0006"
+      ],
+      "shared_keywords": [
+        "bare_remote",
+        "git_proxy",
+        "mirror_to_github",
+        "path_b_fallback",
+        "push_loss"
+      ],
+      "pattern_name": "bare_remote"
+    },
+    {
+      "cluster_id": 7,
+      "members": [
+        "FAIL-0007"
+      ],
+      "shared_keywords": [
+        "alter_table",
+        "double_write",
+        "idempotency",
+        "issue_id",
+        "migration"
+      ],
+      "pattern_name": "alter_table"
+    },
+    {
+      "cluster_id": 8,
+      "members": [
+        "FAIL-0008"
+      ],
+      "shared_keywords": [
+        "build_context",
+        "credentials_leak",
+        "docker_build",
+        "dockerignore",
+        "env_leak"
+      ],
+      "pattern_name": "build_context"
+    },
+    {
+      "cluster_id": 9,
+      "members": [
+        "FAIL-0009"
+      ],
+      "shared_keywords": [
+        "audit_log_leak",
+        "autodev_doctor",
+        "cli_classify",
+        "cycle_clean",
+        "doctor"
+      ],
+      "pattern_name": "audit_log_leak"
+    },
+    {
+      "cluster_id": 10,
+      "members": [
+        "FAIL-0010"
+      ],
+      "shared_keywords": [
+        "blocker",
+        "blocker_reason_coarse",
+        "diagnose_mode",
+        "hold_duration",
+        "inner_engine_exit_3"
+      ],
+      "pattern_name": "blocker"
+    }
+  ]
+}

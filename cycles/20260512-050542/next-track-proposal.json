@@ -1,0 +1,55 @@
+{
+  "chosen": {
+    "track_id": "Track M3",
+    "title": "Failure-clustering script + reports/failure-clusters.md",
+    "priority": "P0",
+    "dim": "M",
+    "status": "open",
+    "details": "details: M-dim L6 requires \"failure auto-clustering\". Read FAILURES.md,\n      cluster entries by keyword similarity, emit a Markdown report.\n      Lifts M from L5 \u2192 L6 (S already at L5; this puts M at L6 ahead of S).\n      rubric dim: M (Memory) \u2014 moves L5 \u2192 L6"
+  },
+  "alternatives": [
+    {
+      "track_id": "Track T2",
+      "priority": "P1",
+      "dim": "T",
+      "score": 6.0,
+      "components": {
+        "priority": 3.0,
+        "floor_pref": 3.0,
+        "failure_penalty": -0.0
+      }
+    },
+    {
+      "track_id": "Track C2",
+      "priority": "P2",
+      "dim": "C",
+      "score": 6.0,
+      "components": {
+        "priority": 2.0,
+        "floor_pref": 4.0,
+        "failure_penalty": -0.0
+      }
+    },
+    {
+      "track_id": "Track S2",
+      "priority": "P1",
+      "dim": "S",
+      "score": 5.0,
+      "components": {
+        "priority": 3.0,
+        "floor_pref": 2.0,
+        "failure_penalty": -0.0
+      }
+    }
+  ],
+  "levels": {
+    "M": 5,
+    "S": 5,
+    "R": 3,
+    "C": 3,
+    "T": 4,
+    "E": 4
+  },
+  "failure_citations": [],
+  "reasoning": "Chose Track M3 (priority=P0, dim=M, score=6.00). M-dim is currently L5; this track aims to lift it."
+}

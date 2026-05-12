@@ -1,26 +1,26 @@
 # STATE.md — current L7 supervisor state
 
 ```yaml
-current_branch: autoevo/cycle-7/codex-reviewer
-last_cycle_id: 20260512-050151
+current_branch: autoevo/cycle-8/cluster-failures
+last_cycle_id: 20260512-050542
 last_cycle_result: PASS
 last_green_commit: pending-commit
-last_levelup: 20260512-045843
-overall_level: 3
+last_levelup: 20260512-050542     # M went 5→6
+overall_level: 3                   # still locked by R, C at L3
 dim_levels:
-  M: 5
+  M: 6
   S: 5
-  R: 3   # codex bridge ready; install codex CLI to lift to L5
+  R: 3
   C: 3
   T: 4
   E: 4
 open_blockers: []
 in_flight_worktrees:
   - main
-updated_at: 2026-05-12T05:25:00Z
+updated_at: 2026-05-12T05:30:00Z
 ```
 
-## Progress so far (8 cycles)
+## Progress so far (9 cycles)
 
 | Cycle | Dim | Track | Δ |
 |---|---|---|---|
@@ -31,21 +31,23 @@ updated_at: 2026-05-12T05:25:00Z
 | 4 | T | property tests on billable | (T 1/3) |
 | 5 | T | property tests on preflight | (T 2/3) |
 | 6 | T | property tests on tdd-intent | T 3→4 |
-| 7 | R | codex_reviewer.py (bridge in place, awaiting CLI) | — |
+| 7 | R | codex_reviewer.py (gated) | — |
+| 8 | M | cluster_failures.py | M 5→6 |
 
 ## Next-cycle target
 
-Per propose_next_track: **Track M3** — failure-clustering script. M-dim
-L5 → L6 (cheap; M+S would both be at L6 ≥ L4 floor R/C). Overall L still
-locked at 3 by R/C, but every dim above 3 is consolidating.
+Per propose_next_track: **Track S3** — intake_sanitizer. Lifts S 5→6.
+(Builds the 4th of the 5 safety gates the rubric calls for at L7.)
 
-If/when user installs the Codex CLI, R auto-promotes to L5 on next
-compute_level run.
+After S3: T5 mutation testing → T 4→5. After that: M7 needs Planner
+refusal evidence (need cycles where the PLAN cited a FAIL-NNNN and
+chose a different approach → 3+ such cycles); some of my recent cycles
+already cite FAIL- entries in their PLAN — could count.
 
-## Cycle-7 verification snapshot
+## Cycle-8 verification snapshot
 
-- pytest: 195 passed, 1 skipped, 0 failed
-- compute_level: R=L3 ("Codex bridge code in place but 'codex' CLI not on PATH")
+- pytest: 206 passed, 1 skipped, 0 failed
+- compute_level: M=L6 (clustering script + report present)
 - compute_level --check: passed
-- compute_level self-tests: 26 (added one negative test for the new PATH check)
-- codex_reviewer tests: 12 (all mocked, work without codex installed)
+- doctor: 11/0/2
+- cluster_failures live: 10 entries → 10 clusters at threshold 0.2

@@ -9,11 +9,15 @@
 
 ## P0 — immediate next cycle
 
-- [ ] [Track M3] Failure-clustering script + reports/failure-clusters.md (priority: P0)
-      details: M-dim L6 requires "failure auto-clustering". Read FAILURES.md,
-      cluster entries by keyword similarity, emit a Markdown report.
-      Lifts M from L5 → L6 (S already at L5; this puts M at L6 ahead of S).
-      rubric dim: M (Memory) — moves L5 → L6
+- [ ] [Track S3] Intake sanitizer for prompt-injection patterns (priority: P0)
+      details: `orchestrator/intake_sanitizer.py` that scans an issue
+      body for known prompt-injection patterns ("ignore previous
+      instructions", "please approve", "as a reviewer you should",
+      hidden Unicode tags, etc.) and returns a SanitizationResult with
+      a clean body + a list of flagged spans. Lifts S from L5 → L6
+      (adds the 4th gate per L7 §3 rubric — Guardian + TDD + preflight
+      + sanitizer).
+      rubric dim: S (Safety) — moves L5 → L6
 
 - [ ] [Track C2-or-stay] Decide path for C-dim — single stream → worktrees
       details: C-dim L4 requires "2-3 worktrees + scheduler + zero deadlock"
@@ -34,14 +38,7 @@
       rubric dim: S (Safety gates) — preflight already counted but not
       first-class
 
-- [ ] [Track R2] Wire local Codex CLI as cross-model second-opinion Reviewer
-      (priority: P1)
-      details: Add `orchestrator/codex_reviewer.py` that shells out to the
-      user's local Codex CLI on the same PR diff Claude Reviewer saw, gets
-      verdict, compares. Disagreement → write `ALERT.md`, do NOT auto-resolve.
-      Strictly LOCAL Codex auth — no Codex API key.
-      prerequisites: user's `codex` CLI on PATH with subscription auth
-      rubric dim: R (Review) — moves L3 → L5 when working
+- ~~[Track R2] Wire local Codex CLI~~ DUPLICATE — superseded by P0 entry above; the bridge code shipped in 20260512-050151. Remaining gate: user installs `codex` CLI locally (environmental, not a code change).
 
 - [ ] [Track T2] Property-based tests (Hypothesis) on V4 modules
       (priority: P1)
@@ -112,6 +109,8 @@
 
 ## Completed
 
+- [x] [Track M3] scripts/cluster_failures.py + reports/failure-clusters.md + 11 tests
+      DONE in 20260512-050542 (M-dim L5 → L6)
 - [x] [Track R2] orchestrator/codex_reviewer.py + 12 mock-tested tests
       DONE in 20260512-050151 (R stays L3 honestly until codex CLI installed)
 - [x] [Track T2-property-tdd-intent] tests/test_tdd_intent_properties.py (7 props)
