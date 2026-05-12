@@ -9,14 +9,6 @@
 
 ## P0 — immediate next cycle
 
-- [ ] [Track T2-property-preflight] Hypothesis properties on orchestrator.preflight (priority: P0)
-      details: Second of three property-test modules for T-L4. Properties:
-        * preflight_issue(title, body, root) always returns PreflightResult
-        * ok=False implies non-empty `reason`
-        * ok=True implies terminal_status=None
-        * symbols/files/forbidden_files lists are subsets of what's in the text
-      rubric dim: T (Test oracle) — 2 of 3 property modules for L4
-
 - [ ] [Track T2-property-tdd-intent] Hypothesis properties on _check_tdd_invariant (priority: P0)
       details: Third of three property-test modules for T-L4. Properties:
         * empty commit list returns None
@@ -115,6 +107,8 @@
 
 ## Completed
 
+- [x] [Track T2-property-preflight] tests/test_preflight_properties.py (9 props)
+      DONE in 20260512-045610 (2 of 3 property modules for T-L4)
 - [x] [Track T2-property-billable] tests/test_billable_properties.py (6 props)
       DONE in 20260512-045329 (1 of 3 property modules for T-L4)
 - [x] [Track E2] scripts/propose_next_track.py + 13 regression tests

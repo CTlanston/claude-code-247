@@ -1,0 +1,55 @@
+{
+  "chosen": {
+    "track_id": "Track T2-property-preflight",
+    "title": "Hypothesis properties on orchestrator.preflight",
+    "priority": "P0",
+    "dim": "T",
+    "status": "open",
+    "details": "details: Second of three property-test modules for T-L4. Properties:\n        * preflight_issue(title, body, root) always returns PreflightResult\n        * ok=False implies non-empty `reason`\n        * ok=True implies terminal_status=None\n        * symbols/files/forbidden_files lists are subsets of what's in the text\n      rubric dim: T (Test oracle) \u2014 2 of 3 property modules for L4"
+  },
+  "alternatives": [
+    {
+      "track_id": "Track T2-property-tdd-intent",
+      "priority": "P0",
+      "dim": "T",
+      "score": 8.0,
+      "components": {
+        "priority": 4.0,
+        "floor_pref": 4.0,
+        "failure_penalty": -0.0
+      }
+    },
+    {
+      "track_id": "Track R2",
+      "priority": "P1",
+      "dim": "R",
+      "score": 7.0,
+      "components": {
+        "priority": 3.0,
+        "floor_pref": 4.0,
+        "failure_penalty": -0.0
+      }
+    },
+    {
+      "track_id": "Track T2",
+      "priority": "P1",
+      "dim": "T",
+      "score": 7.0,
+      "components": {
+        "priority": 3.0,
+        "floor_pref": 4.0,
+        "failure_penalty": -0.0
+      }
+    }
+  ],
+  "levels": {
+    "M": 5,
+    "S": 5,
+    "R": 3,
+    "C": 3,
+    "T": 3,
+    "E": 4
+  },
+  "failure_citations": [],
+  "reasoning": "Chose Track T2-property-preflight (priority=P0, dim=T, score=8.00). T-dim is currently L3; this track aims to lift it."
+}

@@ -11,8 +11,8 @@ S 5 | evidence: 3 active gates: guardian_cost, tdd_invariant, preflight
   - note: canary_leakage_scan: module missing
 R 3 | evidence: Single-model Reviewer present (orchestrator/roles/reviewer.md)
 C 3 | evidence: 1 git worktree(s) detected
-T 3 | evidence: 19 unit test files + e2e replay present; 1 of 3 property-based files for L4
-  - note: 1 property-based files (need 3 for L4)
+T 3 | evidence: 20 unit test files + e2e replay present; 2 of 3 property-based files for L4
+  - note: 2 property-based files (need 3 for L4)
 E 4 | evidence: propose_next_track.py exists
 
 Overall L = 3
