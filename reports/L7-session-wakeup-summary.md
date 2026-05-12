@@ -1,29 +1,32 @@
 # L7 Continuous Session — Wake-up Summary
 
-> Written 2026-05-12 ~05:50 UTC. The continuous L7 loop ran 13 cycles
-> autonomously per `AUTODEV_L7_MASTER_PROMPT.md`. All commits are local
-> (no push, no PR merge, no paid API spend).
+> Updated 2026-05-12 ~06:00 UTC. The continuous L7 loop ran **15
+> cycles** autonomously per `AUTODEV_L7_MASTER_PROMPT.md`. All commits
+> are local (no push, no PR merge, no paid API spend). One cycle (14)
+> failed cleanly and is documented as FAIL_AS_DATA per L7 §8.
 
 ## TL;DR
 
-Bootstrap + 12 disciplined cycles. **Eight rubric dim-internal lifts.**
-M and S are both at the **L7 maximum**. T at L4, E at L5. R and C
-remain at L3 — the two architectural floors. **Overall L = 3** (min
-across dims; rises only when *every* dim is above 3).
+Bootstrap + 13 successful cycles + 1 FAIL_AS_DATA cycle. **Nine rubric
+dim-internal lifts.** M and S are both at the **L7 maximum**. E at L6.
+T at L4 (mutation testing blocked by mutmut tooling — FAIL-0011). R
+and C remain at L3 — the two architectural floors. **Overall L = 3**
+(min across dims; rises only when *every* dim is above 3).
 
-| Dim | Bootstrap | After 13 cycles | Δ | Why not higher |
+| Dim | Bootstrap | After 15 cycles | Δ | Why not higher |
 |---|---|---|---|---|
 | M (Memory) | 4 | **7 (max)** | +3 | — |
 | S (Safety) | 5 | **7 (max)** | +2 | — |
 | R (Review) | 3 | 3 | 0 | Codex CLI not installed locally |
 | C (Concurrency) | 3 | 3 | 0 | No worktree infrastructure yet |
-| T (Test oracle) | 3 | 4 | +1 | Mutation testing not yet wired |
-| E (Self-improvement) | 3 | 5 | +2 | Proposals don't yet cite FAILURES |
+| T (Test oracle) | 3 | 4 | +1 | mutmut 3.x blocked (FAIL-0011) |
+| E (Self-improvement) | 3 | **6** | +3 | Last 3 promotions must cite proposal |
 | **Overall** | **3** | **3** | 0 | R + C floor |
 
-Pytest: **236 passed, 1 skipped, 0 failed.**
+Pytest: **238 passed, 1 skipped, 0 failed.**
 Doctor: **11 passed, 0 failed, 2 warned (env-only).**
 `compute_level --check` exits 0 on every cycle.
+FAILURES.md: **11 entries** (was 10 — added FAIL-0011 from cycle 14).
 
 ## Cycle ledger
 
@@ -42,6 +45,8 @@ Doctor: **11 passed, 0 failed, 2 warned (env-only).**
 | 20260512-051115 | cycle-10/milestone-1 | MILESTONE | reports/milestone-1.md | E 4→5 |
 | 20260512-051335 | cycle-11/action-evaluator | S | orchestrator/action_evaluator.py | S 6→7 |
 | 20260512-051659 | cycle-12/refusal-regex | M | widen refusal regex | M 6→7 |
+| 20260512-052118 | cycle-13/propose-cites-failures | E | propose_next_track emits considered_failures | E 5→6 |
+| 20260512-052433 | cycle-14/mutmut-blocker-doc | T | T5 attempted; FAIL-0011 documented | FAIL→data |
 
 Each cycle: own branch, own tag (`autoevo/pre-<id>`), own
 `cycles/<id>/{PLAN,RESULT,REPORT,STATE.before,verify-output,next-track-proposal}.md/json`,
@@ -101,31 +106,36 @@ Until BOTH move past L3, overall L stays at 3.
 
 Per `scripts/propose_next_track.py --json`:
 
-1. **Track T5** — Mutation testing (mutmut) on V4 modules. T 4→5.
-   Install mutmut, run on `orchestrator.billable` + `preflight` +
-   `_check_tdd_invariant`, capture kill rate to
-   `reports/mutmut-kill-rate.txt`. Compute_level reads that file for
-   the L5 check.
-2. **Track C2** — Worktree infrastructure (the big one).
-3. **Install codex CLI** (operator action; auto-promotes R when done).
-4. **Track E3** — Make `propose_next_track.py` emit FAILURES citations
-   in its proposal (lifts E 5→6).
+1. **Track T5-workaround** — Pick a path past the mutmut 3.x blocker.
+   See FAIL-0011 in FAILURES.md for the four candidates. Best ROI is
+   option 3: homegrown small-scope mutator for `orchestrator/billable.py`
+   (95-line surface; existing 6 property tests + 9 unit tests are the
+   kill set).
+2. **Install codex CLI** (operator action; auto-promotes R 3→5 on
+   the next compute_level run).
+3. **Track C2** — Worktree infrastructure (the multi-cycle one).
 
 ## Health snapshot
 
 ```
-git status: clean
-working tree branches: autoevo/cycle-0..cycle-12 (all committed locally;
+git status: clean (all cycle artifacts committed; .hypothesis/ + mutants/
+                   are gitignored)
+working tree branches: autoevo/cycle-0..cycle-14 (all committed locally;
                        no pushes per L7 §0.2)
 tags: autoevo/pre-<each cycle id>  (rollback points)
-pytest: 236 passed / 1 skipped / 0 failed
+pytest: 238 passed / 1 skipped / 0 failed
 compute_level --check: passes (overall L=3)
 autodev_doctor.sh: 11 passed / 0 failed / 2 warned (env-only;
                    tmux + host claude CLI; neither blocks)
+FAILURES.md: 11 entries (most recent FAIL-0011 from cycle 14)
 no BLOCKED.md
 no ALERT.md
 no Guardian pause active
 no orphan subagents
+open blockers (open in STATE.md, not transient BLOCKED.md):
+  - FAIL-0011: mutmut 3.x cross-module import — Track T5 workaround
+    needed
+  - operator: install Codex CLI to unblock R 3→5
 ```
 
 ## Hard constraints honored throughout
@@ -193,20 +203,33 @@ orchestrator/action_evaluator.py  # shell/git command safety scorer
 
 ## Honest assessment (per L7 §18 obligation)
 
-Yes, the system is closer to L7 than 13 cycles ago, by 8 measurable
+Yes, the system is closer to L7 than 15 cycles ago, by 9 measurable
 dim-internal moves. The two stuck floors (R, C) are honestly stuck:
 R unblocks on a 30-second operator action (install codex CLI); C
-needs ~6 cycles of careful infrastructure work. The system has not
-regressed in any dim. The L7 self-discipline loop (preflight against
-FAILURES, propose_next_track, compute_level --check on every cycle)
-is *self-enforcing* and has fired correctly on every cycle since
-Cycle 2.
+needs ~6 cycles of careful infrastructure work. T is now also blocked
+by a tooling issue (FAIL-0011) but with 4 documented workaround paths.
 
-The biggest remaining risk is the **two not-yet-fixed FAILURES that
-have code-touching scope** (FAIL-0007 record_run idempotency,
-FAIL-0008 .dockerignore). They don't block any current track but
-represent documented technical debt that will eventually surface in a
-live e2e run. Recommend a "FAIL-0007-fix" cycle before any extended
-production cycle.
+The system has not regressed in any dim. The L7 self-discipline loop
+(preflight against FAILURES, propose_next_track, compute_level --check
+on every cycle) is *self-enforcing* and has fired correctly on every
+cycle since Cycle 2.
+
+**Cycle 14 was an important learning event**: a real attempt at Track
+T5 hit an external-tool wall, the cycle rolled back atomically, and
+the learning was captured as data (FAIL-0011) rather than swept
+under the rug. This is exactly the behavior the L7 protocol §8
+prescribes ("failure is data") — and it's now demonstrable on a real
+failure, not just hypothetically.
+
+The biggest remaining technical-debt risk is the **three not-yet-fixed
+FAILURES that have code-touching scope**:
+- **FAIL-0007** (record_run idempotency) — high priority before any
+  extended live e2e run
+- **FAIL-0008** (.dockerignore + .env leak risk) — high priority
+  before any Docker image rebuild
+- **FAIL-0009** (doctor side-effect dirties session-log.md) — low,
+  cosmetic, but pollutes every cycle
+
+Recommend a "FAIL-0007-fix" cycle before any live e2e is attempted.
 
 — end of summary —
