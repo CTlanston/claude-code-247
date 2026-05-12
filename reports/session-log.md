@@ -54,3 +54,137 @@ Outcome: ready for Phase 1.
 - 2026-05-11T08:53:50Z  cli.execution  classify=permission_needed  exit=0  duration=0.0s  cost~$0.0000  summary=permission denied
 - 2026-05-11T08:53:50Z  cli.execution  classify=success  exit=0  duration=0.0s  cost~$0.0000  summary=all good
 - 2026-05-11T08:53:50Z  cli.timeout  classify=timeout  exit=None  duration=0.0s  cost~$0.0000  summary=CLI timed out
+- 2026-05-11T09:16:39Z  cli.execution  classify=rate_limited  exit=0  duration=0.0s  cost~$0.0000  summary=Rate limit exceeded
+- 2026-05-11T09:16:39Z  cli.execution  classify=permission_needed  exit=0  duration=0.0s  cost~$0.0000  summary=permission denied
+- 2026-05-11T09:16:39Z  cli.execution  classify=success  exit=0  duration=0.0s  cost~$0.0000  summary=all good
+- 2026-05-11T09:16:39Z  cli.timeout  classify=timeout  exit=None  duration=0.0s  cost~$0.0000  summary=CLI timed out
+- 2026-05-11T09:18:03Z  cycle.warn  task=TASK-003  mode=cheap  summary=inner engine blocked: inner engine exit 4
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T09:19:05Z  cycle.warn  task=TASK-004  mode=cheap  summary=inner engine blocked: inner engine exit 4
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T09:31:13Z  cycle.warn  task=TASK-005  mode=cheap  summary=inner engine blocked: inner engine exit -15
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T09:40:44Z  cycle.warn  task=TASK-006  mode=cheap  summary=inner engine blocked: inner engine exit 4
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T09:41:49Z  cycle.warn  task=TASK-007  mode=cheap  summary=inner engine blocked: inner engine exit 4
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T09:42:51Z  cycle.ok  task=TASK-007  mode=cheap  summary=no work in backlog
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T09:43:52Z  cycle.ok  task=TASK-007  mode=cheap  summary=no work in backlog
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T09:44:54Z  cycle.ok  task=TASK-007  mode=cheap  summary=no work in backlog
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T09:45:56Z  cycle.ok  task=TASK-007  mode=cheap  summary=no work in backlog
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T09:46:57Z  cycle.ok  task=TASK-007  mode=cheap  summary=no work in backlog
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T09:47:58Z  cycle.ok  task=TASK-007  mode=cheap  summary=no work in backlog
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T09:49:00Z  cycle.ok  task=TASK-007  mode=cheap  summary=no work in backlog
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T09:50:01Z  cycle.ok  task=TASK-007  mode=cheap  summary=no work in backlog
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T09:51:03Z  cycle.ok  task=TASK-007  mode=cheap  summary=no work in backlog
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T09:52:05Z  cycle.ok  task=TASK-007  mode=cheap  summary=no work in backlog
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T09:53:06Z  cycle.ok  task=TASK-007  mode=cheap  summary=no work in backlog
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T09:54:08Z  cycle.ok  task=TASK-007  mode=cheap  summary=no work in backlog
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T09:55:09Z  cycle.ok  task=TASK-007  mode=cheap  summary=no work in backlog
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T09:56:11Z  cycle.ok  task=TASK-007  mode=cheap  summary=no work in backlog
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T09:57:12Z  cycle.ok  task=TASK-007  mode=cheap  summary=no work in backlog
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T09:58:13Z  cycle.ok  task=TASK-007  mode=cheap  summary=no work in backlog
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T09:59:15Z  cycle.ok  task=TASK-007  mode=cheap  summary=no work in backlog
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T10:00:22Z  cycle.warn  task=TASK-E2E-001  mode=cheap  summary=inner engine blocked: inner engine exit 4
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T10:01:28Z  cycle.warn  task=TASK-E2E-002  mode=cheap  summary=inner engine blocked: inner engine exit 4
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T10:02:35Z  cycle.warn  task=TASK-E2E-003  mode=cheap  summary=inner engine blocked: inner engine exit 4
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T10:03:41Z  cycle.warn  task=TASK-E2E-004  mode=cheap  summary=inner engine blocked: inner engine exit 4
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T10:04:47Z  cycle.warn  task=TASK-E2E-005  mode=cheap  summary=inner engine blocked: inner engine exit 4
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T10:05:53Z  cycle.warn  task=TASK-E2E-006  mode=cheap  summary=inner engine blocked: inner engine exit 4
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T10:06:59Z  cycle.warn  task=TASK-E2E-007  mode=cheap  summary=inner engine blocked: inner engine exit 4
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T10:08:07Z  cycle.warn  task=TASK-E2E-008  mode=cheap  summary=inner engine blocked: inner engine exit 4
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T10:10:45Z  cycle.ok  task=TASK-E2E-008  mode=cheap  summary=no work in backlog
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T10:11:46Z  cycle.ok  task=TASK-E2E-008  mode=cheap  summary=no work in backlog
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T10:12:47Z  cycle.ok  task=TASK-E2E-008  mode=cheap  summary=no work in backlog
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T10:13:49Z  cycle.ok  task=TASK-E2E-008  mode=cheap  summary=no work in backlog
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T10:14:50Z  cycle.ok  task=TASK-E2E-008  mode=cheap  summary=no work in backlog
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T10:15:51Z  cycle.ok  task=TASK-E2E-008  mode=cheap  summary=no work in backlog
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T10:16:53Z  cycle.ok  task=TASK-E2E-008  mode=cheap  summary=no work in backlog
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T10:17:54Z  cycle.ok  task=TASK-E2E-008  mode=cheap  summary=no work in backlog
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T10:18:56Z  cycle.ok  task=TASK-E2E-008  mode=cheap  summary=no work in backlog
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T10:19:57Z  cycle.ok  task=TASK-E2E-008  mode=cheap  summary=no work in backlog
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T10:20:58Z  cycle.ok  task=TASK-E2E-008  mode=cheap  summary=no work in backlog
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T10:22:00Z  cycle.ok  task=TASK-E2E-008  mode=cheap  summary=no work in backlog
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T10:46:08Z  cli.execution  classify=rate_limited  exit=0  duration=0.0s  cost~$0.0000  summary=Rate limit exceeded
+- 2026-05-11T10:46:08Z  cli.execution  classify=permission_needed  exit=0  duration=0.0s  cost~$0.0000  summary=permission denied
+- 2026-05-11T10:46:08Z  cli.execution  classify=success  exit=0  duration=0.0s  cost~$0.0000  summary=all good
+- 2026-05-11T10:46:08Z  cli.timeout  classify=timeout  exit=None  duration=0.0s  cost~$0.0000  summary=CLI timed out
+- 2026-05-11T10:48:27Z  cli.execution  classify=rate_limited  exit=0  duration=0.0s  cost~$0.0000  summary=Rate limit exceeded
+- 2026-05-11T10:48:27Z  cli.execution  classify=permission_needed  exit=0  duration=0.0s  cost~$0.0000  summary=permission denied
+- 2026-05-11T10:48:27Z  cli.execution  classify=success  exit=0  duration=0.0s  cost~$0.0000  summary=all good
+- 2026-05-11T10:48:27Z  cli.timeout  classify=timeout  exit=None  duration=0.0s  cost~$0.0000  summary=CLI timed out
+- 2026-05-11T10:49:15Z  cli.execution  classify=rate_limited  exit=0  duration=0.0s  cost~$0.0000  summary=Rate limit exceeded
+- 2026-05-11T10:49:15Z  cli.execution  classify=permission_needed  exit=0  duration=0.0s  cost~$0.0000  summary=permission denied
+- 2026-05-11T10:49:15Z  cli.execution  classify=success  exit=0  duration=0.0s  cost~$0.0000  summary=all good
+- 2026-05-11T10:49:15Z  cli.timeout  classify=timeout  exit=None  duration=0.0s  cost~$0.0000  summary=CLI timed out
+- 2026-05-11T11:12:10Z  cycle.warn  task=TASK-V3-1778496611  mode=cheap  summary=inner engine blocked: inner engine exit 3
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T14:48:12Z  cycle.ok  task=TASK-V3-1778496611  mode=cheap  summary=no work in backlog
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T14:49:14Z  cycle.ok  task=TASK-V3-1778496611  mode=cheap  summary=no work in backlog
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T14:50:15Z  cycle.ok  task=TASK-V3-1778496611  mode=cheap  summary=no work in backlog
+  notes: action=select_new_task reason=no current task and not paused; selecting from backlog
+- 2026-05-11T22:56:25Z  cli.execution  classify=rate_limited  exit=0  duration=0.0s  cost~$0.0000  summary=Rate limit exceeded
+- 2026-05-11T22:56:25Z  cli.execution  classify=permission_needed  exit=0  duration=0.0s  cost~$0.0000  summary=permission denied
+- 2026-05-11T22:56:25Z  cli.execution  classify=success  exit=0  duration=0.0s  cost~$0.0000  summary=all good
+- 2026-05-11T22:56:25Z  cli.timeout  classify=timeout  exit=None  duration=0.0s  cost~$0.0000  summary=CLI timed out
+- 2026-05-11T23:07:52Z  cycle.warn  task=TASK-V3-1778496611  mode=cheap  summary=inner engine blocked: inner engine exit 3
+  notes: action=continue_current_task reason=task TASK-V3-1778496611 is active
+- 2026-05-11T23:09:08Z  cycle.warn  task=TASK-V3-1778496611  mode=cheap  summary=inner engine blocked: inner engine exit 3
+  notes: action=continue_current_task reason=task TASK-V3-1778496611 is active
+- 2026-05-11T23:24:33Z  cycle.warn  task=TASK-V3-1778496611  mode=cheap  summary=inner engine blocked: inner engine exit 3
+  notes: action=continue_current_task reason=task TASK-V3-1778496611 is active
+- 2026-05-12T03:01:05Z  cli.execution  classify=rate_limited  exit=0  duration=0.0s  cost~$0.0000  summary=Rate limit exceeded
+- 2026-05-12T03:01:05Z  cli.execution  classify=permission_needed  exit=0  duration=0.0s  cost~$0.0000  summary=permission denied
+- 2026-05-12T03:01:05Z  cli.execution  classify=success  exit=0  duration=0.0s  cost~$0.0000  summary=all good
+- 2026-05-12T03:01:05Z  cli.timeout  classify=timeout  exit=None  duration=0.0s  cost~$0.0000  summary=CLI timed out
+- 2026-05-12T03:01:51Z  cli.execution  classify=rate_limited  exit=0  duration=0.0s  cost~$0.0000  summary=Rate limit exceeded
+- 2026-05-12T03:01:51Z  cli.execution  classify=permission_needed  exit=0  duration=0.0s  cost~$0.0000  summary=permission denied
+- 2026-05-12T03:01:51Z  cli.execution  classify=success  exit=0  duration=0.0s  cost~$0.0000  summary=all good
+- 2026-05-12T03:01:51Z  cli.timeout  classify=timeout  exit=None  duration=0.0s  cost~$0.0000  summary=CLI timed out
+- 2026-05-12T03:02:36Z  cli.execution  classify=rate_limited  exit=0  duration=0.0s  cost~$0.0000  summary=Rate limit exceeded
+- 2026-05-12T03:02:36Z  cli.execution  classify=permission_needed  exit=0  duration=0.0s  cost~$0.0000  summary=permission denied
+- 2026-05-12T03:02:36Z  cli.execution  classify=success  exit=0  duration=0.0s  cost~$0.0000  summary=all good
+- 2026-05-12T03:02:36Z  cli.timeout  classify=timeout  exit=None  duration=0.0s  cost~$0.0000  summary=CLI timed out
+- 2026-05-12T03:03:05Z  cli.execution  classify=rate_limited  exit=0  duration=0.0s  cost~$0.0000  summary=Rate limit exceeded
+- 2026-05-12T03:03:05Z  cli.execution  classify=permission_needed  exit=0  duration=0.0s  cost~$0.0000  summary=permission denied
+- 2026-05-12T03:03:05Z  cli.execution  classify=success  exit=0  duration=0.0s  cost~$0.0000  summary=all good
+- 2026-05-12T03:03:05Z  cli.timeout  classify=timeout  exit=None  duration=0.0s  cost~$0.0000  summary=CLI timed out
