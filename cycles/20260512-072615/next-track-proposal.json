@@ -1,0 +1,79 @@
+{
+  "chosen": {
+    "track_id": "Track R3",
+    "title": "Wire codex_reviewer.run_codex_review into orchestrator/main.py",
+    "priority": "P0",
+    "dim": "R",
+    "status": "open",
+    "details": "reviewer step (priority: P0, from Cycle 15+ kickoff Phase 2)\n      details: With the budget guard + ADR-0008 + R-L4 infra in place\n      (cycle 15), add a cross-model review step to main.py: run Claude\n      Reviewer and Codex Reviewer side by side, compare verdicts,\n      write ALERT.md on disagreement. Each live PR review will log\n      spend to reports/codex-spend.jsonl and provide N>1 cost data\n      points refining ADR-0008.\n      rubric dim: R (Review) \u2014 moves L4 \u2192 L5"
+  },
+  "alternatives": [
+    {
+      "track_id": "Track C2",
+      "priority": "P2",
+      "dim": "C",
+      "score": 5.0,
+      "components": {
+        "priority": 2.0,
+        "floor_pref": 3.0,
+        "failure_penalty": -0.0
+      }
+    },
+    {
+      "track_id": "Track E2",
+      "priority": "P2",
+      "dim": "E",
+      "score": 5.0,
+      "components": {
+        "priority": 2.0,
+        "floor_pref": 3.0,
+        "failure_penalty": -0.0
+      }
+    },
+    {
+      "track_id": "Track T5-workaround",
+      "priority": "P1",
+      "dim": "T",
+      "score": 4.0,
+      "components": {
+        "priority": 3.0,
+        "floor_pref": 3.0,
+        "failure_penalty": -2.0
+      }
+    }
+  ],
+  "levels": {
+    "M": 7,
+    "S": 7,
+    "R": 5,
+    "C": 4,
+    "T": 4,
+    "E": 4
+  },
+  "failure_citations": [
+    "FAIL-0011"
+  ],
+  "considered_failures": [
+    {
+      "id": "FAIL-0001",
+      "overlap_keywords": [
+        "reviewer"
+      ],
+      "score": 0.0175,
+      "fixed": true
+    },
+    {
+      "id": "FAIL-0002",
+      "overlap_keywords": [],
+      "score": 0.0,
+      "fixed": true
+    },
+    {
+      "id": "FAIL-0003",
+      "overlap_keywords": [],
+      "score": 0.0,
+      "fixed": true
+    }
+  ],
+  "reasoning": "Chose Track R3 (priority=P0, dim=R, score=6.00). R-dim is currently L5; this track aims to lift it. FAILURES consulted: FAIL-0001, FAIL-0002, FAIL-0003."
+}

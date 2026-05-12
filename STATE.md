@@ -1,17 +1,17 @@
 # STATE.md — current L7 supervisor state
 
 ```yaml
-current_branch: autoevo/cycle-16/codex-wired-in-review
-last_cycle_id: 20260512-073953
+current_branch: autoevo/cycle-17/worktree-init
+last_cycle_id: 20260512-074343
 last_cycle_result: PASS
 last_green_commit: pending-commit
-last_levelup: 20260512-073953      # R went 4→5
-overall_level: 3                     # C is the SOLE remaining floor
+last_levelup: 20260512-074343      # 🎯 OVERALL L 3 → 4 (first since Bootstrap)
+overall_level: 4                     # first time above 3 since cycle 0
 dim_levels:
   M: 7   # max
   S: 7   # max
-  R: 5   # bridge wired into _do_review
-  C: 3   # sole floor; needs worktree infrastructure
+  R: 5   # wired into _do_review
+  C: 4   # NEW: 2 worktrees + scheduler skeleton
   T: 4   # mutmut blocked (FAIL-0011)
   E: 6
 open_blockers:
@@ -19,8 +19,9 @@ open_blockers:
   - (informational) operator should confirm Codex billing model
     on OpenAI dashboard — see reports/codex-cost-calibration.md
 in_flight_worktrees:
-  - main (no extra worktrees yet — Track C2 next)
-updated_at: 2026-05-12T07:42:00Z
+  - main (primary at repo root)
+  - worktrees/stream-1 (autoevo/worktree-stream-1)
+updated_at: 2026-05-12T07:50:00Z
 codex:
   enabled: true
   binary_on_path: true
@@ -28,39 +29,66 @@ codex:
   wired_into_main_py: true
   daily_cap_tokens: 200000
   per_call_cap_tokens: 60000
-  spend_today_tokens: 130162  # 1 calibration call from cycle 15
+  spend_today_tokens: 130162
   plan_type_observed: pro
-  reviews_log: reports/codex-reviews.jsonl (created on first real PR review)
 ```
 
-## Progress (17 cycles: Bootstrap + 16)
+## Progress (18 cycles: Bootstrap + 17)
 
-Eleven dim-internal lifts. M=L7 max, S=L7 max, R=L5 (NEW),
-T=L4, E=L6, C=L3 (sole floor).
+**🎯 OVERALL LEVEL UP 3 → 4** (the first since Bootstrap).
+Twelve dim-internal lifts plus this one overall-L event.
 
-**Overall L still 3** — C is the only remaining floor. Lifting C is
-now the only path to overall L4. Track C2-init in BACKLOG is the
-next P0.
+```
+Bootstrap: M=4 S=5 R=3 C=3 T=3 E=3 → overall=3
+After C17: M=7 S=7 R=5 C=4 T=4 E=6 → overall=4 🎯
+```
 
 ## Next-cycle target
 
-Per `propose_next_track.py` + Phase 2 of kickoff:
+Per `propose_next_track.py` + kickoff Phase 2:
 
-1. **Track C2-init** (P0) — bootstrap git-worktree infrastructure.
-   `scripts/spawn_worktree.sh` + `worktrees/stream-1/`. C 3 → 4 once
-   `git worktree list` shows 2+ worktrees.
-2. **Track T5-workaround** (P1) — homegrown mutator for billable.py.
-3. **Track R4** (P1) — adversarial reviewer subagent (R 5 → 6).
+1. **Track C3** (P0) — multi-stream dispatch + per-worktree STATE.md
+   shards. Necessary precondition for C-L5 (30-cycle zero-deadlock
+   streak).
+2. **Track T5-workaround** (P1) — homegrown mutator for billable.py
+   (FAIL-0011 option 3).
+3. **Track R4** (P1) — adversarial reviewer subagent.
 
-## Cycle 16 verification snapshot
+## Cycle 17 verification snapshot
 
-- pytest: 265 passed, 1 skipped, 0 failed (7 new integration tests)
-- compute_level: R=L5 ("wired into orchestrator/main.py")
-- compute_level --check: passed (R lifted, no regression)
+- pytest: 280 passed, 1 skipped, 0 failed
+- compute_level: C=L4 (2 worktrees + scheduler.py); overall=L4
+- compute_level --check: passed (no regression; C lifted)
 - doctor: 11/0/2
-- All §0 hard constraints respected
-- ALERT.md: NOT created (no disagreements observed in this cycle's
-  tests; integration tests stubbed codex so no real review fired)
-- reports/codex-reviews.jsonl: NOT created in this cycle (will be
-  written on first live PR review when an issue actually flows through
-  _do_review)
+- Real git worktrees: 2 (`main` + `worktrees/stream-1`)
+- Branches added: `autoevo/worktree-stream-1` (for the second worktree)
+
+## How to use the new worktree
+
+```bash
+# Spawn a new worktree on a fresh branch
+bash scripts/spawn_worktree.sh stream-2
+
+# List all worktrees
+git worktree list
+
+# Discover via the Python scheduler
+python3 -c "import sys; sys.path.insert(0,'orchestrator'); \
+            from scheduler import Scheduler; \
+            s = Scheduler(); s.refresh(); \
+            [print(w.path, w.branch) for w in s.worktrees]"
+```
+
+## Remaining path to L7
+
+Floors above L3 now (all dims ≥ L4):
+- C-L4 → L5: 30 consecutive cycles with no deadlock at 2-3 worktrees
+- T-L4 → L5: mutation testing kill rate ≥ 80% (FAIL-0011 workaround
+  needed first)
+- R-L5 → L6: adversarial reviewer subagent (Track R4)
+- E-L6 → L7: last 3 level-up promotions came from propose_next_track
+  (we now HAVE 3 overall-level-ups counted? Need to check the logic)
+
+Concrete: ~6-10 more disciplined cycles to overall L5; then 30-cycle
+deadlock-free streak for C-L5; mutation tester for T-L5; adversarial
+reviewer for R-L6. Overall L7 is multi-month at current cadence.

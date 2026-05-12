@@ -324,3 +324,11 @@ Outcome: ready for Phase 1.
 - 2026-05-12T07:42:17Z  cli.execution  classify=permission_needed  exit=0  duration=0.0s  cost~$0.0000  summary=permission denied
 - 2026-05-12T07:42:17Z  cli.execution  classify=success  exit=0  duration=0.0s  cost~$0.0000  summary=all good
 - 2026-05-12T07:42:17Z  cli.timeout  classify=timeout  exit=None  duration=0.0s  cost~$0.0000  summary=CLI timed out
+- 2026-05-12T07:45:22Z  cli.execution  classify=rate_limited  exit=0  duration=0.0s  cost~$0.0000  summary=Rate limit exceeded
+- 2026-05-12T07:45:22Z  cli.execution  classify=permission_needed  exit=0  duration=0.0s  cost~$0.0000  summary=permission denied
+- 2026-05-12T07:45:22Z  cli.execution  classify=success  exit=0  duration=0.0s  cost~$0.0000  summary=all good
+- 2026-05-12T07:45:22Z  cli.timeout  classify=timeout  exit=None  duration=0.0s  cost~$0.0000  summary=CLI timed out
+- 2026-05-12T07:46:12Z  cli.execution  classify=rate_limited  exit=0  duration=0.0s  cost~$0.0000  summary=Rate limit exceeded
+- 2026-05-12T07:46:12Z  cli.execution  classify=permission_needed  exit=0  duration=0.0s  cost~$0.0000  summary=permission denied
+- 2026-05-12T07:46:12Z  cli.execution  classify=success  exit=0  duration=0.0s  cost~$0.0000  summary=all good
+- 2026-05-12T07:46:12Z  cli.timeout  classify=timeout  exit=None  duration=0.0s  cost~$0.0000  summary=CLI timed out

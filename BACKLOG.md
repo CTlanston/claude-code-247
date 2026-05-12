@@ -117,6 +117,8 @@
 
 ## Completed
 
+- [x] [Track C2-init] scripts/spawn_worktree.sh + orchestrator/scheduler.py skeleton + 2nd worktree + 15 tests
+      DONE in 20260512-074343 (C-dim L3 → L4; **OVERALL L=4** 🎯)
 - [x] [Track R3] Wire codex_reviewer into orchestrator/main.py:_do_review + 7 tests
       DONE in 20260512-073953 (R-dim L4 → L5, production-wired)
 - [x] [Track R-Phase1] Codex cost calibration: budget guard + ADR-0008 + GO verdict

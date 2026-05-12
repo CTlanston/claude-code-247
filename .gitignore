@@ -41,3 +41,8 @@ cycles/*/scratch/
 # NOTE: BLOCKED.md and ALERT.md are escalation signals — they are tracked
 # when they exist (so a passing human reviewer can see them), and a cycle
 # is allowed to commit them. They are deleted (not ignored) when resolved.
+
+
+# Git worktrees (Track C2-init); the worktree DIR is excluded but the
+# worktree relationship is recorded by git itself in .git/worktrees/
+worktrees/
