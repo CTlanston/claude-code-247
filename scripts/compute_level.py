@@ -430,6 +430,8 @@ def test_dim(repo_root: Path) -> DimResult:
         level = 4
         ev.append(f"{len(prop_tests)} property-based test files")
     elif prop_tests:
+        # Show partial progress so future cycles can see how close T is to L4
+        ev.append(f"{len(prop_tests)} of 3 property-based files for L4")
         notes.append(f"{len(prop_tests)} property-based files (need 3 for L4)")
 
     # L5: mutation testing kill-rate >= 80%

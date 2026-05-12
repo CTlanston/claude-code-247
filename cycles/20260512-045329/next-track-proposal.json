@@ -1,0 +1,55 @@
+{
+  "chosen": {
+    "track_id": "Track T2-property-billable",
+    "title": "Add Hypothesis property tests for",
+    "priority": "P0",
+    "dim": "T",
+    "status": "open",
+    "details": "orchestrator.billable.to_billable_cost (priority: P0)\n      details: Property-based test file `tests/test_billable_properties.py`\n      with >= 3 properties:\n        * `is_subscription_mode` is a pure function of env (idempotent)\n        * `to_billable_cost(...)` always returns >= 0\n        * subscription mode forces 0 regardless of raw input\n      Counts toward Track T2 (property-based on >=3 modules \u2192 L4); this\n      cycle adds one of three module's worth.\n      prerequisites: pytest can find hypothesis (likely already)\n      rubric dim: T (Test oracle) \u2014 partial step toward L4"
+  },
+  "alternatives": [
+    {
+      "track_id": "Track R2",
+      "priority": "P1",
+      "dim": "R",
+      "score": 7.0,
+      "components": {
+        "priority": 3.0,
+        "floor_pref": 4.0,
+        "failure_penalty": -0.0
+      }
+    },
+    {
+      "track_id": "Track T2",
+      "priority": "P1",
+      "dim": "T",
+      "score": 7.0,
+      "components": {
+        "priority": 3.0,
+        "floor_pref": 4.0,
+        "failure_penalty": -0.0
+      }
+    },
+    {
+      "track_id": "Track C2",
+      "priority": "P2",
+      "dim": "C",
+      "score": 6.0,
+      "components": {
+        "priority": 2.0,
+        "floor_pref": 4.0,
+        "failure_penalty": -0.0
+      }
+    }
+  ],
+  "levels": {
+    "M": 5,
+    "S": 5,
+    "R": 3,
+    "C": 3,
+    "T": 3,
+    "E": 4
+  },
+  "failure_citations": [],
+  "reasoning": "Chose Track T2-property-billable (priority=P0, dim=T, score=8.00). T-dim is currently L3; this track aims to lift it."
+}

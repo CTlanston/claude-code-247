@@ -1,0 +1,7 @@
+# Dev-only dependencies (testing, property-based testing, linting).
+# Install with: pip3 install --user -r requirements-dev.txt
+# Production deps live in orchestrator/requirements.txt.
+
+hypothesis>=6.0.0
+pytest>=8.0.0       # already used by tests/
+pytest-cov>=7.0.0   # already used by tests/

@@ -9,17 +9,20 @@
 
 ## P0 — immediate next cycle
 
-- [ ] [Track T2-property-billable] Add Hypothesis property tests for
-      orchestrator.billable.to_billable_cost (priority: P0)
-      details: Property-based test file `tests/test_billable_properties.py`
-      with >= 3 properties:
-        * `is_subscription_mode` is a pure function of env (idempotent)
-        * `to_billable_cost(...)` always returns >= 0
-        * subscription mode forces 0 regardless of raw input
-      Counts toward Track T2 (property-based on >=3 modules → L4); this
-      cycle adds one of three module's worth.
-      prerequisites: pytest can find hypothesis (likely already)
-      rubric dim: T (Test oracle) — partial step toward L4
+- [ ] [Track T2-property-preflight] Hypothesis properties on orchestrator.preflight (priority: P0)
+      details: Second of three property-test modules for T-L4. Properties:
+        * preflight_issue(title, body, root) always returns PreflightResult
+        * ok=False implies non-empty `reason`
+        * ok=True implies terminal_status=None
+        * symbols/files/forbidden_files lists are subsets of what's in the text
+      rubric dim: T (Test oracle) — 2 of 3 property modules for L4
+
+- [ ] [Track T2-property-tdd-intent] Hypothesis properties on _check_tdd_invariant (priority: P0)
+      details: Third of three property-test modules for T-L4. Properties:
+        * empty commit list returns None
+        * commits all matching IMPL with no test commits → fails (returns reject reason)
+        * any sequence with >=1 test before >=1 impl → passes (returns None)
+      rubric dim: T (Test oracle) — 3 of 3 property modules for L4 (lifts T to L4)
 
 ## P1 — next 3 cycles
 
@@ -112,6 +115,8 @@
 
 ## Completed
 
+- [x] [Track T2-property-billable] tests/test_billable_properties.py (6 props)
+      DONE in 20260512-045329 (1 of 3 property modules for T-L4)
 - [x] [Track E2] scripts/propose_next_track.py + 13 regression tests
       DONE in 20260512-044832 (E-dim L3 → L4)
 - [x] [Track M2.5] FAILURES.md grown from 4 → 10 entries + integrity tests
