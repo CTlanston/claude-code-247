@@ -1,0 +1,77 @@
+{
+  "chosen": {
+    "track_id": "Track C2",
+    "title": "Convert orchestrator to git worktrees",
+    "priority": "P2",
+    "dim": "C",
+    "status": "open",
+    "details": "details: Single-stream \u2192 2-stream worktree-based parallelism. Per\n      \u00a76 Track C. Risky; defer until M + S + R are at L4+.\n      rubric dim: C (Concurrency) \u2014 moves L3 \u2192 L4"
+  },
+  "alternatives": [
+    {
+      "track_id": "Track T5",
+      "priority": "P0",
+      "dim": "T",
+      "score": 5.0,
+      "components": {
+        "priority": 4.0,
+        "floor_pref": 3.0,
+        "failure_penalty": -2.0
+      }
+    },
+    {
+      "track_id": "Track S2",
+      "priority": "P1",
+      "dim": "S",
+      "score": 3.0,
+      "components": {
+        "priority": 3.0,
+        "floor_pref": 0.0,
+        "failure_penalty": -0.0
+      }
+    },
+    {
+      "track_id": "Track E2",
+      "priority": "P2",
+      "dim": "E",
+      "score": 3.0,
+      "components": {
+        "priority": 2.0,
+        "floor_pref": 1.0,
+        "failure_penalty": -0.0
+      }
+    }
+  ],
+  "levels": {
+    "M": 7,
+    "S": 7,
+    "R": 3,
+    "C": 3,
+    "T": 4,
+    "E": 6
+  },
+  "failure_citations": [
+    "FAIL-0011"
+  ],
+  "considered_failures": [
+    {
+      "id": "FAIL-0001",
+      "overlap_keywords": [],
+      "score": 0.0,
+      "fixed": true
+    },
+    {
+      "id": "FAIL-0002",
+      "overlap_keywords": [],
+      "score": 0.0,
+      "fixed": true
+    },
+    {
+      "id": "FAIL-0003",
+      "overlap_keywords": [],
+      "score": 0.0,
+      "fixed": true
+    }
+  ],
+  "reasoning": "Chose Track C2 (priority=P2, dim=C, score=6.00). C-dim is currently L3; this track aims to lift it. FAILURES consulted: FAIL-0001, FAIL-0002, FAIL-0003."
+}

@@ -397,3 +397,58 @@ distinguish "exit 0 with no PR" from "exit 1 with stderr" from "exit
 **Keywords**: supervisor, inner_engine_exit_3, blocker, stuck-blocker,
 no-pause-file, hold-duration, diagnose-mode, blocker_reason-coarse,
 state.json, recovery-loop
+
+---
+
+## FAIL-0011: mutmut 3.3.1 mutant-tree copy breaks cross-module imports
+
+**Date**: 2026-05-12 (L7 cycle 14 aborted attempt)
+
+**Symptom**: Cycle 14 tried to lift T-dim 4 → 5 via mutmut on
+`orchestrator/billable.py`. mutmut 3.3.1 was installed via
+`pip3 install --user mutmut`. A minimal `pyproject.toml [tool.mutmut]`
+section was written, then `mutmut run` proceeded past mutant
+generation and failed in the stats phase with:
+```
+ImportError: tests/test_action_evaluator.py
+ModuleNotFoundError: No module named 'action_evaluator'
+```
+
+mutmut 3.x copies the source tree to `mutants/` but only the files
+listed in `paths_to_mutate`. Other orchestrator modules (action_evaluator,
+preflight, intake_sanitizer, codex_reviewer, etc.) are missing from
+`mutants/orchestrator/`, so test files that import them fail to
+collect — even though those tests would NOT be run by the configured
+`runner`. mutmut's stats phase tries to collect ALL tests in
+`tests_dir` regardless.
+
+**Root cause**: mutmut 3.x's mutant-tree copy mechanism is too narrow
+for projects where test files import multiple sibling modules. The
+older mutmut 2.x had a different (in-place) approach that worked.
+
+**Failed fix attempts**:
+- `paths_to_mutate` as a string → mutmut treated it as a list of
+  chars and tripped on `FileNotFoundError: 'o'`
+- `paths_to_mutate` as a single-element list → got past mutant
+  generation but failed the stats phase via the import error above
+
+**Working fix**: not yet shipped. Options under consideration:
+1. Mark conditional `@pytest.mark.skipif(os.environ.get('MUTMUT'))`
+   on tests that import non-billable orchestrator modules
+2. Use mutmut 2.x in a separate venv (older but functional API)
+3. Write a homegrown small-scope mutation tester targeting only
+   `orchestrator/billable.py` (it's only 95 lines)
+4. Wait for a mutmut 3.x release that fixes the copy logic
+
+T-L5 evidence (`reports/mutmut-kill-rate.txt`) is unblocked as soon as
+any of those options ships.
+
+**Regression test**: not applicable (failure is a tooling issue, not a
+code issue; will be addressed when the chosen workaround lands).
+
+**Keywords**: mutmut, mutation-testing, mutant-tree, cross-module-import,
+stats-phase, tooling-blocker, T-L5, hypothesis-already-installed,
+pyproject-tool-mutmut
+
+**Linked**: cycle 14 aborted with rollback to autoevo/pre-20260512-052433
+(no commits landed).
