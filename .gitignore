@@ -28,3 +28,13 @@ reports/state.corrupt.*.json
 reports/com.autodev.supervisor.plist
 state/.autodev_supervisor.lock
 tasks/current.md
+
+# Claude Code session lock files
+.claude/scheduled_tasks.lock
+
+# L7 transient + scratch (the cycles/ folder is committed; scratch inside it is not)
+cycles/*/scratch/
+
+# NOTE: BLOCKED.md and ALERT.md are escalation signals — they are tracked
+# when they exist (so a passing human reviewer can see them), and a cycle
+# is allowed to commit them. They are deleted (not ignored) when resolved.
