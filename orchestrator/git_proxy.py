@@ -134,17 +134,40 @@ def _github_clone_url() -> str:
 
 
 def mirror_to_github(branch: str) -> None:
-    """In production: orchestrator mirrors the local bare repo's branch to GitHub.
-    Runs in orchestrator process so the GitHub token never touches the runner.
-    LOCAL_MODE: no-op."""
+    """In production: orchestrator mirrors the shadow branch up to GitHub.
+    Runs in the orchestrator process so the GitHub token never touches the runner.
+    LOCAL_MODE: no-op.
+
+    Path A (preferred): push from the local bare remote at WORKSPACE_ROOT/.bare.
+    Path B (fallback):   push directly from the per-issue worktree's repo dir.
+                         Used when the bare remote was never bootstrapped
+                         (E2E test 2026-05-11 fail mode: bare repo missing →
+                         silent push loss → empty shadow branch on GitHub).
+    """
     if _local_mode():
         return
-    remote = _local_remote()
-    if not remote.exists():
-        log.warning("[git_proxy] no local bare remote to mirror from")
-        return
     url = _github_clone_url()
-    subprocess.run(["git", "--git-dir", str(remote), "push", url, f"+{branch}:{branch}"],
+    remote = _local_remote()
+
+    # Path A: bare-remote mirror
+    if remote.exists():
+        subprocess.run(["git", "--git-dir", str(remote), "push", url, f"+{branch}:{branch}"],
+                       check=True, capture_output=True)
+        return
+
+    # Path B: push from the worktree directly. The branch name convention is
+    # shadow/issue-<N>; we derive N to locate the worktree.
+    try:
+        issue_id = int(branch.rsplit("-", 1)[-1])
+    except ValueError as e:
+        raise RuntimeError(f"mirror_to_github: cannot parse issue_id from {branch!r}") from e
+    repo_dir = WORKSPACE_ROOT / f"issue-{issue_id}" / "repo"
+    if not repo_dir.exists():
+        raise RuntimeError(
+            f"mirror_to_github: no bare remote at {remote} AND no worktree at {repo_dir}. "
+            f"Bootstrap the bare repo (git init --bare) or check WORKSPACE_ROOT.")
+    log.info("[git_proxy] bare remote missing, falling back to worktree push from %s", repo_dir)
+    subprocess.run(["git", "-C", str(repo_dir), "push", url, f"+{branch}:{branch}"],
                    check=True, capture_output=True)
 
 

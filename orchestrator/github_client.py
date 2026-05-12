@@ -137,10 +137,25 @@ def latest_workflow_run_status(branch: str) -> Optional[str]:
             return None
         data = json.loads(f.read_text())
         return data.get("status")
-    runs = _gh().get_workflow_runs(branch=branch)
-    for run in runs[:1]:
-        return run.conclusion or "running"
-    return None
+    # Defensive: PyGithub's PaginatedList can raise IndexError / GithubException
+    # on missing branches or transient API hiccups. ANY exception here used to
+    # bubble up through main_oneshot and freeze the entire inner-engine loop
+    # for ALL issues (E2E test 2026-05-11 fail mode). Swallow and return None
+    # so the engine moves on to the next task.
+    try:
+        runs = _gh().get_workflow_runs(branch=branch)
+        try:
+            total = runs.totalCount
+        except Exception:  # noqa: BLE001
+            total = None
+        if total == 0:
+            return None
+        for run in runs[:1]:
+            return run.conclusion or "running"
+        return None
+    except Exception as e:  # noqa: BLE001
+        log.warning("latest_workflow_run_status(%s) failed: %s", branch, e)
+        return None
 
 
 _ERROR_LINE_RE = re.compile(
