@@ -22,6 +22,7 @@ from typing import Optional
 from dotenv import load_dotenv
 
 import circuit_breaker as cb
+import codex_reviewer
 import db
 import git_proxy
 import github_client as gh
@@ -36,6 +37,13 @@ GUARDIAN_MIN = int(os.getenv("GUARDIAN_INTERVAL_MINUTES", "30"))
 MAX_REVIEW_ROUNDS = int(os.getenv("PER_ISSUE_MAX_REVIEW_ROUNDS", "3"))
 CI_FAILURE_THRESHOLD = int(os.getenv("CI_FAILURE_THRESHOLD_PER_HOUR", "5"))
 SHADOW_PREFIX = os.getenv("GITHUB_SHADOW_PREFIX", "shadow")
+
+# Cycle 16 Track R3: cross-model review hooks (ADR-0008)
+# `ALERT_PATH` receives disagreement entries; `CODEX_REVIEWS_LOG` is the
+# trend-tracking parallel of `codex-spend.jsonl` but with verdict context.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+ALERT_PATH = _REPO_ROOT / "ALERT.md"
+CODEX_REVIEWS_LOG = _REPO_ROOT / "reports" / "codex-reviews.jsonl"
 
 if os.getenv("STATE_DIR"):
     STATE_DIR = Path(os.environ["STATE_DIR"])
@@ -406,6 +414,11 @@ def _do_review(task: dict) -> None:
     verdict = result.get("verdict", "request_changes")
     comments = result.get("comments", [])
 
+    # Cycle 16 Track R3 — cross-model second-opinion via Codex CLI.
+    # Codex is enhancement, not dependency: any failure here logs and
+    # continues; Claude's verdict remains decisive.
+    _maybe_run_codex_review(task, claude_verdict=verdict)
+
     if verdict == "approve":
         plan = json.loads(task["plan_json"])
         title = plan.get("title", f"Auto: issue #{issue_id}")
@@ -453,6 +466,75 @@ def _maybe_request_changes(task: dict, comments: list) -> None:
     db.upsert_task(issue_id, repo=task["repo"], status="coding",
                    review_rounds=rounds,
                    last_error=json.dumps(comments, ensure_ascii=False)[:500])
+
+
+def _maybe_run_codex_review(task: dict, claude_verdict: str) -> None:
+    """Cycle 16 Track R3. Run codex_reviewer.run_codex_review as a
+    second-opinion observer. On Claude↔Codex disagreement, append an
+    entry to ALERT.md (per L7 §7: NO auto-resolve). Always logs the
+    cross-model review to CODEX_REVIEWS_LOG for trend tracking.
+
+    All failures are swallowed — codex is enhancement, not dependency.
+    Claude's verdict remains decisive regardless of what codex says.
+    """
+    issue_id = task.get("issue_id")
+    branch = task.get("branch") or ""
+    # cycle_id for diagnostics: derive from branch (shadow/issue-N → issue-N)
+    cycle_id = (branch.split("/", 1)[-1] if "/" in branch else branch) or f"issue-{issue_id}"
+    try:
+        # Review the latest commit on the shadow branch
+        result = codex_reviewer.run_codex_review(
+            base_branch="main", cycle_id=cycle_id,
+        )
+    except Exception as e:  # noqa: BLE001
+        log.warning("[issue %s] codex_reviewer raised; continuing: %s",
+                    issue_id, e)
+        return
+
+    # Trend-tracking log entry (one line per review attempted)
+    try:
+        CODEX_REVIEWS_LOG.parent.mkdir(parents=True, exist_ok=True)
+        with CODEX_REVIEWS_LOG.open("a") as f:
+            import json as _json
+            f.write(_json.dumps({
+                "issue_id": issue_id,
+                "branch": branch,
+                "claude_verdict": claude_verdict,
+                "codex_verdict": result.verdict,
+                "codex_tokens": result.tokens,
+                "codex_duration_s": result.duration_s,
+                "codex_reason": result.reason or "",
+                "n_findings": len(result.findings),
+                "disagreement": False,  # set below
+            }) + "\n")
+    except OSError as e:
+        log.warning("could not write %s: %s", CODEX_REVIEWS_LOG, e)
+
+    # Check for cross-model disagreement
+    disagreement = codex_reviewer.disagreement_protocol(
+        claude_verdict=claude_verdict, codex_verdict=result.verdict,
+    )
+    if disagreement is None:
+        return  # agreement or codex non-signal (skipped/error/unknown)
+
+    # Rewrite the just-written log entry with disagreement=True
+    try:
+        if CODEX_REVIEWS_LOG.exists():
+            lines = CODEX_REVIEWS_LOG.read_text().splitlines()
+            if lines:
+                import json as _json
+                last = _json.loads(lines[-1])
+                last["disagreement"] = True
+                lines[-1] = _json.dumps(last)
+                CODEX_REVIEWS_LOG.write_text("\n".join(lines) + "\n")
+    except (OSError, ValueError):
+        pass
+
+    log.warning("[issue %s] cross-model disagreement: %s", issue_id, disagreement)
+    try:
+        codex_reviewer.write_alert(disagreement, ALERT_PATH)
+    except OSError as e:
+        log.warning("could not write %s: %s", ALERT_PATH, e)
 
 
 _TEST_COMMIT_RE = re.compile(r"\s*(test|tests|spec|specs|coverage):\s", re.IGNORECASE)

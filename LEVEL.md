@@ -3,13 +3,13 @@
 Per §3 + §9 of AUTODEV_L7_MASTER_PROMPT.md.
 Overall L = min across all dimensions.
 
-M 7 | evidence: CHANGELOG.md present; CONTEXT.md present + 6 ADRs; FAILURES.md has 11 entries + preflight script wired; Failure clustering script + report present; Planner refused 7 times citing FAILURES
+M 7 | evidence: CHANGELOG.md present; CONTEXT.md present + 6 ADRs; FAILURES.md has 11 entries + preflight script wired; Failure clustering script + report present; Planner refused 8 times citing FAILURES
 S 7 | evidence: 5 active gates: guardian_cost, tdd_invariant, preflight, intake_sanitizer, action_layer_evaluator
   - note: adversarial_return_check: module missing
   - note: canary_leakage_scan: module missing
-R 4 | evidence: Single-model Reviewer present (orchestrator/roles/reviewer.md); Codex bridge infra ready: code + tests + CLI on PATH + budget guard
+R 5 | evidence: Single-model Reviewer present (orchestrator/roles/reviewer.md); Codex bridge infra ready: code + tests + CLI on PATH + budget guard; Codex bridge wired into orchestrator/main.py
 C 3 | evidence: 1 git worktree(s) detected
-T 4 | evidence: 26 unit test files + e2e replay present; 3 property-based test files
+T 4 | evidence: 27 unit test files + e2e replay present; 3 property-based test files
 E 4 | evidence: propose_next_track.py exists
 
 Overall L = 3

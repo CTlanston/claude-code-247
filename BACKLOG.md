@@ -117,6 +117,8 @@
 
 ## Completed
 
+- [x] [Track R3] Wire codex_reviewer into orchestrator/main.py:_do_review + 7 tests
+      DONE in 20260512-073953 (R-dim L4 → L5, production-wired)
 - [x] [Track R-Phase1] Codex cost calibration: budget guard + ADR-0008 + GO verdict
       DONE in 20260512-072615 (R-dim L3 → L4, infra ready)
 - [x] [Track E3] propose_next_track.py emits considered_failures + 2 new tests
