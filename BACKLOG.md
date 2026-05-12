@@ -116,6 +116,8 @@
 
 ## Completed
 
+- [x] [Track R7] orchestrator/review_panel.py N-of-3 panel + 12 tests
+      DONE in 20260512-082125 (R-dim L6 → L7, **R is now at max**)
 - [x] [Track C3-init] Scheduler.dispatch_next + record_cycle_success +
       current_zero_deadlock_streak + 10 new tests + milestone-2.md
       DONE in 20260512-081718 (streak counter in place at 1; C stays L4)

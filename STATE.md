@@ -1,81 +1,70 @@
 # STATE.md — current L7 supervisor state
 
 ```yaml
-current_branch: autoevo/cycle-20/dispatch-next-milestone-2
-last_cycle_id: 20260512-081718
+current_branch: autoevo/cycle-21/n-of-3-panel
+last_cycle_id: 20260512-082125
 last_cycle_result: PASS
 last_green_commit: pending-commit
-last_levelup: 20260512-081235      # last DIM-level move was R 5→6 in cycle 19
-overall_level: 4                     # C is the sole floor
+last_levelup: 20260512-082125      # R 6→7 — third dim at max
+overall_level: 4                     # C is the sole floor (streak=2/30)
 dim_levels:
   M: 7   # max
   S: 7   # max
-  R: 6
-  C: 4   # sole floor; streak=1/30
+  R: 7   # max NEW
+  C: 4   # sole floor
   T: 5
   E: 6
 open_blockers:
   - (informational) operator should confirm Codex billing model
-    on OpenAI dashboard — see reports/codex-cost-calibration.md
 in_flight_worktrees:
-  - main (primary at repo root)
-  - worktrees/stream-1 (autoevo/worktree-stream-1)
-updated_at: 2026-05-12T08:25:00Z
+  - main
+  - worktrees/stream-1
+updated_at: 2026-05-12T08:30:00Z
 concurrency:
   worktree_count: 2
-  zero_deadlock_streak: 1
+  zero_deadlock_streak: 2
   streak_target_for_L5: 30
-  cycles_to_C_L5: 29 (assuming no deadlocks from now on)
-  scheduler:
-    has_dispatch_next: true   # Cycle 20
-    has_streak_counter: true  # Cycle 20
-    wired_into_main_py: false # Track C4 future cycle
+  cycles_to_C_L5: 28 (assuming no deadlocks)
 review_panel:
   reviewer_1_claude:      orchestrator/roles/reviewer.md
   reviewer_2_codex:       orchestrator/codex_reviewer.py
   reviewer_3_adversarial: orchestrator/adversarial_reviewer.py
-  panel_aggregator:       NOT YET (Track R7 → N-of-3 with escalation)
+  aggregator:             orchestrator/review_panel.py (Cycle 21)
+  panel_function:         n_of_3(claude, codex, adv) → PanelVerdict
+  escalation_path:        disagreement_escalate(panel, ALERT_PATH)
+                            writes ALERT.md only when panel.escalate=True
 ```
 
-## Progress (21 cycles: Bootstrap + 20)
+## Progress (22 cycles: Bootstrap + 21)
 
-Per `reports/milestone-2.md`: eight dim-internal lifts in cycles 11-20
-plus one overall-L event (Cycle 17 🎯).
+Fifteen dim-internal lifts + one overall-L event (Cycle 17 🎯).
+Three dimensions now at max (M, S, R).
 
 ```
 Bootstrap: M=4 S=5 R=3 C=3 T=3 E=3 → overall=3
-After C10: M=6 S=6 R=3 C=3 T=4 E=5 → overall=3
 After C17: M=7 S=7 R=5 C=4 T=4 E=6 → overall=4 🎯
-After C20: M=7 S=7 R=6 C=4 T=5 E=6 → overall=4 (streak=1 toward C-L5)
+After C21: M=7 S=7 R=7 C=4 T=5 E=6 → overall=4 (3 dims maxed)
 ```
 
 ## Next-cycle target
 
-Per `propose_next_track.py`: **Track C3** continuation (the picker chose
-"Track C3" — the BACKLOG entry hasn't been split into C3-init/C3-cont
-so it points back to the still-open work).
+C is the sole gate to overall L5 — and C-L5 is observation work (30-
+cycle zero-deadlock streak). Each cycle from here bumps the streak by 1.
+Streak = 2 after this cycle. Cycles to C-L5 = 28.
 
-Concrete options:
-1. **Track R7** (cheapest dim lift available) — N-of-3 reviewer panel
-   module. Lifts R 6 → 7 in one cycle. After R7, R is at max.
-2. **Track T-L6** — add a `scripts/v5_live_sanity.sh` one-cycle live test
-   gated by `AUTODEV_LIVE=1` per kickoff Track L1. Combined with the
-   existing reports/live-sanity/ directory, lifts T 5 → 6.
-3. **Track C-cycle-driver** — actually wire the scheduler into a real
-   multi-issue loop so the streak counter starts bumping per real
-   cycle. Long horizon.
+Available dim moves while we wait for the streak:
+1. **Track T-L6** — `scripts/v5_live_sanity.sh` + reports/live-sanity/
+   directory per kickoff Track L1. Lifts T 5 → 6.
+2. **Track L1** — explicit live sanity infrastructure (overlapping with T-L6).
+3. **Track S5/S6** — adversarial subagent return-check, canary-token
+   leak scan. Beyond S-L7 in formula; doesn't lift S further but adds
+   real defense.
 
-## Milestone-2 has been written
+## Cycle 21 verification snapshot
 
-`reports/milestone-2.md` is in place per L7 §18. Next milestone fires
-at Cycle 30.
-
-## Cycle 20 verification snapshot
-
-- pytest: 335 passed, 2 skipped, 0 failed (10 new scheduler tests)
-- compute_level: C=L4 ("2 git worktree(s) detected"); streak=1 not
-  yet surfaced (compute_level only shows it once it crosses 30)
-- compute_level --check: passed
+- pytest: 347 passed, 2 skipped, 0 failed
+- compute_level: R=L7 ("N-of-3 panel with disagreement-escalation active")
+- compute_level --check: passed (R lifted, no regression)
 - doctor: 11/0/2
-- zero-deadlock streak: 1 (cycle 20 was the first counted entry)
-- reports/cycle-history.jsonl: 1 entry for this cycle
+- Three dimensions maxed at L7: M, S, R
+- streak: 2/30 (cycle 21 added 1 to the streak counter)
