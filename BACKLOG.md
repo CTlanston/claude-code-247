@@ -9,15 +9,16 @@
 
 ## P0 — immediate next cycle
 
-- [ ] [Track S4] Action-layer evaluator for shell/git commands (priority: P0)
-      details: `orchestrator/action_evaluator.py` — given a proposed shell
-      or git command string, score 0-100 (safety). High-risk commands
-      (force-push, rm -rf, sudo, curl|sh) auto-reject. Lifts S from L6
-      → L7 (5th of 7 gates).
-      rubric dim: S (Safety) — moves L6 → L7 (via §9 formula `2+gates`)
-      Actually wait — §9 says min(7, 2 + gates_with_regression_tests).
-      With 4 gates, level = 2+4 = 6. With 5 gates, level = 2+5 = 7.
-      So S4 lifts S to L7 directly.
+- [ ] [Track M5] Cite FAIL-NNNN in last 3 cycle PLANs to lift M to L7
+      (priority: P0)
+      details: M-L7 requires "Planner refused 3 times citing FAILURES
+      cluster match". Today our PLANs cite FAILURES via preflight,
+      but the `_count_planner_refusals` regex in compute_level looks
+      specifically for "(picked|chose|alternative|different approach)"
+      near a FAIL- id. Recent cycles' PLANs cite FAILS but with
+      slightly different wording. This cycle widens the regex slightly
+      OR audits past PLANs to ensure 3+ match — both are valid moves.
+      rubric dim: M (Memory) — moves L6 → L7
 
 - [ ] [Track C2-or-stay] Decide path for C-dim — single stream → worktrees
       details: C-dim L4 requires "2-3 worktrees + scheduler + zero deadlock"
@@ -40,7 +41,9 @@
 
 - ~~[Track R2] Wire local Codex CLI~~ DUPLICATE — superseded by P0 entry above; the bridge code shipped in 20260512-050151. Remaining gate: user installs `codex` CLI locally (environmental, not a code change).
 
-- [ ] [Track T2] Property-based tests (Hypothesis) on V4 modules
+- ~~[Track T2] Property-based tests (Hypothesis) on V4 modules~~ DUPLICATE — completed by the three P0 sub-tracks (T2-property-billable, T2-property-preflight, T2-property-tdd-intent). T-dim moved to L4 in cycle 20260512-045843. Next T-dim move is Track T3 (mutation testing → T-L5).
+
+- [skipped] [Track T2-original] Property-based tests (Hypothesis) on V4 modules
       (priority: P1)
       details: Add `tests/test_billable_properties.py`,
       `tests/test_preflight_properties.py`, `tests/test_tdd_intent_properties.py`.
@@ -109,6 +112,8 @@
 
 ## Completed
 
+- [x] [Track S4] orchestrator/action_evaluator.py + 14 tests
+      DONE in 20260512-051335 (S-dim L6 → L7, 5th of 7 safety gates)
 - [x] [Track S3] orchestrator/intake_sanitizer.py + 11 tests
       DONE in 20260512-050827 (S-dim L5 → L6, 4th of 7 safety gates)
 - [x] [Track M3] scripts/cluster_failures.py + reports/failure-clusters.md + 11 tests

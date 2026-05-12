@@ -1,0 +1,55 @@
+{
+  "chosen": {
+    "track_id": "Track T2",
+    "title": "Property-based tests (Hypothesis) on V4 modules",
+    "priority": "P1",
+    "dim": "T",
+    "status": "open",
+    "details": "(priority: P1)\n      details: Add `tests/test_billable_properties.py`,\n      `tests/test_preflight_properties.py`, `tests/test_tdd_intent_properties.py`.\n      Hypothesis strategies for token counts, cost USD, issue body text,\n      commit prefix order. Each property file >= 3 property tests.\n      prerequisites: `hypothesis` package installable (likely already in deps)\n      rubric dim: T (Test oracle) \u2014 moves L3 \u2192 L4"
+  },
+  "alternatives": [
+    {
+      "track_id": "Track C2",
+      "priority": "P2",
+      "dim": "C",
+      "score": 6.0,
+      "components": {
+        "priority": 2.0,
+        "floor_pref": 4.0,
+        "failure_penalty": -0.0
+      }
+    },
+    {
+      "track_id": "Track S4",
+      "priority": "P0",
+      "dim": "S",
+      "score": 5.0,
+      "components": {
+        "priority": 4.0,
+        "floor_pref": 1.0,
+        "failure_penalty": -0.0
+      }
+    },
+    {
+      "track_id": "Track S2",
+      "priority": "P1",
+      "dim": "S",
+      "score": 4.0,
+      "components": {
+        "priority": 3.0,
+        "floor_pref": 1.0,
+        "failure_penalty": -0.0
+      }
+    }
+  ],
+  "levels": {
+    "M": 6,
+    "S": 6,
+    "R": 3,
+    "C": 3,
+    "T": 4,
+    "E": 5
+  },
+  "failure_citations": [],
+  "reasoning": "Chose Track T2 (priority=P1, dim=T, score=6.00). T-dim is currently L4; this track aims to lift it."
+}

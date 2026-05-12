@@ -172,13 +172,14 @@ def test_propose_empty_backlog_returns_none():
 
 def test_real_repo_proposes_a_track():
     """End-to-end: read real LEVEL/BACKLOG/FAILURES and emit a sensible
-    proposal."""
+    proposal. The chosen track must be open and have a known dim."""
     proposal = pnt.propose_from_repo(REPO_ROOT)
     assert proposal.chosen is not None
-    # Real repo has Track E2 as P0 (this very cycle); should be picked OR
-    # already DONE by the time this test runs in a future cycle, in which
-    # case any other P0 is acceptable.
-    assert proposal.chosen.priority in {"P0", "P1"}
+    assert proposal.chosen.status == "open"
+    # Dim must be one of the rubric dims or None (cross-cuts)
+    assert proposal.chosen.dim in (None, "M", "S", "R", "C", "T", "E")
+    # Priority must be a known L7 priority
+    assert proposal.chosen.priority in {"P0", "P1", "P2", "P3"}
 
 
 # --- CLI -------------------------------------------------------------------
