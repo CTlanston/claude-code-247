@@ -219,23 +219,51 @@ def test_review_l3_with_single_reviewer(tmp_path):
     assert result.level == 3
 
 
-def test_review_l5_when_codex_active(tmp_path):
-    """R-L5 requires (a) module + test files AND (b) `codex` on PATH.
-    Mock shutil.which to simulate Codex being installed locally."""
+def test_review_l4_when_codex_infra_ready_but_not_wired(tmp_path):
+    """R-L4 (per ADR-0008): bridge code + tests + codex on PATH + guard
+    script all present, but main.py doesn't import codex_reviewer yet."""
     _seed_minimal_l3_repo(tmp_path)
     (tmp_path / "orchestrator" / "codex_reviewer.py").write_text("# codex stub\n")
     (tmp_path / "tests" / "test_codex_reviewer.py").write_text(
         "def test_codex_path(): assert 'codex' == 'codex'\n"
     )
+    # Budget guard script must be present + executable
+    guard = tmp_path / "scripts" / "codex_budget_guard.sh"
+    guard.parent.mkdir(parents=True, exist_ok=True)
+    guard.write_text("#!/usr/bin/env bash\nexit 0\n")
+    guard.chmod(0o755)
+    from unittest.mock import patch
+    with patch("shutil.which", return_value="/usr/local/bin/codex"):
+        result = cl.review_dim(tmp_path)
+    assert result.level == 4
+    assert any("infra ready" in e for e in result.evidence)
+
+
+def test_review_l5_when_main_py_imports_codex_reviewer(tmp_path):
+    """R-L5 requires L4 infra AND main.py actually imports the bridge."""
+    _seed_minimal_l3_repo(tmp_path)
+    (tmp_path / "orchestrator" / "codex_reviewer.py").write_text("# codex stub\n")
+    (tmp_path / "tests" / "test_codex_reviewer.py").write_text(
+        "def test_codex(): assert 'codex' == 'codex'\n"
+    )
+    guard = tmp_path / "scripts" / "codex_budget_guard.sh"
+    guard.parent.mkdir(parents=True, exist_ok=True)
+    guard.write_text("#!/usr/bin/env bash\nexit 0\n")
+    guard.chmod(0o755)
+    (tmp_path / "orchestrator" / "main.py").write_text(
+        "from codex_reviewer import run_codex_review\n"
+        "def whatever(): pass\n"
+    )
     from unittest.mock import patch
     with patch("shutil.which", return_value="/usr/local/bin/codex"):
         result = cl.review_dim(tmp_path)
     assert result.level == 5
+    assert any("wired into orchestrator/main.py" in e for e in result.evidence)
 
 
 def test_review_stays_l3_when_codex_artifacts_present_but_binary_missing(tmp_path):
     """Honesty check: even with the bridge code in place, R stays at L3
-    until `codex` is actually on PATH. Prevents false-claim L5."""
+    until `codex` is actually on PATH. Prevents false-claim L4."""
     _seed_minimal_l3_repo(tmp_path)
     (tmp_path / "orchestrator" / "codex_reviewer.py").write_text("# codex stub\n")
     (tmp_path / "tests" / "test_codex_reviewer.py").write_text(
@@ -245,6 +273,28 @@ def test_review_stays_l3_when_codex_artifacts_present_but_binary_missing(tmp_pat
     with patch("shutil.which", return_value=None):
         result = cl.review_dim(tmp_path)
     assert result.level == 3
+
+
+def test_review_stays_l4_when_main_does_not_import_bridge(tmp_path):
+    """L5 needs main.py to actively use the bridge — not just the file
+    existing. This prevents claiming L5 with dormant code."""
+    _seed_minimal_l3_repo(tmp_path)
+    (tmp_path / "orchestrator" / "codex_reviewer.py").write_text("# codex stub\n")
+    (tmp_path / "tests" / "test_codex_reviewer.py").write_text(
+        "def test_codex(): assert 'codex' == 'codex'\n"
+    )
+    guard = tmp_path / "scripts" / "codex_budget_guard.sh"
+    guard.parent.mkdir(parents=True, exist_ok=True)
+    guard.write_text("#!/usr/bin/env bash\nexit 0\n")
+    guard.chmod(0o755)
+    (tmp_path / "orchestrator" / "main.py").write_text(
+        "# main.py without codex import\n"
+        "def whatever(): pass\n"
+    )
+    from unittest.mock import patch
+    with patch("shutil.which", return_value="/usr/local/bin/codex"):
+        result = cl.review_dim(tmp_path)
+    assert result.level == 4
 
 
 # --- C-dim tests ----------------------------------------------------------

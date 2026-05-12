@@ -373,8 +373,9 @@ def safety_dim(repo_root: Path) -> DimResult:
 
 
 def review_dim(repo_root: Path) -> DimResult:
-    """R-dim: single reviewer = L3; +codex = L5; +adversarial = L6;
-    + N-of-3 with disagreement-escalation = L7."""
+    """R-dim: single reviewer = L3; +codex bridge infra (PATH + guard) = L4;
+    +codex wired into production review path = L5; +adversarial = L6;
+    +N-of-3 with disagreement-escalation = L7."""
     ev: List[str] = []
     level = 3
     # Baseline single-model Reviewer
@@ -384,20 +385,41 @@ def review_dim(repo_root: Path) -> DimResult:
     else:
         return DimResult("R", level=3, evidence=ev, notes=["reviewer.md missing"])
 
-    # L5: codex bridge live (requires both code AND codex on PATH)
+    # L4: codex bridge INFRASTRUCTURE ready (per Cycle 15 / ADR-0008):
+    #   - codex_reviewer.py module + tests exist
+    #   - codex CLI on PATH
+    #   - codex_budget_guard.sh exists + is executable
     codex_ok, codex_reason = _gate_is_active(repo_root,
                                               REVIEW_MARKERS["codex_bridge"])
-    if codex_ok:
-        level = 5
-        ev.append("Codex cross-model bridge active")
+    guard_script = repo_root / "scripts" / "codex_budget_guard.sh"
+    guard_ok = guard_script.exists() and os.access(guard_script, os.X_OK)
+
+    if codex_ok and guard_ok:
+        level = 4
+        ev.append("Codex bridge infra ready: code + tests + CLI on PATH + budget guard")
     else:
-        # If the BRIDGE CODE is present but only the binary is missing,
-        # surface that nuance so the operator knows what unblocks L5.
+        # Surface what's missing
         module_present = (repo_root / "orchestrator" / "codex_reviewer.py").exists()
         test_present = (repo_root / "tests" / "test_codex_reviewer.py").exists()
         if module_present and test_present:
-            ev.append(f"Codex bridge code in place but {codex_reason} "
-                      "(install codex CLI to lift R to L5)")
+            ev.append(
+                f"Codex bridge partial: code+tests present; "
+                f"path/guard status: {codex_reason}; guard_ok={guard_ok}"
+            )
+
+    # L5: codex actually wired into the production review path.
+    #     Evidence = orchestrator/main.py imports codex_reviewer
+    #     (Track R3 in BACKLOG/cycle 16 wires this)
+    if level >= 4:
+        main_py = repo_root / "orchestrator" / "main.py"
+        if main_py.exists():
+            main_text = _read_text(main_py)
+            if ("codex_reviewer" in main_text
+                    and ("run_codex_review" in main_text
+                         or "from codex_reviewer" in main_text
+                         or "import codex_reviewer" in main_text)):
+                level = 5
+                ev.append("Codex bridge wired into orchestrator/main.py")
 
     # L6: + adversarial reviewer
     if level >= 5 and _gate_is_active(repo_root,

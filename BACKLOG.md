@@ -9,13 +9,21 @@
 
 ## P0 — immediate next cycle
 
-- [ ] [Track T5] Mutation testing with mutmut on V4 modules (priority: P0)
-      details: T-dim L5 requires "mutation testing (mutmut) ≥ 80% kill
-      rate" on >= some modules. Install mutmut, configure on
-      orchestrator.billable + preflight + main:_check_tdd_invariant,
-      run one round, capture the kill rate to reports/mutmut-kill-rate.txt
-      so compute_level can see it.
-      rubric dim: T (Test oracle) — moves L4 → L5 if kill rate ≥ 80%
+- [ ] [Track R3] Wire codex_reviewer.run_codex_review into orchestrator/main.py
+      reviewer step (priority: P0, from Cycle 15+ kickoff Phase 2)
+      details: With the budget guard + ADR-0008 + R-L4 infra in place
+      (cycle 15), add a cross-model review step to main.py: run Claude
+      Reviewer and Codex Reviewer side by side, compare verdicts,
+      write ALERT.md on disagreement. Each live PR review will log
+      spend to reports/codex-spend.jsonl and provide N>1 cost data
+      points refining ADR-0008.
+      rubric dim: R (Review) — moves L4 → L5
+
+- [ ] [Track T5-workaround] Pick a mutation-testing workaround per FAIL-0011
+      (priority: P1)
+      details: mutmut 3.3.1 blocked (FAIL-0011). Best ROI is option 3
+      (homegrown small-scope mutator for billable.py — only 95 lines).
+      rubric dim: T (Test oracle) — moves L4 → L5
 
 - [ ] [Track C2-or-stay] Decide path for C-dim — single stream → worktrees
       details: C-dim L4 requires "2-3 worktrees + scheduler + zero deadlock"
@@ -109,6 +117,8 @@
 
 ## Completed
 
+- [x] [Track R-Phase1] Codex cost calibration: budget guard + ADR-0008 + GO verdict
+      DONE in 20260512-072615 (R-dim L3 → L4, infra ready)
 - [x] [Track E3] propose_next_track.py emits considered_failures + 2 new tests
       DONE in 20260512-052118 (E-dim L5 → L6)
 - [x] [Track M5] widen _count_planner_refusals regex; 5 new tests

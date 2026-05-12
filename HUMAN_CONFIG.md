@@ -39,6 +39,12 @@ runtime:
   interval_seconds: 900                                  # 15-min cadence when supervisor IS running
   max_repair_attempts_per_task: 3
   max_review_rounds_per_task: 5
+  # --- Codex CLI cross-model review (added Cycle 15; see ADR-0008) ---
+  codex_enabled: true                                    # operator installed + OAuth-authenticated 2026-05-12
+  codex_daily_cap_tokens: 200000                         # ≈ $1/day at gpt-5.4 input rates
+  codex_per_call_cap_tokens: 60000                       # anomaly threshold (log + alert)
+  codex_fallback_on_refusal: true                        # fall back to single-Claude review when guard refuses
+  codex_binary: codex                                    # PATH-resolved; budget guard wraps every call
 ```
 
 ## Project commands
