@@ -1,32 +1,32 @@
 # L7 Continuous Session — Wake-up Summary
 
-> Updated 2026-05-12 ~06:00 UTC. The continuous L7 loop ran **15
+> Updated 2026-05-12 ~07:50 UTC. The continuous L7 loop ran **18
 > cycles** autonomously per `AUTODEV_L7_MASTER_PROMPT.md`. All commits
-> are local (no push, no PR merge, no paid API spend). One cycle (14)
-> failed cleanly and is documented as FAIL_AS_DATA per L7 §8.
+> are local (no push, no PR merge, no paid API spend except the ONE
+> calibrated Codex review). One cycle (14) failed cleanly and is
+> documented as FAIL_AS_DATA per L7 §8.
 
-## TL;DR
+## 🎯 TL;DR — OVERALL L = 4 (first overall-L move since Bootstrap)
 
-Bootstrap + 13 successful cycles + 1 FAIL_AS_DATA cycle. **Nine rubric
-dim-internal lifts.** M and S are both at the **L7 maximum**. E at L6.
-T at L4 (mutation testing blocked by mutmut tooling — FAIL-0011). R
-and C remain at L3 — the two architectural floors. **Overall L = 3**
-(min across dims; rises only when *every* dim is above 3).
+Bootstrap + 16 successful cycles + 1 FAIL_AS_DATA. **Twelve rubric
+dim-internal lifts PLUS one overall-L event 🎯.** Every dimension is
+now at L4 or above. M and S are at the **L7 maximum**.
 
-| Dim | Bootstrap | After 15 cycles | Δ | Why not higher |
+| Dim | Bootstrap | After 18 cycles | Δ | What's next |
 |---|---|---|---|---|
 | M (Memory) | 4 | **7 (max)** | +3 | — |
 | S (Safety) | 5 | **7 (max)** | +2 | — |
-| R (Review) | 3 | 3 | 0 | Codex CLI not installed locally |
-| C (Concurrency) | 3 | 3 | 0 | No worktree infrastructure yet |
-| T (Test oracle) | 3 | 4 | +1 | mutmut 3.x blocked (FAIL-0011) |
-| E (Self-improvement) | 3 | **6** | +3 | Last 3 promotions must cite proposal |
-| **Overall** | **3** | **3** | 0 | R + C floor |
+| R (Review) | 3 | **5** | +2 | R4 adversarial reviewer → L6 |
+| C (Concurrency) | 3 | **4** | +1 | C3 multi-stream dispatch + 30-cycle streak → L5 |
+| T (Test oracle) | 3 | 4 | +1 | mutmut 3.x blocked (FAIL-0011); workaround needed → L5 |
+| E (Self-improvement) | 3 | **6** | +3 | Last 3 overall promotions cite proposal → L7 |
+| **Overall** | **3** | **4 🎯** | **+1** | C-L5 is the floor now |
 
-Pytest: **238 passed, 1 skipped, 0 failed.**
+Pytest: **280 passed, 1 skipped, 0 failed.**
 Doctor: **11 passed, 0 failed, 2 warned (env-only).**
 `compute_level --check` exits 0 on every cycle.
-FAILURES.md: **11 entries** (was 10 — added FAIL-0011 from cycle 14).
+FAILURES.md: **11 entries** (added FAIL-0011 cycle 14).
+Codex spend log: 1 calibration entry (130,162 tokens, plan=pro).
 
 ## Cycle ledger
 
@@ -47,6 +47,9 @@ FAILURES.md: **11 entries** (was 10 — added FAIL-0011 from cycle 14).
 | 20260512-051659 | cycle-12/refusal-regex | M | widen refusal regex | M 6→7 |
 | 20260512-052118 | cycle-13/propose-cites-failures | E | propose_next_track emits considered_failures | E 5→6 |
 | 20260512-052433 | cycle-14/mutmut-blocker-doc | T | T5 attempted; FAIL-0011 documented | FAIL→data |
+| 20260512-072615 | cycle-15/codex-calibration | R | Codex budget guard + ADR-0008 + live calibration call (130K tok, plan=pro) | R 3→4 |
+| 20260512-073953 | cycle-16/codex-wired-in-review | R | codex_reviewer wired into orchestrator/main.py:_do_review; ALERT on disagreement | R 4→5 |
+| 20260512-074343 | cycle-17/worktree-init | C | scripts/spawn_worktree.sh + orchestrator/scheduler.py skeleton + 2nd real worktree | C 3→4 **🎯 overall L=4** |
 
 Each cycle: own branch, own tag (`autoevo/pre-<id>`), own
 `cycles/<id>/{PLAN,RESULT,REPORT,STATE.before,verify-output,next-track-proposal}.md/json`,
@@ -106,14 +109,39 @@ Until BOTH move past L3, overall L stays at 3.
 
 Per `scripts/propose_next_track.py --json`:
 
-1. **Track T5-workaround** — Pick a path past the mutmut 3.x blocker.
-   See FAIL-0011 in FAILURES.md for the four candidates. Best ROI is
-   option 3: homegrown small-scope mutator for `orchestrator/billable.py`
-   (95-line surface; existing 6 property tests + 9 unit tests are the
-   kill set).
-2. **Install codex CLI** (operator action; auto-promotes R 3→5 on
-   the next compute_level run).
-3. **Track C2** — Worktree infrastructure (the multi-cycle one).
+1. **Track C3** — Multi-stream dispatch + per-worktree STATE.md
+   shards. Builds on cycle 17's scheduler skeleton; necessary
+   precondition for the 30-cycle zero-deadlock streak that C-L5
+   needs.
+2. **Track T5-workaround** — FAIL-0011 option 3 (homegrown small-scope
+   mutator for `orchestrator/billable.py`).
+3. **Track R4** — Adversarial reviewer subagent (R 5→6).
+
+## Codex CLI integration is now LIVE (Cycle 15-16)
+
+The kickoff doc revoked the prior "skip Codex" stance. Operator
+installed v0.130.0 + OAuth-authenticated via `codex login`.
+
+What we built:
+- `scripts/codex_budget_guard.sh`: wraps every `codex` call with
+  daily-cap enforcement, parses `~/.codex/sessions/.../rollout-*.jsonl`
+  for accurate token counts.
+- `orchestrator/codex_reviewer.py` rewrite: structured `CodexReview`
+  output schema (verdict, findings, tokens, duration_s, reason),
+  budget-aware (`skipped`/`error`/`unknown` are non-signals).
+- `orchestrator/main.py`: `_do_review` now invokes codex via the
+  guard AFTER Claude returns. On Claude↔Codex verdict disagreement,
+  appends to `ALERT.md` and writes a structured entry to
+  `reports/codex-reviews.jsonl`. Claude's verdict remains decisive.
+- ADR-0008 documents the §0.5 carve-out and the cost discipline.
+- One live calibration call (Cycle 15) on a 10-line gitignore diff:
+  130,162 total tokens, 57s wall, exit 0, verdict=approve.
+  Session metadata: `plan_type: "pro"`, rate-limits 0% used →
+  **subscription-included billing observed**. Per-review cost ≈ $0
+  under the Pro plan; worst-case ≈ $0.65 if paid-API billing.
+
+See `reports/codex-cost-calibration.md` for the full GO verdict
+and operator action items.
 
 ## Health snapshot
 
@@ -203,23 +231,24 @@ orchestrator/action_evaluator.py  # shell/git command safety scorer
 
 ## Honest assessment (per L7 §18 obligation)
 
-Yes, the system is closer to L7 than 15 cycles ago, by 9 measurable
-dim-internal moves. The two stuck floors (R, C) are honestly stuck:
-R unblocks on a 30-second operator action (install codex CLI); C
-needs ~6 cycles of careful infrastructure work. T is now also blocked
-by a tooling issue (FAIL-0011) but with 4 documented workaround paths.
+The system is **measurably closer to L7** than at start: 12 dim-internal
+moves + 1 overall-L move (3 → 4). Every dim is now ≥ L4. The L7
+self-discipline loop continues to fire correctly on every cycle.
 
-The system has not regressed in any dim. The L7 self-discipline loop
-(preflight against FAILURES, propose_next_track, compute_level --check
-on every cycle) is *self-enforcing* and has fired correctly on every
-cycle since Cycle 2.
+**Cycle 14 was an important learning event** (FAIL_AS_DATA): a real
+attempt at Track T5 hit an external-tool wall, the cycle rolled back
+atomically, and the learning was captured as data (FAIL-0011) rather
+than swept under the rug. This is exactly the §8 "failure is data"
+pattern — demonstrable on a real failure, not just hypothetically.
 
-**Cycle 14 was an important learning event**: a real attempt at Track
-T5 hit an external-tool wall, the cycle rolled back atomically, and
-the learning was captured as data (FAIL-0011) rather than swept
-under the rug. This is exactly the behavior the L7 protocol §8
-prescribes ("failure is data") — and it's now demonstrable on a real
-failure, not just hypothetically.
+**Cycle 15 was the first paid-third-party carve-out** (ADR-0008):
+operator installed Codex; the cycle built budget infrastructure
+BEFORE making any code-spending call; the calibration call observed
+subscription billing; the carve-out is documented + scoped.
+
+**Cycle 17 is the first overall-L move since Bootstrap** 🎯 — the
+worktree infra that took C from L3 to L4, lifting every dim to ≥ L4
+and the overall floor from 3 to 4.
 
 The biggest remaining technical-debt risk is the **three not-yet-fixed
 FAILURES that have code-touching scope**:
@@ -228,8 +257,23 @@ FAILURES that have code-touching scope**:
 - **FAIL-0008** (.dockerignore + .env leak risk) — high priority
   before any Docker image rebuild
 - **FAIL-0009** (doctor side-effect dirties session-log.md) — low,
-  cosmetic, but pollutes every cycle
+  cosmetic, but pollutes every cycle's `git status`
 
 Recommend a "FAIL-0007-fix" cycle before any live e2e is attempted.
+
+## Distance to L7
+
+| Dim | Now | Path to L7 | Cycles est. |
+|---|---|---|---|
+| M | 7 | (already max) | — |
+| S | 7 | (already max) | — |
+| R | 5 | R4 adversarial reviewer (L6) → N-of-3 panel (L7) | 2-3 |
+| C | 4 | C3 dispatch + 30-cycle zero-deadlock streak (L5) → 5+ worktrees (L7) | 30+ |
+| T | 4 | mutmut workaround (L5) → mutation kill ≥ 80% on 4 modules → live sanity per RC (L6) → golden-diff (L7) | 4-6 |
+| E | 6 | last 3 overall-L moves cite propose_next_track (L7) | 2-3 |
+
+**Honest forecast: ~6-10 cycles to overall L5 (C is the gate).
+Overall L7 is multi-month; the 30-cycle zero-deadlock streak alone
+is observation work, not coding work.**
 
 — end of summary —
