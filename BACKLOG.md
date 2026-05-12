@@ -9,15 +9,13 @@
 
 ## P0 — immediate next cycle
 
-- [ ] [Track M2.5] Grow FAILURES.md from 4 → 10+ entries (priority: P0)
-      details: M-dim L5 requires BOTH `scripts/preflight_failures.py`
-      (DONE in 20260512-043811) AND FAILURES.md with >=10 entries. Mine
-      historical V1/V2/V3 reports + git log for 6+ more documented failures
-      (idempotent INSERT, .dockerignore omission, container token leak fear,
-      retry counter bug, recovery hold-loop, Slack note flapping, etc.).
-      Each new entry: full FAIL-NNNN structure + Keywords list.
-      prerequisites: Track M2 DONE in 20260512-043811
-      rubric dim: M (Memory) — moves L4 → L5
+- [ ] [Track E2] Implement `scripts/propose_next_track.py` (priority: P0)
+      details: E-dim L4 requires this script. Reads FAILURES.md + LEVEL.md
+      + BACKLOG.md and proposes the next track with citations. Lift E from
+      L3 to L4 in one cycle (cheapest floor-dim move available — R needs
+      Codex bridge for L5; C needs worktrees; T needs 3 property modules).
+      prerequisites: FAILURES.md / LEVEL.md / BACKLOG.md present (all DONE)
+      rubric dim: E (Self-improvement) — moves L3 → L4
 
 - [ ] [Track T2-property-billable] Add Hypothesis property tests for
       orchestrator.billable.to_billable_cost (priority: P0)
@@ -122,6 +120,8 @@
 
 ## Completed
 
+- [x] [Track M2.5] FAILURES.md grown from 4 → 10 entries + integrity tests
+      DONE in 20260512-044425 (M-dim L4 → L5)
 - [x] [Track M2] scripts/preflight_failures.py + 18 regression tests
       DONE in 20260512-043811
 - [x] [Track M1] Bootstrap CONTEXT.md + ADRs 0000-0004 + FAILURES.md seed

@@ -9,3 +9,4 @@
 
 20260512-042701 | BOOTSTRAP | seed CONTEXT.md + ADRs 0000-0004 + FAILURES.md (4 entries) + BACKLOG.md + scripts/compute_level.py (25 tests) + STATE.md; establish L7 memory architecture from V4 artifacts | PASS 🎯
 20260512-043811 | M | implement scripts/preflight_failures.py (Track M2) + 18 regression tests; FAILURES.md grep-from-PLAN with --strict + --json modes; closes one of two preconditions for M-dim L5 | PASS
+20260512-044425 | M | grow FAILURES.md from 4 to 10 entries (Track M2.5) + tests/test_failures_integrity.py (7 schema tests); preflight_failures self-dogfooded on this cycle's PLAN (matched FAIL-0003, PLAN cited and passed --strict); M-dim moves L4 → L5 | PASS

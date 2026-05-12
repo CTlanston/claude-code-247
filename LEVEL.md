@@ -3,7 +3,7 @@
 Per §3 + §9 of AUTODEV_L7_MASTER_PROMPT.md.
 Overall L = min across all dimensions.
 
-M 4 | evidence: CHANGELOG.md present; CONTEXT.md present + 5 ADRs; FAILURES.md has 4 entries (need 10 for L5)
+M 5 | evidence: CHANGELOG.md present; CONTEXT.md present + 5 ADRs; FAILURES.md has 10 entries + preflight script wired
 S 5 | evidence: 3 active gates: guardian_cost, tdd_invariant, preflight
   - note: intake_sanitizer: module missing
   - note: action_layer_evaluator: module missing
@@ -11,7 +11,7 @@ S 5 | evidence: 3 active gates: guardian_cost, tdd_invariant, preflight
   - note: canary_leakage_scan: module missing
 R 3 | evidence: Single-model Reviewer present (orchestrator/roles/reviewer.md)
 C 3 | evidence: 1 git worktree(s) detected
-T 3 | evidence: 16 unit test files + e2e replay present
+T 3 | evidence: 17 unit test files + e2e replay present
 E 3 | evidence: Manual track-selection mode
 
 Overall L = 3
