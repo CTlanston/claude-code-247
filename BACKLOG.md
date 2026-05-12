@@ -9,17 +9,6 @@
 
 ## P0 — immediate next cycle
 
-- [ ] [Track R6] Adversarial reviewer subagent (priority: P0)
-      details: Per user directive after Cycle 18 + L7 §6 / kickoff Phase 2.
-      Add `runner/roles/adversarial_reviewer.md` with a single-purpose
-      prompt ("find ways this change breaks in production"). Wire into
-      `orchestrator/main.py:_do_review` as a third pass after Claude +
-      Codex. Add disagreement detection so a Claude=APPROVE + Adversarial=
-      REJECT triggers ALERT.md. compute_level evidence path: add a
-      KNOWN_GATES entry / REVIEW_MARKERS adversarial_reviewer entry that
-      detects this. Lifts R 5 → 6.
-      rubric dim: R (Review)
-
 - [ ] [Track C3] Multi-issue dispatch via Scheduler.dispatch_next()
       (priority: P0)
       details: From the user directive. Implement
@@ -30,6 +19,16 @@
       Each successful no-deadlock cycle increments
       `reports/zero-deadlock-streak.txt`.
       rubric dim: C (Concurrency) — partial step toward L5
+
+- [ ] [Track R7] N-of-3 reviewer panel with disagreement-as-signal
+      (priority: P1)
+      details: Combine Claude (main) + Codex + Adversarial into a
+      single review_panel module. Disagreement on any dim with 2+ votes
+      against → escalate (don't auto-resolve). Lifts R 6 → 7. Needs
+      `orchestrator/review_panel.py` + `tests/test_review_panel.py`
+      per the compute_level REVIEW_MARKERS["n_of_3_with_escalation"]
+      detection path.
+      rubric dim: R (Review) — moves L6 → L7
 
 ## P1 — next 3 cycles
 
@@ -117,6 +116,8 @@
 
 ## Completed
 
+- [x] [Track R6] runner/roles/adversarial_reviewer.md + orchestrator/adversarial_reviewer.py + wired into _do_review + 12 tests
+      DONE in 20260512-081235 (R-dim L5 → L6)
 - [x] [Track T5] scripts/mutate_billable.py homegrown mutator (26 tests) +
       tests/test_billable_mutation_anchors.py (7 anchor tests) → 21/21
       mutants killed on orchestrator/billable.py (kill rate 100%)

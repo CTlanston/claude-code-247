@@ -21,6 +21,7 @@ from typing import Optional
 
 from dotenv import load_dotenv
 
+import adversarial_reviewer
 import circuit_breaker as cb
 import codex_reviewer
 import db
@@ -41,9 +42,12 @@ SHADOW_PREFIX = os.getenv("GITHUB_SHADOW_PREFIX", "shadow")
 # Cycle 16 Track R3: cross-model review hooks (ADR-0008)
 # `ALERT_PATH` receives disagreement entries; `CODEX_REVIEWS_LOG` is the
 # trend-tracking parallel of `codex-spend.jsonl` but with verdict context.
+# Cycle 19 Track R6: parallel `ADVERSARIAL_REVIEWS_LOG` for the third
+# reviewer pass.
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 ALERT_PATH = _REPO_ROOT / "ALERT.md"
 CODEX_REVIEWS_LOG = _REPO_ROOT / "reports" / "codex-reviews.jsonl"
+ADVERSARIAL_REVIEWS_LOG = _REPO_ROOT / "reports" / "adversarial-reviews.jsonl"
 
 if os.getenv("STATE_DIR"):
     STATE_DIR = Path(os.environ["STATE_DIR"])
@@ -419,6 +423,11 @@ def _do_review(task: dict) -> None:
     # continues; Claude's verdict remains decisive.
     _maybe_run_codex_review(task, claude_verdict=verdict)
 
+    # Cycle 19 Track R6 — adversarial reviewer subagent (3rd pass).
+    # Same observer-only contract: Claude's verdict still decides; on
+    # Claude=APPROVE + Adversarial=REJECT writes ALERT.md.
+    _maybe_run_adversarial_review(task, claude_verdict=verdict)
+
     if verdict == "approve":
         plan = json.loads(task["plan_json"])
         title = plan.get("title", f"Auto: issue #{issue_id}")
@@ -466,6 +475,70 @@ def _maybe_request_changes(task: dict, comments: list) -> None:
     db.upsert_task(issue_id, repo=task["repo"], status="coding",
                    review_rounds=rounds,
                    last_error=json.dumps(comments, ensure_ascii=False)[:500])
+
+
+def _maybe_run_adversarial_review(task: dict, claude_verdict: str) -> None:
+    """Cycle 19 Track R6. Run the adversarial reviewer subagent as the
+    3rd reviewer pass. Always logs to ADVERSARIAL_REVIEWS_LOG. On
+    Claude=APPROVE + Adversarial=REJECT, appends to ALERT.md (per L7 §7:
+    NO auto-resolve). Catches all exceptions — adversarial is enhancement,
+    not dependency.
+
+    Note the disagreement asymmetry vs Codex: adversarial only escalates
+    when Claude *passes* but adversarial *fails*. Adversarial-passes-but-
+    Claude-fails is just Claude doing its job; no escalation needed.
+    """
+    issue_id = task.get("issue_id")
+    try:
+        result = adversarial_reviewer.run_adversarial_review(task, issue_id)
+    except Exception as e:  # noqa: BLE001
+        log.warning("[issue %s] adversarial_reviewer raised; continuing: %s",
+                    issue_id, e)
+        return
+
+    branch = task.get("branch") or ""
+    try:
+        ADVERSARIAL_REVIEWS_LOG.parent.mkdir(parents=True, exist_ok=True)
+        with ADVERSARIAL_REVIEWS_LOG.open("a") as f:
+            import json as _json
+            f.write(_json.dumps({
+                "issue_id": issue_id,
+                "branch": branch,
+                "claude_verdict": claude_verdict,
+                "adversarial_verdict": result.verdict,
+                "adversarial_summary": result.summary,
+                "n_findings": len(result.findings),
+                "reason": result.reason or "",
+                "disagreement": False,  # set below
+            }) + "\n")
+    except OSError as e:
+        log.warning("could not write %s: %s", ADVERSARIAL_REVIEWS_LOG, e)
+
+    disagreement = adversarial_reviewer.adversarial_disagreement(
+        claude_verdict=claude_verdict, adv_verdict=result.verdict,
+    )
+    if disagreement is None:
+        return
+
+    # Flip the most recent log entry to disagreement=True
+    try:
+        if ADVERSARIAL_REVIEWS_LOG.exists():
+            lines = ADVERSARIAL_REVIEWS_LOG.read_text().splitlines()
+            if lines:
+                import json as _json
+                last = _json.loads(lines[-1])
+                last["disagreement"] = True
+                lines[-1] = _json.dumps(last)
+                ADVERSARIAL_REVIEWS_LOG.write_text("\n".join(lines) + "\n")
+    except (OSError, ValueError):
+        pass
+
+    log.warning("[issue %s] adversarial disagreement: %s", issue_id,
+                disagreement)
+    try:
+        codex_reviewer.write_alert(disagreement, ALERT_PATH)
+    except OSError as e:
+        log.warning("could not write %s: %s", ALERT_PATH, e)
 
 
 def _maybe_run_codex_review(task: dict, claude_verdict: str) -> None:
