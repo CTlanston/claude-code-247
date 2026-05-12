@@ -1,0 +1,55 @@
+{
+  "chosen": {
+    "track_id": "Track T2-property-tdd-intent",
+    "title": "Hypothesis properties on _check_tdd_invariant",
+    "priority": "P0",
+    "dim": "T",
+    "status": "open",
+    "details": "details: Third of three property-test modules for T-L4. Properties:\n        * empty commit list returns None\n        * commits all matching IMPL with no test commits \u2192 fails (returns reject reason)\n        * any sequence with >=1 test before >=1 impl \u2192 passes (returns None)\n      rubric dim: T (Test oracle) \u2014 3 of 3 property modules for L4 (lifts T to L4)"
+  },
+  "alternatives": [
+    {
+      "track_id": "Track R2",
+      "priority": "P1",
+      "dim": "R",
+      "score": 7.0,
+      "components": {
+        "priority": 3.0,
+        "floor_pref": 4.0,
+        "failure_penalty": -0.0
+      }
+    },
+    {
+      "track_id": "Track T2",
+      "priority": "P1",
+      "dim": "T",
+      "score": 7.0,
+      "components": {
+        "priority": 3.0,
+        "floor_pref": 4.0,
+        "failure_penalty": -0.0
+      }
+    },
+    {
+      "track_id": "Track C2",
+      "priority": "P2",
+      "dim": "C",
+      "score": 6.0,
+      "components": {
+        "priority": 2.0,
+        "floor_pref": 4.0,
+        "failure_penalty": -0.0
+      }
+    }
+  ],
+  "levels": {
+    "M": 5,
+    "S": 5,
+    "R": 3,
+    "C": 3,
+    "T": 3,
+    "E": 4
+  },
+  "failure_citations": [],
+  "reasoning": "Chose Track T2-property-tdd-intent (priority=P0, dim=T, score=8.00). T-dim is currently L3; this track aims to lift it."
+}

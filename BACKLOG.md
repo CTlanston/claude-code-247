@@ -9,12 +9,21 @@
 
 ## P0 — immediate next cycle
 
-- [ ] [Track T2-property-tdd-intent] Hypothesis properties on _check_tdd_invariant (priority: P0)
-      details: Third of three property-test modules for T-L4. Properties:
-        * empty commit list returns None
-        * commits all matching IMPL with no test commits → fails (returns reject reason)
-        * any sequence with >=1 test before >=1 impl → passes (returns None)
-      rubric dim: T (Test oracle) — 3 of 3 property modules for L4 (lifts T to L4)
+- [ ] [Track R2] Wire local Codex CLI as cross-model second-opinion Reviewer (priority: P0)
+      details: R-dim L5 requires Codex bridge. orchestrator/codex_reviewer.py
+      that shells out to the user's local Codex CLI (subscription auth, NOT
+      paid API), feeds it the same PR diff Claude Reviewer saw, and produces
+      a structured verdict. Disagreement protocol: if Claude says PASS and
+      Codex says FAIL, write ALERT.md and refuse to auto-resolve. Local-only,
+      no network or third-party services. R-dim is one of two remaining L3
+      floors (with C).
+      rubric dim: R (Review) — moves L3 → L5 (rubric has no L4 for R)
+
+- [ ] [Track C2-or-stay] Decide path for C-dim — single stream → worktrees
+      details: C-dim L4 requires "2-3 worktrees + scheduler + zero deadlock"
+      per §3 rubric. This is a multi-cycle infrastructure investment
+      (orchestrator/scheduler.py + worktree management). Defer until R is
+      addressed; in the meantime C remains the bottleneck at L3.
 
 ## P1 — next 3 cycles
 
@@ -107,6 +116,8 @@
 
 ## Completed
 
+- [x] [Track T2-property-tdd-intent] tests/test_tdd_intent_properties.py (7 props)
+      DONE in 20260512-045843 (T-dim L3 → L4, 3rd of 3 property modules)
 - [x] [Track T2-property-preflight] tests/test_preflight_properties.py (9 props)
       DONE in 20260512-045610 (2 of 3 property modules for T-L4)
 - [x] [Track T2-property-billable] tests/test_billable_properties.py (6 props)
