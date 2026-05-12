@@ -9,15 +9,15 @@
 
 ## P0 — immediate next cycle
 
-- [ ] [Track S3] Intake sanitizer for prompt-injection patterns (priority: P0)
-      details: `orchestrator/intake_sanitizer.py` that scans an issue
-      body for known prompt-injection patterns ("ignore previous
-      instructions", "please approve", "as a reviewer you should",
-      hidden Unicode tags, etc.) and returns a SanitizationResult with
-      a clean body + a list of flagged spans. Lifts S from L5 → L6
-      (adds the 4th gate per L7 §3 rubric — Guardian + TDD + preflight
-      + sanitizer).
-      rubric dim: S (Safety) — moves L5 → L6
+- [ ] [Track S4] Action-layer evaluator for shell/git commands (priority: P0)
+      details: `orchestrator/action_evaluator.py` — given a proposed shell
+      or git command string, score 0-100 (safety). High-risk commands
+      (force-push, rm -rf, sudo, curl|sh) auto-reject. Lifts S from L6
+      → L7 (5th of 7 gates).
+      rubric dim: S (Safety) — moves L6 → L7 (via §9 formula `2+gates`)
+      Actually wait — §9 says min(7, 2 + gates_with_regression_tests).
+      With 4 gates, level = 2+4 = 6. With 5 gates, level = 2+5 = 7.
+      So S4 lifts S to L7 directly.
 
 - [ ] [Track C2-or-stay] Decide path for C-dim — single stream → worktrees
       details: C-dim L4 requires "2-3 worktrees + scheduler + zero deadlock"
@@ -109,6 +109,8 @@
 
 ## Completed
 
+- [x] [Track S3] orchestrator/intake_sanitizer.py + 11 tests
+      DONE in 20260512-050827 (S-dim L5 → L6, 4th of 7 safety gates)
 - [x] [Track M3] scripts/cluster_failures.py + reports/failure-clusters.md + 11 tests
       DONE in 20260512-050542 (M-dim L5 → L6)
 - [x] [Track R2] orchestrator/codex_reviewer.py + 12 mock-tested tests

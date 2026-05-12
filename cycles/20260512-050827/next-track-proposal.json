@@ -1,0 +1,55 @@
+{
+  "chosen": {
+    "track_id": "Track S3",
+    "title": "Intake sanitizer for prompt-injection patterns",
+    "priority": "P0",
+    "dim": "S",
+    "status": "open",
+    "details": "details: `orchestrator/intake_sanitizer.py` that scans an issue\n      body for known prompt-injection patterns (\"ignore previous\n      instructions\", \"please approve\", \"as a reviewer you should\",\n      hidden Unicode tags, etc.) and returns a SanitizationResult with\n      a clean body + a list of flagged spans. Lifts S from L5 \u2192 L6\n      (adds the 4th gate per L7 \u00a73 rubric \u2014 Guardian + TDD + preflight\n      + sanitizer).\n      rubric dim: S (Safety) \u2014 moves L5 \u2192 L6"
+  },
+  "alternatives": [
+    {
+      "track_id": "Track T2",
+      "priority": "P1",
+      "dim": "T",
+      "score": 6.0,
+      "components": {
+        "priority": 3.0,
+        "floor_pref": 3.0,
+        "failure_penalty": -0.0
+      }
+    },
+    {
+      "track_id": "Track C2",
+      "priority": "P2",
+      "dim": "C",
+      "score": 6.0,
+      "components": {
+        "priority": 2.0,
+        "floor_pref": 4.0,
+        "failure_penalty": -0.0
+      }
+    },
+    {
+      "track_id": "Track S2",
+      "priority": "P1",
+      "dim": "S",
+      "score": 5.0,
+      "components": {
+        "priority": 3.0,
+        "floor_pref": 2.0,
+        "failure_penalty": -0.0
+      }
+    }
+  ],
+  "levels": {
+    "M": 6,
+    "S": 5,
+    "R": 3,
+    "C": 3,
+    "T": 4,
+    "E": 5
+  },
+  "failure_citations": [],
+  "reasoning": "Chose Track S3 (priority=P0, dim=S, score=6.00). S-dim is currently L5; this track aims to lift it."
+}
