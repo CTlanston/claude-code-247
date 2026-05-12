@@ -213,3 +213,62 @@ def test_main_writes_proposal_for_cycle(tmp_path):
     data = json.loads(proposal_file.read_text())
     assert data["chosen"]["track_id"] in {"Track E2",
                                           "Track T2-property-billable"}
+
+
+def test_considered_failures_in_output(tmp_path):
+    """Track E3: proposal JSON must include `considered_failures` with
+    >= 1 entry whenever FAILURES.md is non-empty."""
+    (tmp_path / "LEVEL.md").write_text(SAMPLE_LEVEL)
+    (tmp_path / "BACKLOG.md").write_text(SAMPLE_BACKLOG)
+    (tmp_path / "FAILURES.md").write_text(SAMPLE_FAILURES)
+    cycle_id = "88888888-888888"
+    (tmp_path / "cycles" / cycle_id).mkdir(parents=True)
+    pnt.main(["--repo-root", str(tmp_path),
+              "--for-cycle", cycle_id])
+    data = json.loads((tmp_path / "cycles" / cycle_id
+                       / "next-track-proposal.json").read_text())
+    assert "considered_failures" in data
+    cf = data["considered_failures"]
+    assert isinstance(cf, list) and len(cf) >= 1
+    # Each entry has the expected schema
+    for entry in cf:
+        assert "id" in entry and entry["id"].startswith("FAIL-")
+        assert "overlap_keywords" in entry
+        assert "score" in entry
+        assert "fixed" in entry
+    # Reasoning should mention "FAILURES consulted: FAIL-..."
+    assert "FAIL-" in data["reasoning"]
+
+
+def test_considered_failures_includes_unfixed_overlap(tmp_path):
+    """Even if not in top-N by score, unfixed overlapping FAILURES must
+    show in considered_failures."""
+    # Build a FAILURES.md with 5 entries; 1 unfixed and overlapping
+    failures_text = (
+        "# FAILURES.md\n"
+        "## FAIL-0001: a\n**Working fix**: shipped\n**Keywords**: nope, nada\n"
+        "## FAIL-0002: b\n**Working fix**: shipped\n**Keywords**: bar, baz\n"
+        "## FAIL-0003: c\n**Working fix**: shipped\n**Keywords**: qux, quux\n"
+        "## FAIL-0004: d\n**Working fix**: NOT YET SHIPPED\n"
+        "**Keywords**: hypothesis, property, properties, billable\n"
+        "## FAIL-0005: e\n**Working fix**: shipped\n**Keywords**: nope2\n"
+    )
+    backlog = (
+        "## P0\n"
+        "- [ ] [Track HYP] Hypothesis properties (priority: P0)\n"
+        "      details: stuff\n"
+        "      rubric dim: T (Test oracle) — moves L4 → L5\n"
+    )
+    (tmp_path / "LEVEL.md").write_text(SAMPLE_LEVEL)
+    (tmp_path / "BACKLOG.md").write_text(backlog)
+    (tmp_path / "FAILURES.md").write_text(failures_text)
+    cycle_id = "77777777-777777"
+    (tmp_path / "cycles" / cycle_id).mkdir(parents=True)
+    pnt.main(["--repo-root", str(tmp_path),
+              "--for-cycle", cycle_id])
+    data = json.loads((tmp_path / "cycles" / cycle_id
+                       / "next-track-proposal.json").read_text())
+    cf_ids = [e["id"] for e in data["considered_failures"]]
+    assert "FAIL-0004" in cf_ids, (
+        "Unfixed overlapping FAILURES must appear in considered_failures"
+    )

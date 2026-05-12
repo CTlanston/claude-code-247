@@ -98,6 +98,7 @@ class Proposal:
     levels: Dict[str, int]
     failure_citations: List[str]
     reasoning: str
+    considered_failures: List[Dict] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -114,6 +115,7 @@ class Proposal:
             ],
             "levels": self.levels,
             "failure_citations": self.failure_citations,
+            "considered_failures": self.considered_failures,
             "reasoning": self.reasoning,
         }
 
@@ -277,15 +279,20 @@ def propose(levels: Dict[str, int],
             failures: List[FailureLite]) -> Proposal:
     eligible = [b for b in backlog if b.status == "open"]
     if not eligible:
-        return Proposal(chosen=None, alternatives=[], levels=levels,
-                        failure_citations=[],
-                        reasoning="No open items in BACKLOG.md.")
+        return Proposal(
+            chosen=None, alternatives=[], levels=levels,
+            failure_citations=[],
+            reasoning="No open items in BACKLOG.md.",
+            considered_failures=_considered_failures_for(
+                None, failures, top_n=3),
+        )
     scored = [score_item(b, levels, failures) for b in eligible]
     scored.sort(key=lambda s: (-s.score, s.item.priority,
                                 s.item.dim or "Z", s.item.track_id))
     chosen = scored[0].item
     citations = sorted({c for s in scored[:5]
                           for c in _unfixed_overlap(s.item, failures)})
+    considered = _considered_failures_for(chosen, failures, top_n=3)
     reasoning_parts = [
         f"Chose {chosen.track_id} (priority={chosen.priority}, "
         f"dim={chosen.dim}, score={scored[0].score:.2f}).",
@@ -297,12 +304,71 @@ def propose(levels: Dict[str, int],
         )
     if scored[0].components.get("failure_penalty", 0) < 0:
         reasoning_parts.append(
-            f"NOTE: this track has overlap with unfixed FAILURES — "
-            f"plan must cite them."
+            "NOTE: this track has overlap with unfixed FAILURES — "
+            "plan must cite them."
+        )
+    # Always reference what was considered, even if no high-overlap match
+    if considered:
+        top_ids = ", ".join(c["id"] for c in considered[:3])
+        reasoning_parts.append(
+            f"FAILURES consulted: {top_ids}."
         )
     return Proposal(chosen=chosen, alternatives=scored[1:4],
                     levels=levels, failure_citations=citations,
-                    reasoning=" ".join(reasoning_parts))
+                    reasoning=" ".join(reasoning_parts),
+                    considered_failures=considered)
+
+
+def _considered_failures_for(item: Optional[BacklogItem],
+                              failures: List[FailureLite],
+                              top_n: int = 3) -> List[Dict]:
+    """Return the top-N FAILURES entries by Jaccard overlap with the
+    track's keywords, plus any unfixed overlaps regardless of rank.
+    Each entry is a JSON-safe dict with id, overlap_keywords, score,
+    fixed. Always non-empty when `failures` is non-empty."""
+    if not failures:
+        return []
+    if item is None:
+        # Fallback: list the first few failures so the proposal mentions them
+        return [
+            {"id": f.id, "overlap_keywords": [], "score": 0.0,
+             "fixed": f.fixed, "reason": "no chosen track"}
+            for f in failures[:top_n]
+        ]
+    item_kws = set(_track_keywords(item))
+    scored: List[tuple] = []
+    for f in failures:
+        fkws = set(f.keywords)
+        if not fkws and not item_kws:
+            j = 0.0
+        elif not (fkws | item_kws):
+            j = 0.0
+        else:
+            j = len(item_kws & fkws) / max(1, len(item_kws | fkws))
+        scored.append((j, f))
+    scored.sort(key=lambda t: -t[0])
+    out: List[Dict] = []
+    seen: set = set()
+    for j, f in scored[:top_n]:
+        out.append({
+            "id": f.id,
+            "overlap_keywords": sorted(item_kws & set(f.keywords)),
+            "score": round(j, 4),
+            "fixed": f.fixed,
+        })
+        seen.add(f.id)
+    # Always include any unfixed overlap (operator must see these)
+    for j, f in scored:
+        if not f.fixed and (item_kws & set(f.keywords)) and f.id not in seen:
+            out.append({
+                "id": f.id,
+                "overlap_keywords": sorted(item_kws & set(f.keywords)),
+                "score": round(j, 4),
+                "fixed": f.fixed,
+                "unfixed_overlap": True,
+            })
+            seen.add(f.id)
+    return out
 
 
 def propose_from_repo(repo_root: Path) -> Proposal:

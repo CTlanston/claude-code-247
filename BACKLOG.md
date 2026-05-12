@@ -109,6 +109,8 @@
 
 ## Completed
 
+- [x] [Track E3] propose_next_track.py emits considered_failures + 2 new tests
+      DONE in 20260512-052118 (E-dim L5 → L6)
 - [x] [Track M5] widen _count_planner_refusals regex; 5 new tests
       DONE in 20260512-051659 (M-dim L6 → L7, max)
 - [x] [Track S4] orchestrator/action_evaluator.py + 14 tests

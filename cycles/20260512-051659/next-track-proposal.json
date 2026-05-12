@@ -1,21 +1,21 @@
 {
   "chosen": {
-    "track_id": "Track C2",
-    "title": "Convert orchestrator to git worktrees",
-    "priority": "P2",
-    "dim": "C",
+    "track_id": "Track T5",
+    "title": "Mutation testing with mutmut on V4 modules",
+    "priority": "P0",
+    "dim": "T",
     "status": "open",
-    "details": "details: Single-stream \u2192 2-stream worktree-based parallelism. Per\n      \u00a76 Track C. Risky; defer until M + S + R are at L4+.\n      rubric dim: C (Concurrency) \u2014 moves L3 \u2192 L4"
+    "details": "details: T-dim L5 requires \"mutation testing (mutmut) \u2265 80% kill\n      rate\" on >= some modules. Install mutmut, configure on\n      orchestrator.billable + preflight + main:_check_tdd_invariant,\n      run one round, capture the kill rate to reports/mutmut-kill-rate.txt\n      so compute_level can see it.\n      rubric dim: T (Test oracle) \u2014 moves L4 \u2192 L5 if kill rate \u2265 80%"
   },
   "alternatives": [
     {
-      "track_id": "Track M5",
-      "priority": "P0",
-      "dim": "M",
-      "score": 5.0,
+      "track_id": "Track C2",
+      "priority": "P2",
+      "dim": "C",
+      "score": 6.0,
       "components": {
-        "priority": 4.0,
-        "floor_pref": 1.0,
+        "priority": 2.0,
+        "floor_pref": 4.0,
         "failure_penalty": -0.0
       }
     },
@@ -43,7 +43,7 @@
     }
   ],
   "levels": {
-    "M": 6,
+    "M": 7,
     "S": 7,
     "R": 3,
     "C": 3,
@@ -51,5 +51,27 @@
     "E": 5
   },
   "failure_citations": [],
-  "reasoning": "Chose Track C2 (priority=P2, dim=C, score=6.00). C-dim is currently L3; this track aims to lift it."
+  "considered_failures": [
+    {
+      "id": "FAIL-0002",
+      "overlap_keywords": [
+        "preflight"
+      ],
+      "score": 0.0238,
+      "fixed": true
+    },
+    {
+      "id": "FAIL-0001",
+      "overlap_keywords": [],
+      "score": 0.0,
+      "fixed": true
+    },
+    {
+      "id": "FAIL-0003",
+      "overlap_keywords": [],
+      "score": 0.0,
+      "fixed": true
+    }
+  ],
+  "reasoning": "Chose Track T5 (priority=P0, dim=T, score=7.00). T-dim is currently L4; this track aims to lift it. FAILURES consulted: FAIL-0002, FAIL-0001, FAIL-0003."
 }
