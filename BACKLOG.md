@@ -9,14 +9,6 @@
 
 ## P0 — immediate next cycle
 
-- [ ] [Track E2] Implement `scripts/propose_next_track.py` (priority: P0)
-      details: E-dim L4 requires this script. Reads FAILURES.md + LEVEL.md
-      + BACKLOG.md and proposes the next track with citations. Lift E from
-      L3 to L4 in one cycle (cheapest floor-dim move available — R needs
-      Codex bridge for L5; C needs worktrees; T needs 3 property modules).
-      prerequisites: FAILURES.md / LEVEL.md / BACKLOG.md present (all DONE)
-      rubric dim: E (Self-improvement) — moves L3 → L4
-
 - [ ] [Track T2-property-billable] Add Hypothesis property tests for
       orchestrator.billable.to_billable_cost (priority: P0)
       details: Property-based test file `tests/test_billable_properties.py`
@@ -120,6 +112,8 @@
 
 ## Completed
 
+- [x] [Track E2] scripts/propose_next_track.py + 13 regression tests
+      DONE in 20260512-044832 (E-dim L3 → L4)
 - [x] [Track M2.5] FAILURES.md grown from 4 → 10 entries + integrity tests
       DONE in 20260512-044425 (M-dim L4 → L5)
 - [x] [Track M2] scripts/preflight_failures.py + 18 regression tests
