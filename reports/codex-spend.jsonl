@@ -1,1 +1,2 @@
 {"date": "2026-05-12", "ts": 1778571184, "duration_s": 57, "args": "review --commit 0c2026e", "tokens": 130162, "exit": 0, "anomaly": "", "last_call_tokens": 22955, "cached_input_tokens": 104448, "plan_type": "pro", "backfilled": "from-session-jsonl"}
+{"date": "2026-05-12", "ts": 1778572734, "duration_s": 0, "args": "exec --help", "tokens": 0, "exit": 0, "anomaly": ""}

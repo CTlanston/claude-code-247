@@ -46,3 +46,8 @@ cycles/*/scratch/
 # Git worktrees (Track C2-init); the worktree DIR is excluded but the
 # worktree relationship is recorded by git itself in .git/worktrees/
 worktrees/
+
+# Codex per-PR runtime log — grows unbounded; reports/codex-spend.jsonl
+# (calibration + cycle-level entries) IS committed, but codex-reviews.jsonl
+# (one row per actual PR review) stays operational-only.
+reports/codex-reviews.jsonl
