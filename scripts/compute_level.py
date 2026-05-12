@@ -216,10 +216,29 @@ def _count_recent_cycles_with_artifact(cycles_dir: Path,
 
 
 def _count_planner_refusals(cycles_dir: Path) -> int:
-    """Count cycles whose PLAN.md cites a FAILURES.md hit and chose a
-    different approach."""
+    """Count cycles whose PLAN.md cites a FAILURES.md hit and acknowledges
+    why this time is different (the L7 §5 refusal protocol).
+
+    Recognised citation patterns (widened in Track M5):
+      - "picked / chose / alternative / different approach"  (legacy)
+      - "cited"  (the most common L7 phrasing)
+      - "sibling failure" / "sibling gate"
+      - "not a repeat" / "not re-introducing" / "not the same"
+      - "different layer" / "different code path" / "different system"
+      - "this cycle adds" / "this cycle is about"
+    """
     if not cycles_dir.exists():
         return 0
+    refusal_keywords = (
+        r"picked|chose|alternative|different\s+approach"
+        r"|\bcited\b"
+        r"|sibling\s+(failure|gate|to)"
+        r"|not\s+(a\s+)?(repeat|re[-\s]?introducing|the\s+same)"
+        r"|different\s+(layer|code\s+path|system|subscription)"
+        r"|this\s+cycle\s+(adds|is\s+about|tests)"
+    )
+    pattern = re.compile(rf"FAIL-\d+.{{0,400}}(?:{refusal_keywords})",
+                         flags=re.IGNORECASE | re.DOTALL)
     n = 0
     for folder in cycles_dir.iterdir():
         if not folder.is_dir():
@@ -228,9 +247,7 @@ def _count_planner_refusals(cycles_dir: Path) -> int:
         if not plan.exists():
             continue
         text = _read_text(plan)
-        # Cycle PLAN cites a FAIL- hit and explicitly chose another approach
-        if re.search(r"FAIL-\d+.*(picked|chose|alternative|different approach)",
-                     text, flags=re.IGNORECASE | re.DOTALL):
+        if pattern.search(text):
             n += 1
     return n
 

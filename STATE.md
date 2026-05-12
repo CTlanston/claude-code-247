@@ -1,15 +1,15 @@
 # STATE.md — current L7 supervisor state
 
 ```yaml
-current_branch: autoevo/cycle-11/action-evaluator
-last_cycle_id: 20260512-051335
+current_branch: autoevo/cycle-12/refusal-regex
+last_cycle_id: 20260512-051659
 last_cycle_result: PASS
 last_green_commit: pending-commit
-last_levelup: 20260512-051335     # S went 6→7
+last_levelup: 20260512-051659     # M went 6→7
 overall_level: 3                    # locked by R, C at L3
 dim_levels:
-  M: 6
-  S: 7   # max!
+  M: 7   # max
+  S: 7   # max
   R: 3
   C: 3
   T: 4
@@ -17,39 +17,32 @@ dim_levels:
 open_blockers: []
 in_flight_worktrees:
   - main
-updated_at: 2026-05-12T05:45:00Z
+updated_at: 2026-05-12T05:50:00Z
 ```
 
-## Progress so far (12 cycles)
+## Progress (13 cycles)
 
-| Cycle | Dim | Track | Δ |
-|---|---|---|---|
-| 0 | BOOTSTRAP | seed L7 memory | — |
-| 1 | M | preflight_failures.py | — |
-| 2 | M | FAILURES → 10 | M 4→5 |
-| 3 | E | propose_next_track.py | E 3→4 |
-| 4 | T | property tests on billable | (T 1/3) |
-| 5 | T | property tests on preflight | (T 2/3) |
-| 6 | T | property tests on tdd-intent | T 3→4 |
-| 7 | R | codex_reviewer.py (gated) | — |
-| 8 | M | cluster_failures.py | M 5→6 |
-| 9 | S | intake_sanitizer.py | S 5→6 |
-| 10 | MILESTONE | milestone-1.md | E 4→5 |
-| 11 | S | action_evaluator.py | S 6→7 |
+Eight dim-internal lifts in 13 cycles. M=L7 and S=L7 (both maxed).
+T=L4 (3 property modules, +mutation testing = L5).
+E=L5 (script ran in last 5 cycles, +citations = L6).
+R=L3 (bridge ready, awaiting `codex` CLI install).
+C=L3 (no infrastructure yet).
 
-Seven dim-internal lifts. S is now at L7 (max). M=L6, T=L4, E=L5.
+**Overall L still 3** because R and C are at the L3 floor. Lifting
+overall L to 4 requires moving BOTH R and C up.
 
 ## Next-cycle target
 
-Track M5 (FAILURES citation tightening) is the next L7 lever — M 6→7.
-Then C-dim work becomes unavoidable to lift overall L past 3.
+Track T5 — mutation testing to lift T from L4 to L5. Most expensive
+ROI from a non-floor dim, but adds rigor.
 
-## Cycle-11 verification snapshot
+After T5: the only remaining levers are R (Codex install) and C
+(worktree infra). Both are big multi-cycle moves with external deps.
 
-- pytest: 231 passed, 1 skipped, 0 failed
-- compute_level: S=L7 (5 active gates)
+## Cycle-12 verification snapshot
+
+- pytest: 236 passed, 1 skipped, 0 failed
+- compute_level: M=L7 (Planner refused 7 times citing FAILURES)
 - compute_level --check: passed
+- compute_level self-tests: 31 (added 5 refusal-count tests)
 - doctor: 11/0/2
-- One unrelated test (test_propose_next_track::test_real_repo_proposes_a_track)
-  was over-restrictive about priority; loosened to "any valid priority"
-- One BACKLOG cleanup (umbrella Track T2 → ~~DUPLICATE~~)

@@ -9,16 +9,13 @@
 
 ## P0 — immediate next cycle
 
-- [ ] [Track M5] Cite FAIL-NNNN in last 3 cycle PLANs to lift M to L7
-      (priority: P0)
-      details: M-L7 requires "Planner refused 3 times citing FAILURES
-      cluster match". Today our PLANs cite FAILURES via preflight,
-      but the `_count_planner_refusals` regex in compute_level looks
-      specifically for "(picked|chose|alternative|different approach)"
-      near a FAIL- id. Recent cycles' PLANs cite FAILS but with
-      slightly different wording. This cycle widens the regex slightly
-      OR audits past PLANs to ensure 3+ match — both are valid moves.
-      rubric dim: M (Memory) — moves L6 → L7
+- [ ] [Track T5] Mutation testing with mutmut on V4 modules (priority: P0)
+      details: T-dim L5 requires "mutation testing (mutmut) ≥ 80% kill
+      rate" on >= some modules. Install mutmut, configure on
+      orchestrator.billable + preflight + main:_check_tdd_invariant,
+      run one round, capture the kill rate to reports/mutmut-kill-rate.txt
+      so compute_level can see it.
+      rubric dim: T (Test oracle) — moves L4 → L5 if kill rate ≥ 80%
 
 - [ ] [Track C2-or-stay] Decide path for C-dim — single stream → worktrees
       details: C-dim L4 requires "2-3 worktrees + scheduler + zero deadlock"
@@ -112,6 +109,8 @@
 
 ## Completed
 
+- [x] [Track M5] widen _count_planner_refusals regex; 5 new tests
+      DONE in 20260512-051659 (M-dim L6 → L7, max)
 - [x] [Track S4] orchestrator/action_evaluator.py + 14 tests
       DONE in 20260512-051335 (S-dim L6 → L7, 5th of 7 safety gates)
 - [x] [Track S3] orchestrator/intake_sanitizer.py + 11 tests

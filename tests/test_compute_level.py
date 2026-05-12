@@ -375,3 +375,57 @@ def test_main_json_output(tmp_path, capsys):
     assert "by_dim" in data
     assert "overall" in data
     assert set(data["by_dim"].keys()) == set(cl.DIMS)
+
+
+# --- Refusal-count regression tests (Track M5) ----------------------------
+
+
+def _write_plan(repo: Path, cycle_id: str, content: str) -> None:
+    (repo / "cycles" / cycle_id).mkdir(parents=True, exist_ok=True)
+    (repo / "cycles" / cycle_id / "PLAN.md").write_text(content)
+
+
+def test_refusal_count_legacy_picked_phrase(tmp_path):
+    _write_plan(tmp_path, "20260101-000001",
+                "## FAILURES.md pre-flight\n\n"
+                "FAIL-0001 was flagged. Picked a different approach.\n")
+    assert cl._count_planner_refusals(tmp_path / "cycles") == 1
+
+
+def test_refusal_count_new_cited_phrase(tmp_path):
+    """The widened regex should accept the L7-canonical citation language."""
+    _write_plan(tmp_path, "20260101-000001",
+                "## FAILURES.md pre-flight\n\n"
+                "**FAIL-0003** matched on 'subscription'. Cited here.\n"
+                "Different subscription, different system.\n")
+    n = cl._count_planner_refusals(tmp_path / "cycles")
+    assert n == 1, f"new wording not recognised; got {n}"
+
+
+def test_refusal_count_sibling_phrase(tmp_path):
+    _write_plan(tmp_path, "20260101-000001",
+                "## FAILURES.md pre-flight\n\n"
+                "FAIL-0007: sibling failure. Not a repeat — this cycle\n"
+                "ADDS a sibling gate.\n")
+    n = cl._count_planner_refusals(tmp_path / "cycles")
+    assert n == 1, f"sibling-language not recognised; got {n}"
+
+
+def test_refusal_count_unrelated_FAIL_mention_does_not_count(tmp_path):
+    """A bare FAIL-NNNN mention without citation context should NOT count."""
+    _write_plan(tmp_path, "20260101-000001",
+                "## Notes\n\nSee FAIL-0001 for historical context.\n")
+    # No citation explanation → shouldn't count
+    n = cl._count_planner_refusals(tmp_path / "cycles")
+    assert n == 0
+
+
+def test_refusal_count_real_repo_is_at_least_3(tmp_path, monkeypatch):
+    """The committed cycles/*/PLAN.md should yield refusal count >= 3
+    (cycles 2, 5, 7, 9, 11 cite FAIL-NNNN entries)."""
+    real_cycles = REPO_ROOT / "cycles"
+    n = cl._count_planner_refusals(real_cycles)
+    assert n >= 3, (
+        f"refusal count is {n}; expected >=3 from committed PLANs. "
+        "If this fails, widen the regex more."
+    )
