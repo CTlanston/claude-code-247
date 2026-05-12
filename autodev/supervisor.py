@@ -57,31 +57,68 @@ _HUMAN_CONFIG_MIRROR_KEYS = (
 _HUMAN_CONFIG_MODE_KEY = "mode"  # cost.mode → state.mode / state.cost_mode
 
 
-def _inner_engine_has_pending_work() -> bool:
-    """Return True if the inner engine's SQLite tasks table has at least one
-    row in a non-terminal state. Used by SELECT_NEW to decide whether to
-    short-circuit (V1 defect #2 fix).
+def _resolve_state_db_path() -> "Path":
+    """Resolve the inner-engine SQLite path with explicit precedence:
+      1. AUTODEV_STATE_DB    — full file path override (highest precedence)
+      2. STATE_DIR env var   — directory; appends `orchestrator.db`
+      3. <repo-root>/state/orchestrator.db (project-local default)
 
-    Defensive: any error (DB missing, lock contention, import failure) means
-    "assume no pending work" — we do NOT want this helper to be the new way
-    the supervisor crashes.
+    NEVER falls back to `/state/orchestrator.db` (the macOS read-only path
+    that caused the V3 silent-False bug). If the resolved path's parent
+    isn't writable, we still return the path — the caller decides what to
+    do, rather than silently masking the issue.
     """
+    from pathlib import Path
+    explicit = os.environ.get("AUTODEV_STATE_DB")
+    if explicit:
+        return Path(explicit)
+    state_dir = os.environ.get("STATE_DIR")
+    if state_dir:
+        return Path(state_dir) / "orchestrator.db"
+    root = Path(__file__).resolve().parent.parent
+    return root / "state" / "orchestrator.db"
+
+
+def _inner_engine_has_pending_work() -> bool:
+    """Return True if the inner engine's SQLite tasks table has at least
+    one row in a non-terminal state. Used by SELECT_NEW to decide whether
+    to short-circuit.
+
+    V4 hardening (per `prompts/v4-hardening.md` Track 4):
+      - Uses `_resolve_state_db_path()` so STATE_DIR / AUTODEV_STATE_DB
+        env vars are honoured.
+      - Logs a clear diagnostic on path-resolution failure or DB errors
+        (the V3 implementation silently returned False, masking the very
+        bug that caused V3's first-driver no-progress symptom).
+      - Returns False ONLY when the DB legitimately has no pending work
+        OR the DB file genuinely doesn't exist.
+    """
+    import logging
+    log = logging.getLogger("supervisor.pending_work")
     try:
-        # Lazy import: orchestrator.db pulls in sqlite + state paths;
-        # importing it eagerly would couple the supervisor module load to
-        # the inner-engine repo layout.
-        import sys
-        from pathlib import Path
-        root = Path(__file__).resolve().parent.parent
-        if str(root) not in sys.path:
-            sys.path.insert(0, str(root))
-        from orchestrator import db as inner_db  # type: ignore
-        for status in ("queued", "coding", "ci_running", "reviewing"):
-            if inner_db.list_tasks_by_status(status):
-                return True
-    except Exception:  # noqa: BLE001
+        import sqlite3
+        db_path = _resolve_state_db_path()
+        if not db_path.exists():
+            # Genuinely no DB yet (e.g. very first cycle) — no work.
+            return False
+        with sqlite3.connect(str(db_path), timeout=5) as c:
+            cur = c.execute(
+                "SELECT 1 FROM tasks "
+                "WHERE status IN ('queued','coding','ci_running','reviewing') LIMIT 1"
+            )
+            return cur.fetchone() is not None
+    except sqlite3.Error as e:
+        log.warning(
+            "pending-work probe DB error at %s: %s — assuming no pending work",
+            db_path, e,
+        )
         return False
-    return False
+    except Exception as e:  # noqa: BLE001
+        log.warning(
+            "pending-work probe unexpected error: %s — assuming no pending work",
+            e,
+        )
+        return False
 
 
 def _sync_human_config(state: ProjectState) -> None:

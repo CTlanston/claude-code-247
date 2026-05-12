@@ -204,6 +204,41 @@ def _check_anthropic_response(issue_id: int, role: str, result: dict) -> str:
 def _do_planning(task: dict) -> None:
     issue_id = task["issue_id"]
     plan_in = json.loads(task["plan_json"] or "{}")
+
+    # V4 Track 2: preflight check BEFORE invoking Planner. Some issues
+    # are structurally impossible (e.g. "test reverse() in src/utils.py"
+    # when reverse() doesn't exist there AND modifying src/utils.py is
+    # forbidden by the issue body). Catching them here avoids burning
+    # planner+coder+reviewer cycles on a task that can never succeed.
+    try:
+        from . import preflight as _preflight
+    except ImportError:
+        import preflight as _preflight  # type: ignore
+    try:
+        # Use the orchestrator-cloned worktree as the truth source. If the
+        # worktree doesn't exist yet, fall back to the harness root.
+        from pathlib import Path
+        worktree = Path(os.getenv("WORKSPACE_ROOT", "/workspaces")) / f"issue-{issue_id}" / "repo"
+        repo_root = worktree if worktree.exists() else Path(__file__).resolve().parent.parent
+        pf = _preflight.preflight_issue(
+            title=plan_in.get("title", ""),
+            body=plan_in.get("body", ""),
+            repo_root=repo_root,
+        )
+    except Exception as e:  # noqa: BLE001
+        # Preflight must never crash the planning path. Log and continue.
+        log.warning("[issue %s] preflight raised: %s — continuing without preflight", issue_id, e)
+        pf = None
+    if pf and not pf.ok:
+        log.warning("[issue %s] preflight terminal: %s", issue_id, pf.reason)
+        db.upsert_task(
+            issue_id, repo=task["repo"],
+            status=pf.terminal_status or "failed",
+            last_error=pf.reason[:500],
+        )
+        _slack(f":no_entry_sign: issue #{issue_id} terminal at preflight: {pf.reason[:200]}")
+        return
+
     prompt = (
         f"Issue #{issue_id} 标题: {plan_in.get('title','')}\n\n"
         f"正文:\n{plan_in.get('body','')}\n\n"
@@ -420,19 +455,40 @@ def _maybe_request_changes(task: dict, comments: list) -> None:
                    last_error=json.dumps(comments, ensure_ascii=False)[:500])
 
 
+_TEST_COMMIT_RE = re.compile(r"\s*(test|tests|spec|specs|coverage):\s", re.IGNORECASE)
+_IMPL_COMMIT_RE = re.compile(r"\s*(feat|fix|impl|implement|refactor):\s", re.IGNORECASE)
+
+
 def _check_tdd_invariant(issue_id: int) -> Optional[str]:
-    """Return None if commits include both `test:` and `feat:` prefixes,
-    otherwise a one-line violation reason. This is the *minimum* TDD gate
-    Phase C asks for — model can't game it."""
+    """V4 TDD-intent gate (softened from V3's per-step ordering).
+
+    Returns None if the PR passes TDD-INTENT, otherwise a one-line reason.
+    Intent passes when BOTH:
+      A. at least one test-related commit exists (test/tests/spec/coverage)
+      B. at least one of those test commits comes BEFORE at least one
+         implementation commit (feat/fix/impl/refactor)
+
+    The V3 rule rejected #14 because an edge-case test was committed
+    AFTER the impl. Under the new policy, that's allowed — what matters
+    is that the work *started* test-first.
+    """
     commits = git_proxy.commit_log(issue_id)
     if not commits:
         return "no commits on shadow branch"
-    has_test = any(re.match(r"\s*test:\s", c["subject"]) for c in commits)
-    has_feat = any(re.match(r"\s*feat:\s", c["subject"]) for c in commits)
-    if not has_test:
-        return "missing `test:`-prefixed commit"
-    if not has_feat:
-        return "missing `feat:`-prefixed commit"
+    # commit_log returns newest-first (git log default). For ordering we
+    # need oldest-first.
+    oldest_first = list(reversed(commits))
+    test_positions = [i for i, c in enumerate(oldest_first)
+                      if _TEST_COMMIT_RE.match(c["subject"])]
+    impl_positions = [i for i, c in enumerate(oldest_first)
+                      if _IMPL_COMMIT_RE.match(c["subject"])]
+    if not test_positions:
+        return "no test/spec commits on shadow branch (TDD-intent FAIL)"
+    if not impl_positions:
+        return "no feat/fix/impl commits on shadow branch"
+    if min(test_positions) > max(impl_positions):
+        return ("all test commits land after all implementation commits "
+                "(TDD-intent FAIL: tests must precede at least one impl)")
     return None
 
 

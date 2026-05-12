@@ -125,7 +125,34 @@ def deduct_credit(issue_id: int, points: int, reason: str) -> int:
 
 def record_run(issue_id: int, role: str, started_at: float, finished_at: float,
                exit_code: int, in_tokens: int, out_tokens: int, cost: float, summary: str) -> None:
+    # --- Fix 1 (zero-token zero-cost guard) ---------------------------------
+    # Under OAuth/subscription, the CLI sometimes returns a non-zero
+    # total_cost_usd estimate even when no tokens flowed (rate-limit early-out,
+    # retry headers, etc.). Writing that as real cost accumulates phantom
+    # dollars; Guardian reads them as a token spike and pauses dispatch.
+    # E2E 2026-05-11 confirmed 2 phantom rows added during the test.
+    #
+    # V4: extend the guard via the central billable.to_billable_cost helper.
+    # Under subscription mode (CLAUDE_CODE_OAUTH_TOKEN or sk-ant-oat01- prefix)
+    # the cost field is force-zeroed BEFORE it ever enters the runs table.
+    # That kills the Guardian-reads-raw-DB-cost false-pause loop at source
+    # instead of trying to mask it downstream.
+    try:
+        from . import billable as _billable
+    except ImportError:
+        import billable as _billable  # type: ignore
+    cost = _billable.to_billable_cost(cost, in_tokens=in_tokens, out_tokens=out_tokens)
+
+    # --- Fix 2 (idempotent INSERT) ------------------------------------------
+    # Retries used to duplicate rows with the same (issue_id, role, started_at)
+    # AND the previous run's stale cost. Six-times duplication of $0.19 was the
+    # canonical symptom. Drop the write if the natural key already exists.
     with conn() as c:
+        if c.execute(
+            "SELECT 1 FROM runs WHERE issue_id=? AND role=? AND started_at=? LIMIT 1",
+            (issue_id, role, started_at),
+        ).fetchone():
+            return
         c.execute(
             "INSERT INTO runs (issue_id, role, started_at, finished_at, exit_code, "
             "input_tokens, output_tokens, cost_usd, summary) VALUES (?,?,?,?,?,?,?,?,?)",
@@ -136,7 +163,7 @@ def record_run(issue_id: int, role: str, started_at: float, finished_at: float,
             "INSERT INTO metrics (bucket_at, token_total, cost_usd) VALUES (?,?,?) "
             "ON CONFLICT(bucket_at) DO UPDATE SET token_total=token_total+excluded.token_total, "
             "cost_usd=cost_usd+excluded.cost_usd",
-            (bucket, in_tokens + out_tokens, cost),
+            (bucket, (in_tokens or 0) + (out_tokens or 0), cost),
         )
 
 
