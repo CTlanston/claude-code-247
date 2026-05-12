@@ -72,7 +72,8 @@ def test_extract_keywords_from_plan_md():
     keywords = pf.extract_keywords(SAMPLE_PLAN)
     # Should pull at least these tokens from "Change being made" section
     assert "reviewer" in keywords
-    assert "tdd" in keywords or "tdd-intent" in keywords
+    # Normalisation collapses '-' to '_', so "TDD-intent" → "tdd_intent"
+    assert "tdd_intent" in keywords
     # Should pull from "Files to touch"
     assert any("reviewer" in k for k in keywords)
 
