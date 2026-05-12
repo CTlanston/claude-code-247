@@ -1,0 +1,55 @@
+{
+  "chosen": {
+    "track_id": "Track R2",
+    "title": "Wire local Codex CLI as cross-model second-opinion Reviewer",
+    "priority": "P0",
+    "dim": "R",
+    "status": "open",
+    "details": "details: R-dim L5 requires Codex bridge. orchestrator/codex_reviewer.py\n      that shells out to the user's local Codex CLI (subscription auth, NOT\n      paid API), feeds it the same PR diff Claude Reviewer saw, and produces\n      a structured verdict. Disagreement protocol: if Claude says PASS and\n      Codex says FAIL, write ALERT.md and refuse to auto-resolve. Local-only,\n      no network or third-party services. R-dim is one of two remaining L3\n      floors (with C).\n      rubric dim: R (Review) \u2014 moves L3 \u2192 L5 (rubric has no L4 for R)"
+  },
+  "alternatives": [
+    {
+      "track_id": "Track R2",
+      "priority": "P1",
+      "dim": "R",
+      "score": 7.0,
+      "components": {
+        "priority": 3.0,
+        "floor_pref": 4.0,
+        "failure_penalty": -0.0
+      }
+    },
+    {
+      "track_id": "Track T2",
+      "priority": "P1",
+      "dim": "T",
+      "score": 6.0,
+      "components": {
+        "priority": 3.0,
+        "floor_pref": 3.0,
+        "failure_penalty": -0.0
+      }
+    },
+    {
+      "track_id": "Track C2",
+      "priority": "P2",
+      "dim": "C",
+      "score": 6.0,
+      "components": {
+        "priority": 2.0,
+        "floor_pref": 4.0,
+        "failure_penalty": -0.0
+      }
+    }
+  ],
+  "levels": {
+    "M": 5,
+    "S": 5,
+    "R": 3,
+    "C": 3,
+    "T": 4,
+    "E": 4
+  },
+  "failure_citations": [],
+  "reasoning": "Chose Track R2 (priority=P0, dim=R, score=8.00). R-dim is currently L3; this track aims to lift it."
+}

@@ -100,6 +100,10 @@ REVIEW_MARKERS = {
         "module_paths": ["orchestrator/codex_reviewer.py"],
         "test_paths": ["tests/test_codex_reviewer.py"],
         "keywords": ["codex"],
+        # R-L5 requires the bridge code AND the codex CLI actually on
+        # PATH locally (per L7 §6 Track R2). Without the CLI we can't
+        # honestly claim cross-model review.
+        "require_binary_on_path": "codex",
     },
     "adversarial_reviewer": {
         "module_paths": ["orchestrator/adversarial_reviewer.py",
@@ -246,7 +250,11 @@ def _count_worktrees(repo_root: Path) -> int:
 
 def _gate_is_active(repo_root: Path, gate: dict) -> Tuple[bool, str]:
     """A gate is active if at least one module path exists AND at least
-    one test path exists AND that test file references one of the keywords."""
+    one test path exists AND that test file references one of the keywords.
+
+    Some gates also require an external binary on PATH (e.g. Codex CLI).
+    When `require_binary_on_path` is set, `shutil.which` must find it.
+    """
     module_present = False
     for mp in gate.get("module_paths", []):
         if (repo_root / mp).exists():
@@ -262,6 +270,12 @@ def _gate_is_active(repo_root: Path, gate: dict) -> Tuple[bool, str]:
             break
     if not test_present:
         return False, "regression test missing"
+    # External binary requirement (e.g. codex)
+    bin_name = gate.get("require_binary_on_path")
+    if bin_name:
+        import shutil as _sh
+        if _sh.which(bin_name) is None:
+            return False, f"{bin_name!r} CLI not on PATH"
     return True, "module+test present"
 
 
@@ -353,10 +367,20 @@ def review_dim(repo_root: Path) -> DimResult:
     else:
         return DimResult("R", level=3, evidence=ev, notes=["reviewer.md missing"])
 
-    # L5: codex bridge live
-    if _gate_is_active(repo_root, REVIEW_MARKERS["codex_bridge"])[0]:
+    # L5: codex bridge live (requires both code AND codex on PATH)
+    codex_ok, codex_reason = _gate_is_active(repo_root,
+                                              REVIEW_MARKERS["codex_bridge"])
+    if codex_ok:
         level = 5
         ev.append("Codex cross-model bridge active")
+    else:
+        # If the BRIDGE CODE is present but only the binary is missing,
+        # surface that nuance so the operator knows what unblocks L5.
+        module_present = (repo_root / "orchestrator" / "codex_reviewer.py").exists()
+        test_present = (repo_root / "tests" / "test_codex_reviewer.py").exists()
+        if module_present and test_present:
+            ev.append(f"Codex bridge code in place but {codex_reason} "
+                      "(install codex CLI to lift R to L5)")
 
     # L6: + adversarial reviewer
     if level >= 5 and _gate_is_active(repo_root,

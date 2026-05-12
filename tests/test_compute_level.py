@@ -220,13 +220,31 @@ def test_review_l3_with_single_reviewer(tmp_path):
 
 
 def test_review_l5_when_codex_active(tmp_path):
+    """R-L5 requires (a) module + test files AND (b) `codex` on PATH.
+    Mock shutil.which to simulate Codex being installed locally."""
     _seed_minimal_l3_repo(tmp_path)
     (tmp_path / "orchestrator" / "codex_reviewer.py").write_text("# codex stub\n")
     (tmp_path / "tests" / "test_codex_reviewer.py").write_text(
         "def test_codex_path(): assert 'codex' == 'codex'\n"
     )
-    result = cl.review_dim(tmp_path)
+    from unittest.mock import patch
+    with patch("shutil.which", return_value="/usr/local/bin/codex"):
+        result = cl.review_dim(tmp_path)
     assert result.level == 5
+
+
+def test_review_stays_l3_when_codex_artifacts_present_but_binary_missing(tmp_path):
+    """Honesty check: even with the bridge code in place, R stays at L3
+    until `codex` is actually on PATH. Prevents false-claim L5."""
+    _seed_minimal_l3_repo(tmp_path)
+    (tmp_path / "orchestrator" / "codex_reviewer.py").write_text("# codex stub\n")
+    (tmp_path / "tests" / "test_codex_reviewer.py").write_text(
+        "def test_codex_path(): assert 'codex' == 'codex'\n"
+    )
+    from unittest.mock import patch
+    with patch("shutil.which", return_value=None):
+        result = cl.review_dim(tmp_path)
+    assert result.level == 3
 
 
 # --- C-dim tests ----------------------------------------------------------

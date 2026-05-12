@@ -9,9 +9,9 @@ S 5 | evidence: 3 active gates: guardian_cost, tdd_invariant, preflight
   - note: action_layer_evaluator: module missing
   - note: adversarial_return_check: module missing
   - note: canary_leakage_scan: module missing
-R 3 | evidence: Single-model Reviewer present (orchestrator/roles/reviewer.md)
+R 3 | evidence: Single-model Reviewer present (orchestrator/roles/reviewer.md); Codex bridge code in place but 'codex' CLI not on PATH (install codex CLI to lift R to L5)
 C 3 | evidence: 1 git worktree(s) detected
-T 4 | evidence: 21 unit test files + e2e replay present; 3 property-based test files
+T 4 | evidence: 22 unit test files + e2e replay present; 3 property-based test files
 E 4 | evidence: propose_next_track.py exists
 
 Overall L = 3

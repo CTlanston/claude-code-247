@@ -9,15 +9,11 @@
 
 ## P0 — immediate next cycle
 
-- [ ] [Track R2] Wire local Codex CLI as cross-model second-opinion Reviewer (priority: P0)
-      details: R-dim L5 requires Codex bridge. orchestrator/codex_reviewer.py
-      that shells out to the user's local Codex CLI (subscription auth, NOT
-      paid API), feeds it the same PR diff Claude Reviewer saw, and produces
-      a structured verdict. Disagreement protocol: if Claude says PASS and
-      Codex says FAIL, write ALERT.md and refuse to auto-resolve. Local-only,
-      no network or third-party services. R-dim is one of two remaining L3
-      floors (with C).
-      rubric dim: R (Review) — moves L3 → L5 (rubric has no L4 for R)
+- [ ] [Track M3] Failure-clustering script + reports/failure-clusters.md (priority: P0)
+      details: M-dim L6 requires "failure auto-clustering". Read FAILURES.md,
+      cluster entries by keyword similarity, emit a Markdown report.
+      Lifts M from L5 → L6 (S already at L5; this puts M at L6 ahead of S).
+      rubric dim: M (Memory) — moves L5 → L6
 
 - [ ] [Track C2-or-stay] Decide path for C-dim — single stream → worktrees
       details: C-dim L4 requires "2-3 worktrees + scheduler + zero deadlock"
@@ -116,6 +112,8 @@
 
 ## Completed
 
+- [x] [Track R2] orchestrator/codex_reviewer.py + 12 mock-tested tests
+      DONE in 20260512-050151 (R stays L3 honestly until codex CLI installed)
 - [x] [Track T2-property-tdd-intent] tests/test_tdd_intent_properties.py (7 props)
       DONE in 20260512-045843 (T-dim L3 → L4, 3rd of 3 property modules)
 - [x] [Track T2-property-preflight] tests/test_preflight_properties.py (9 props)
