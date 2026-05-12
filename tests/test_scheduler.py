@@ -142,3 +142,139 @@ def test_scheduler_next_idle_returns_none_when_all_busy(tmp_path):
         sch.Worktree(path=busy, branch="b1"),         # busy
     ]
     assert s.next_idle_worktree() is None
+
+
+# --- Cycle 20 Track C3: dispatch_next + streak counter -------------------
+
+
+def test_task_dataclass_defaults():
+    t = sch.Task(id="t1", priority=1)
+    assert t.id == "t1"
+    assert t.priority == 1
+    assert t.blocked is False
+    assert t.payload is None
+
+
+def test_dispatch_next_picks_lowest_priority_unblocked(tmp_path):
+    """Pick the task with the LOWEST priority value (highest urgency)
+    among unblocked tasks. The L7 convention is: smaller number = higher
+    priority (P0 vs P1 vs P2)."""
+    s = sch.Scheduler(repo_root=tmp_path)
+    free = tmp_path / "stream-x"
+    free.mkdir()
+    s.worktrees = [
+        sch.Worktree(path=tmp_path, branch="main"),     # primary
+        sch.Worktree(path=free, branch="b"),
+    ]
+    s.tasks = [
+        sch.Task(id="t2", priority=2),
+        sch.Task(id="t0", priority=0),                   # lowest = winner
+        sch.Task(id="t1", priority=1),
+    ]
+    pair = s.dispatch_next()
+    assert pair is not None
+    wt, task = pair
+    assert task.id == "t0"
+    assert wt.path == free
+
+
+def test_dispatch_next_skips_blocked_tasks(tmp_path):
+    s = sch.Scheduler(repo_root=tmp_path)
+    free = tmp_path / "x"
+    free.mkdir()
+    s.worktrees = [
+        sch.Worktree(path=tmp_path, branch="main"),
+        sch.Worktree(path=free, branch="b"),
+    ]
+    s.tasks = [
+        sch.Task(id="t0", priority=0, blocked=True),   # blocked → skip
+        sch.Task(id="t1", priority=1, blocked=False),
+    ]
+    pair = s.dispatch_next()
+    assert pair is not None
+    _, task = pair
+    assert task.id == "t1"
+
+
+def test_dispatch_next_returns_none_when_no_unblocked_tasks(tmp_path):
+    s = sch.Scheduler(repo_root=tmp_path)
+    free = tmp_path / "x"
+    free.mkdir()
+    s.worktrees = [
+        sch.Worktree(path=tmp_path, branch="main"),
+        sch.Worktree(path=free, branch="b"),
+    ]
+    s.tasks = [sch.Task(id="t0", priority=0, blocked=True)]
+    assert s.dispatch_next() is None
+
+
+def test_dispatch_next_returns_none_when_no_idle_worktree(tmp_path):
+    s = sch.Scheduler(repo_root=tmp_path)
+    busy = tmp_path / "busy"
+    busy.mkdir()
+    (busy / ".in-progress").write_text("running")
+    s.worktrees = [
+        sch.Worktree(path=tmp_path, branch="main"),
+        sch.Worktree(path=busy, branch="b"),
+    ]
+    s.tasks = [sch.Task(id="t0", priority=0)]
+    assert s.dispatch_next() is None
+
+
+def test_dispatch_next_handles_empty_task_list(tmp_path):
+    s = sch.Scheduler(repo_root=tmp_path)
+    free = tmp_path / "x"
+    free.mkdir()
+    s.worktrees = [
+        sch.Worktree(path=tmp_path, branch="main"),
+        sch.Worktree(path=free, branch="b"),
+    ]
+    s.tasks = []
+    assert s.dispatch_next() is None
+
+
+# --- Zero-deadlock streak counter ----------------------------------------
+
+
+def test_current_streak_returns_zero_when_file_missing(tmp_path):
+    s = sch.Scheduler(repo_root=tmp_path)
+    assert s.current_zero_deadlock_streak() == 0
+
+
+def test_record_cycle_success_no_deadlock_bumps_streak(tmp_path):
+    s = sch.Scheduler(repo_root=tmp_path)
+    (tmp_path / "reports").mkdir(parents=True, exist_ok=True)
+    s.record_cycle_success("20260512-090000", deadlock=False)
+    assert s.current_zero_deadlock_streak() == 1
+    s.record_cycle_success("20260512-090100", deadlock=False)
+    assert s.current_zero_deadlock_streak() == 2
+
+
+def test_record_cycle_deadlock_resets_streak(tmp_path):
+    s = sch.Scheduler(repo_root=tmp_path)
+    (tmp_path / "reports").mkdir(parents=True, exist_ok=True)
+    s.record_cycle_success("c1", deadlock=False)
+    s.record_cycle_success("c2", deadlock=False)
+    s.record_cycle_success("c3", deadlock=False)
+    assert s.current_zero_deadlock_streak() == 3
+    s.record_cycle_success("c4", deadlock=True)
+    assert s.current_zero_deadlock_streak() == 0
+
+
+def test_record_cycle_history_appended(tmp_path):
+    """Each call appends a JSONL entry to reports/cycle-history.jsonl."""
+    s = sch.Scheduler(repo_root=tmp_path)
+    (tmp_path / "reports").mkdir(parents=True, exist_ok=True)
+    s.record_cycle_success("c1", deadlock=False)
+    s.record_cycle_success("c2", deadlock=True)
+    history = tmp_path / "reports" / "cycle-history.jsonl"
+    assert history.exists()
+    lines = [l for l in history.read_text().splitlines() if l]
+    assert len(lines) == 2
+    import json as _j
+    e1 = _j.loads(lines[0])
+    e2 = _j.loads(lines[1])
+    assert e1["cycle_id"] == "c1"
+    assert e1["deadlock"] is False
+    assert e2["cycle_id"] == "c2"
+    assert e2["deadlock"] is True

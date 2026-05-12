@@ -1,0 +1,75 @@
+{
+  "chosen": {
+    "track_id": "Track C3",
+    "title": "Multi-issue dispatch via Scheduler.dispatch_next()",
+    "priority": "P0",
+    "dim": "C",
+    "status": "open",
+    "details": "(priority: P0)\n      details: From the user directive. Implement\n      `orchestrator/scheduler.py:Scheduler.dispatch_next()` that picks the\n      lowest-priority unblocked task and dispatches to whichever worktree\n      is idle. Then run real cycles in worktrees/stream-1/ to start\n      accumulating the 30-cycle zero-deadlock streak that C-L5 requires.\n      Each successful no-deadlock cycle increments\n      `reports/zero-deadlock-streak.txt`.\n      rubric dim: C (Concurrency) \u2014 partial step toward L5"
+  },
+  "alternatives": [
+    {
+      "track_id": "Track C2",
+      "priority": "P2",
+      "dim": "C",
+      "score": 5.0,
+      "components": {
+        "priority": 2.0,
+        "floor_pref": 3.0,
+        "failure_penalty": -0.0
+      }
+    },
+    {
+      "track_id": "Track E2",
+      "priority": "P2",
+      "dim": "E",
+      "score": 5.0,
+      "components": {
+        "priority": 2.0,
+        "floor_pref": 3.0,
+        "failure_penalty": -0.0
+      }
+    },
+    {
+      "track_id": "Track R7",
+      "priority": "P1",
+      "dim": "R",
+      "score": 4.0,
+      "components": {
+        "priority": 3.0,
+        "floor_pref": 1.0,
+        "failure_penalty": -0.0
+      }
+    }
+  ],
+  "levels": {
+    "M": 7,
+    "S": 7,
+    "R": 6,
+    "C": 4,
+    "T": 5,
+    "E": 4
+  },
+  "failure_citations": [],
+  "considered_failures": [
+    {
+      "id": "FAIL-0001",
+      "overlap_keywords": [],
+      "score": 0.0,
+      "fixed": true
+    },
+    {
+      "id": "FAIL-0002",
+      "overlap_keywords": [],
+      "score": 0.0,
+      "fixed": true
+    },
+    {
+      "id": "FAIL-0003",
+      "overlap_keywords": [],
+      "score": 0.0,
+      "fixed": true
+    }
+  ],
+  "reasoning": "Chose Track C3 (priority=P0, dim=C, score=7.00). C-dim is currently L4; this track aims to lift it. FAILURES consulted: FAIL-0001, FAIL-0002, FAIL-0003."
+}

@@ -116,6 +116,9 @@
 
 ## Completed
 
+- [x] [Track C3-init] Scheduler.dispatch_next + record_cycle_success +
+      current_zero_deadlock_streak + 10 new tests + milestone-2.md
+      DONE in 20260512-081718 (streak counter in place at 1; C stays L4)
 - [x] [Track R6] runner/roles/adversarial_reviewer.md + orchestrator/adversarial_reviewer.py + wired into _do_review + 12 tests
       DONE in 20260512-081235 (R-dim L5 → L6)
 - [x] [Track T5] scripts/mutate_billable.py homegrown mutator (26 tests) +

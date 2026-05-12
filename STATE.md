@@ -1,17 +1,17 @@
 # STATE.md — current L7 supervisor state
 
 ```yaml
-current_branch: autoevo/cycle-19/adversarial-reviewer
-last_cycle_id: 20260512-081235
+current_branch: autoevo/cycle-20/dispatch-next-milestone-2
+last_cycle_id: 20260512-081718
 last_cycle_result: PASS
 last_green_commit: pending-commit
-last_levelup: 20260512-081235      # R went 5→6
-overall_level: 4                     # C is the sole remaining floor
+last_levelup: 20260512-081235      # last DIM-level move was R 5→6 in cycle 19
+overall_level: 4                     # C is the sole floor
 dim_levels:
   M: 7   # max
   S: 7   # max
-  R: 6   # NEW: adversarial reviewer wired (3rd pass)
-  C: 4   # sole floor
+  R: 6
+  C: 4   # sole floor; streak=1/30
   T: 5
   E: 6
 open_blockers:
@@ -20,65 +20,62 @@ open_blockers:
 in_flight_worktrees:
   - main (primary at repo root)
   - worktrees/stream-1 (autoevo/worktree-stream-1)
-updated_at: 2026-05-12T08:18:00Z
+updated_at: 2026-05-12T08:25:00Z
+concurrency:
+  worktree_count: 2
+  zero_deadlock_streak: 1
+  streak_target_for_L5: 30
+  cycles_to_C_L5: 29 (assuming no deadlocks from now on)
+  scheduler:
+    has_dispatch_next: true   # Cycle 20
+    has_streak_counter: true  # Cycle 20
+    wired_into_main_py: false # Track C4 future cycle
 review_panel:
-  reviewer_1_claude:      orchestrator/roles/reviewer.md (single-model)
-  reviewer_2_codex:       orchestrator/codex_reviewer.py (Cycle 15-16)
-  reviewer_3_adversarial: orchestrator/adversarial_reviewer.py (Cycle 19)
+  reviewer_1_claude:      orchestrator/roles/reviewer.md
+  reviewer_2_codex:       orchestrator/codex_reviewer.py
+  reviewer_3_adversarial: orchestrator/adversarial_reviewer.py
   panel_aggregator:       NOT YET (Track R7 → N-of-3 with escalation)
-  alert_protocol:
-    - Codex ≠ Claude on pass/fail → ALERT.md (codex_reviewer.disagreement_protocol)
-    - Claude=APPROVE + Adversarial=REJECT → ALERT.md (asymmetric, observer-only)
-  logs:
-    - reports/codex-spend.jsonl       (budget audit; committed)
-    - reports/codex-reviews.jsonl     (per-PR Codex log; gitignored)
-    - reports/adversarial-reviews.jsonl (per-PR adversarial log; gitignored)
-mutation_testing:
-  sut: orchestrator/billable.py (94 lines)
-  kill_rate: 1.0000 (21/21)
-  determinism: stable across runs
 ```
 
-## Progress (20 cycles: Bootstrap + 19)
+## Progress (21 cycles: Bootstrap + 20)
 
-Fourteen dim-internal lifts + one overall-L event (Cycle 17 🎯).
+Per `reports/milestone-2.md`: eight dim-internal lifts in cycles 11-20
+plus one overall-L event (Cycle 17 🎯).
 
 ```
 Bootstrap: M=4 S=5 R=3 C=3 T=3 E=3 → overall=3
+After C10: M=6 S=6 R=3 C=3 T=4 E=5 → overall=3
 After C17: M=7 S=7 R=5 C=4 T=4 E=6 → overall=4 🎯
-After C18: M=7 S=7 R=5 C=4 T=5 E=6 → overall=4 (C is sole floor)
-After C19: M=7 S=7 R=6 C=4 T=5 E=6 → overall=4 (C is still sole floor)
+After C20: M=7 S=7 R=6 C=4 T=5 E=6 → overall=4 (streak=1 toward C-L5)
 ```
 
 ## Next-cycle target
 
-Per propose_next_track + user directive:
+Per `propose_next_track.py`: **Track C3** continuation (the picker chose
+"Track C3" — the BACKLOG entry hasn't been split into C3-init/C3-cont
+so it points back to the still-open work).
 
-1. **Track C3** (P0) — Scheduler.dispatch_next() + zero-deadlock streak.
-   The only path to overall L5. Multi-cycle journey.
-2. **Track R7** (P1) — N-of-3 reviewer panel module to unify the three
-   reviewer adapters with formal disagreement escalation. Lifts R 6 → 7.
-3. **Track E7** — wait for more overall-L moves before this can fire.
+Concrete options:
+1. **Track R7** (cheapest dim lift available) — N-of-3 reviewer panel
+   module. Lifts R 6 → 7 in one cycle. After R7, R is at max.
+2. **Track T-L6** — add a `scripts/v5_live_sanity.sh` one-cycle live test
+   gated by `AUTODEV_LIVE=1` per kickoff Track L1. Combined with the
+   existing reports/live-sanity/ directory, lifts T 5 → 6.
+3. **Track C-cycle-driver** — actually wire the scheduler into a real
+   multi-issue loop so the streak counter starts bumping per real
+   cycle. Long horizon.
 
-## Milestone watch
+## Milestone-2 has been written
 
-Cycle 20 will be the 10th SUCCESSFUL cycle after milestone-1 (cycles 11
-through 20). Per L7 §18: write `reports/milestone-2.md` then.
+`reports/milestone-2.md` is in place per L7 §18. Next milestone fires
+at Cycle 30.
 
-## Cycle 19 verification snapshot
+## Cycle 20 verification snapshot
 
-- pytest: 325 passed, 2 skipped, 0 failed (12 new adversarial tests)
-- compute_level: R=L6 ("Adversarial Reviewer active")
+- pytest: 335 passed, 2 skipped, 0 failed (10 new scheduler tests)
+- compute_level: C=L4 ("2 git worktree(s) detected"); streak=1 not
+  yet surfaced (compute_level only shows it once it crosses 30)
 - compute_level --check: passed
 - doctor: 11/0/2
-
-## How the review panel runs today
-
-For every PR review:
-1. `_do_review` runs deterministic gates (forbidden paths, TDD intent)
-2. Calls Claude main reviewer via `runner.run_role("reviewer", ...)`
-3. Calls `_maybe_run_codex_review` → logs codex-reviews.jsonl, ALERT
-   on Claude↔Codex pass/fail disagreement
-4. Calls `_maybe_run_adversarial_review` → logs adversarial-reviews.jsonl,
-   ALERT on Claude=APPROVE + Adversarial=REJECT (asymmetric)
-5. Claude's verdict decides what happens next; observers only escalate.
+- zero-deadlock streak: 1 (cycle 20 was the first counted entry)
+- reports/cycle-history.jsonl: 1 entry for this cycle

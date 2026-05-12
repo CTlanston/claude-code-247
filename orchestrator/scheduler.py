@@ -1,29 +1,29 @@
-"""scheduler — Track C2-init skeleton (Cycle 17).
+"""scheduler — Track C2-init skeleton + Track C3 dispatch (Cycle 20).
 
-Discovers git worktrees + picks the next idle one for dispatch. The
-actual cross-worktree dispatch logic + STATE.md merge lives in Track
-C3 (next cycle). This module is the structural foundation that
-compute_level's C-dim L4 check requires.
+Discovers git worktrees, picks idle ones, dispatches tasks across
+streams, and tracks the zero-deadlock streak that C-L5 requires.
 
-The scheduler is intentionally minimal — it does NOT yet run anything,
-DOES NOT manage queues, and DOES NOT communicate across worktrees.
-It only knows: which worktrees exist, and which is "next" by a stable
-order.
+Cycle 17 added: Worktree, Scheduler.next_idle_worktree, discover_worktrees,
+_parse_worktree_porcelain. Cycle 20 adds: Task, Scheduler.dispatch_next,
+Scheduler.record_cycle_success, Scheduler.current_zero_deadlock_streak.
 
-Future Track C3 will add:
-- in-flight markers (cycles/<id>/in-progress on each worktree)
-- collision detection (two streams writing the same module)
-- per-stream state DB shards
+Multi-stream live dispatch is still a future cycle (Track C4+); this
+module is the structural foundation that compute_level's C-dim L4-L5
+checks require.
 """
 from __future__ import annotations
 
+import json
 import subprocess
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_STREAK_FILE = REPO_ROOT / "reports" / "zero-deadlock-streak.txt"
+DEFAULT_HISTORY_FILE = REPO_ROOT / "reports" / "cycle-history.jsonl"
 
 
 @dataclass
@@ -37,9 +37,23 @@ class Worktree:
 
 
 @dataclass
+class Task:
+    """Task awaiting dispatch. Track C3.
+
+    L7 priority convention: smaller value = higher urgency (P0 < P1).
+    `blocked=True` skips the task entirely.
+    """
+    id: str
+    priority: int = 100
+    blocked: bool = False
+    payload: Optional[object] = None
+
+
+@dataclass
 class Scheduler:
-    """Multi-worktree dispatch scheduler (skeleton for Track C2-init)."""
+    """Multi-worktree dispatch scheduler."""
     worktrees: List[Worktree] = field(default_factory=list)
+    tasks: List[Task] = field(default_factory=list)
     repo_root: Path = REPO_ROOT
 
     def refresh(self) -> None:
@@ -62,6 +76,76 @@ class Scheduler:
             if not (wt.path / ".in-progress").exists():
                 return wt
         return None
+
+    # -------------------------------------------------------------------
+    # Track C3 additions (Cycle 20)
+    # -------------------------------------------------------------------
+
+    def dispatch_next(self) -> Optional[Tuple[Worktree, Task]]:
+        """Pick the lowest-priority unblocked Task and pair it with an
+        idle worktree. Returns (worktree, task) or None if nothing
+        can be dispatched right now.
+
+        Does NOT actually start the task — the caller is responsible
+        for creating the in-progress marker + invoking the actual work.
+        This separation keeps `dispatch_next` pure and easy to test."""
+        if not self.tasks:
+            return None
+        unblocked = sorted(
+            (t for t in self.tasks if not t.blocked),
+            key=lambda t: (t.priority, t.id),
+        )
+        if not unblocked:
+            return None
+        idle = self.next_idle_worktree()
+        if idle is None:
+            return None
+        return (idle, unblocked[0])
+
+    def current_zero_deadlock_streak(self) -> int:
+        """Read the streak counter file. Returns 0 if missing or malformed."""
+        path = self._streak_file()
+        if not path.exists():
+            return 0
+        try:
+            return int(path.read_text().strip() or "0")
+        except (ValueError, OSError):
+            return 0
+
+    def record_cycle_success(self, cycle_id: str, *,
+                              deadlock: bool = False) -> None:
+        """Append a cycle-history entry; bump the streak on success,
+        reset to 0 on deadlock.
+
+        A "deadlock" here is the operator's call (or a future automated
+        detector's call) when two streams are waiting on each other or
+        cycle progress halts. For now, this is a manually-driven
+        counter; future cycles can wire automatic deadlock detection in."""
+        streak_path = self._streak_file()
+        history_path = self._history_file()
+        streak_path.parent.mkdir(parents=True, exist_ok=True)
+        history_path.parent.mkdir(parents=True, exist_ok=True)
+
+        if deadlock:
+            new_streak = 0
+        else:
+            new_streak = self.current_zero_deadlock_streak() + 1
+        streak_path.write_text(f"{new_streak}\n")
+
+        entry = {
+            "cycle_id": cycle_id,
+            "ts": datetime.now(tz=timezone.utc).isoformat(timespec="seconds"),
+            "deadlock": bool(deadlock),
+            "streak_after": new_streak,
+        }
+        with history_path.open("a") as f:
+            f.write(json.dumps(entry) + "\n")
+
+    def _streak_file(self) -> Path:
+        return self.repo_root / "reports" / "zero-deadlock-streak.txt"
+
+    def _history_file(self) -> Path:
+        return self.repo_root / "reports" / "cycle-history.jsonl"
 
 
 def discover_worktrees(repo_root: Path = REPO_ROOT) -> List[Worktree]:
