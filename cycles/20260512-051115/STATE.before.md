@@ -1,11 +1,11 @@
 # STATE.md — current L7 supervisor state
 
 ```yaml
-current_branch: autoevo/cycle-10/milestone-1
-last_cycle_id: 20260512-051115
+current_branch: autoevo/cycle-9/intake-sanitizer
+last_cycle_id: 20260512-050827
 last_cycle_result: PASS
 last_green_commit: pending-commit
-last_levelup: 20260512-051115     # E went 4→5 as milestone side-effect
+last_levelup: 20260512-050827      # S went 5→6
 overall_level: 3                    # locked by R, C at L3
 dim_levels:
   M: 6
@@ -13,14 +13,14 @@ dim_levels:
   R: 3
   C: 3
   T: 4
-  E: 5
+  E: 4
 open_blockers: []
 in_flight_worktrees:
   - main
-updated_at: 2026-05-12T05:40:00Z
+updated_at: 2026-05-12T05:35:00Z
 ```
 
-## Progress so far (11 cycles)
+## Progress so far (10 cycles)
 
 | Cycle | Dim | Track | Δ |
 |---|---|---|---|
@@ -34,19 +34,20 @@ updated_at: 2026-05-12T05:40:00Z
 | 7 | R | codex_reviewer.py (gated) | — |
 | 8 | M | cluster_failures.py | M 5→6 |
 | 9 | S | intake_sanitizer.py | S 5→6 |
-| 10 | MILESTONE | milestone-1.md + propose for cycle 10 | E 4→5 |
 
-Six dim lifts in 11 cycles. Overall L stuck at 3 by R, C floor.
+**Cycle 10 is a milestone cycle** — per L7 §18, write
+`reports/milestone-1.md`.
 
 ## Next-cycle target
 
-Track S4 — action-layer evaluator. Single move that lifts S 6→7
-(§9 formula: 5 gates → 2+5 = 7).
+Cycle 10 milestone report. Then Track S4 (action-layer evaluator)
+brings S to L7 — at that point S would be at L7, M at L6, T+E at L4,
+R+C still at L3. The R/C bottleneck remains the only thing keeping
+overall L at 3.
 
-## Cycle-10 verification snapshot
+## Cycle-9 verification snapshot
 
 - pytest: 217 passed, 1 skipped, 0 failed
-- compute_level: E=L5 (5/5 recent cycles ran propose_next_track)
+- compute_level: S=L6 (4 active gates)
 - compute_level --check: passed
 - doctor: 11/0/2
-- milestone-1.md written (135 lines, all 6 §18 sections covered)
