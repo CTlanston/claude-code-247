@@ -1,0 +1,30 @@
+=== pytest -q ===
+....................................s................................... [ 58%]
+...................................................                      [100%]
+122 passed, 1 skipped in 0.54s
+
+=== compute_level.py --check ===
+[compute_level] check passed (overall L=3)
+
+=== autodev_doctor.sh ===
+=== AutoDev doctor @ 2026-05-12T04:36:21Z ===
+
+--- Required ---
+  ✓ python3 (Python 3.9.6)
+  ✓ git (git version 2.50.1 (Apple Git-155))
+  ✓ docker (Docker version 29.4.2, build 055a478)
+  ✓ gh (gh version 2.91.0 (2026-04-22))
+  ✓ reports/ dir exists
+  ✓ tasks/ dir exists
+  ✓ commands/ dir exists
+  ✓ autodev modules import cleanly
+  ✓ runner image present
+  ✓ reports/state.json is valid JSON
+  ✓ HUMAN_CONFIG.md present
+
+--- Optional ---
+  ! tmux not installed (Phase 14)
+  ! host claude not on PATH (Docker fallback will run)
+  cost_mode=cheap  live_allowed=True
+
+=== summary: 11 passed, 0 failed, 2 warned ===
