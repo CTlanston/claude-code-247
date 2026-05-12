@@ -7,7 +7,7 @@
 current_branch: autoevo/cycle-0/bootstrap
 last_cycle_id: 20260512-042701
 last_cycle_result: PASS
-last_green_commit: pending-commit  # will be set after the cycle-0 commit lands
+last_green_commit: b685498
 last_levelup: 20260512-042701      # bootstrap establishes M=L4, S=L5
 overall_level: 3                    # min across M=4, S=5, R=3, C=3, T=3, E=3
 dim_levels:
