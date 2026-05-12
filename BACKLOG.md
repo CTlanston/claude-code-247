@@ -9,16 +9,27 @@
 
 ## P0 — immediate next cycle
 
-- [ ] [Track M2] FAILURES.md grep injection into PLAN pre-flight (priority: P0)
-      details: Every cycle's Step 5 PLAN must grep `FAILURES.md` for keywords
-      matching the proposed approach. Implement as a script
-      `scripts/preflight_failures.py` that takes the PLAN.md path, extracts
-      keywords from "Change being made" + "Files to touch", greps
-      `FAILURES.md`, and emits a JSON of (entry, score) matches.
-      prerequisites: Track M1 (CONTEXT.md + ADRs + FAILURES.md present) DONE in 20260512-042701
-      rubric dim: M (Memory) — moves L3 → L4 when working
-      regression test: `tests/test_preflight_failures.py` covers keyword
-      extraction, match scoring, and the no-match case
+- [ ] [Track M2.5] Grow FAILURES.md from 4 → 10+ entries (priority: P0)
+      details: M-dim L5 requires BOTH `scripts/preflight_failures.py`
+      (DONE in 20260512-043811) AND FAILURES.md with >=10 entries. Mine
+      historical V1/V2/V3 reports + git log for 6+ more documented failures
+      (idempotent INSERT, .dockerignore omission, container token leak fear,
+      retry counter bug, recovery hold-loop, Slack note flapping, etc.).
+      Each new entry: full FAIL-NNNN structure + Keywords list.
+      prerequisites: Track M2 DONE in 20260512-043811
+      rubric dim: M (Memory) — moves L4 → L5
+
+- [ ] [Track T2-property-billable] Add Hypothesis property tests for
+      orchestrator.billable.to_billable_cost (priority: P0)
+      details: Property-based test file `tests/test_billable_properties.py`
+      with >= 3 properties:
+        * `is_subscription_mode` is a pure function of env (idempotent)
+        * `to_billable_cost(...)` always returns >= 0
+        * subscription mode forces 0 regardless of raw input
+      Counts toward Track T2 (property-based on >=3 modules → L4); this
+      cycle adds one of three module's worth.
+      prerequisites: pytest can find hypothesis (likely already)
+      rubric dim: T (Test oracle) — partial step toward L4
 
 ## P1 — next 3 cycles
 
@@ -111,6 +122,8 @@
 
 ## Completed
 
+- [x] [Track M2] scripts/preflight_failures.py + 18 regression tests
+      DONE in 20260512-043811
 - [x] [Track M1] Bootstrap CONTEXT.md + ADRs 0000-0004 + FAILURES.md seed
       DONE in 20260512-042701
 - [x] [Track S1] Document Guardian + TDD invariant in CONTEXT.md

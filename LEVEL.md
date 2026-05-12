@@ -11,7 +11,7 @@ S 5 | evidence: 3 active gates: guardian_cost, tdd_invariant, preflight
   - note: canary_leakage_scan: module missing
 R 3 | evidence: Single-model Reviewer present (orchestrator/roles/reviewer.md)
 C 3 | evidence: 1 git worktree(s) detected
-T 3 | evidence: 15 unit test files + e2e replay present
+T 3 | evidence: 16 unit test files + e2e replay present
 E 3 | evidence: Manual track-selection mode
 
 Overall L = 3
