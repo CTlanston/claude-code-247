@@ -1,32 +1,37 @@
 # L7 Continuous Session — Wake-up Summary
 
-> Updated 2026-05-12 ~07:50 UTC. The continuous L7 loop ran **18
+> Updated 2026-05-12 ~08:30 UTC. The continuous L7 loop ran **22
 > cycles** autonomously per `AUTODEV_L7_MASTER_PROMPT.md`. All commits
 > are local (no push, no PR merge, no paid API spend except the ONE
 > calibrated Codex review). One cycle (14) failed cleanly and is
 > documented as FAIL_AS_DATA per L7 §8.
 
-## 🎯 TL;DR — OVERALL L = 4 (first overall-L move since Bootstrap)
+## 🎯 TL;DR — OVERALL L = 4 with **3 dimensions at L7 max** (M, S, R)
 
-Bootstrap + 16 successful cycles + 1 FAIL_AS_DATA. **Twelve rubric
-dim-internal lifts PLUS one overall-L event 🎯.** Every dimension is
-now at L4 or above. M and S are at the **L7 maximum**.
+Bootstrap + 20 successful cycles + 1 FAIL_AS_DATA. **Fifteen rubric
+dim-internal lifts PLUS one overall-L event 🎯 (Cycle 17).** Every
+dimension is now at L4 or above. M, S, **and R** are all at the **L7
+maximum**.
 
-| Dim | Bootstrap | After 18 cycles | Δ | What's next |
+| Dim | Bootstrap | After 22 cycles | Δ | What's next |
 |---|---|---|---|---|
 | M (Memory) | 4 | **7 (max)** | +3 | — |
 | S (Safety) | 5 | **7 (max)** | +2 | — |
-| R (Review) | 3 | **5** | +2 | R4 adversarial reviewer → L6 |
-| C (Concurrency) | 3 | **4** | +1 | C3 multi-stream dispatch + 30-cycle streak → L5 |
-| T (Test oracle) | 3 | 4 | +1 | mutmut 3.x blocked (FAIL-0011); workaround needed → L5 |
-| E (Self-improvement) | 3 | **6** | +3 | Last 3 overall promotions cite proposal → L7 |
-| **Overall** | **3** | **4 🎯** | **+1** | C-L5 is the floor now |
+| R (Review) | 3 | **7 (max NEW)** | +4 | — |
+| C (Concurrency) | 3 | **4** | +1 | streak counter at 2/30 → 28 more disciplined cycles → C-L5 → overall L5 |
+| T (Test oracle) | 3 | **5** | +2 | live sanity → L6; golden-diff → L7 |
+| E (Self-improvement) | 3 | **6** | +3 | last 3 overall promotions cite proposal → L7 (waiting on more overall moves) |
+| **Overall** | **3** | **4 🎯** | **+1** | C-L5 is the sole gate |
 
-Pytest: **280 passed, 1 skipped, 0 failed.**
+Pytest: **347 passed, 2 skipped, 0 failed.**
 Doctor: **11 passed, 0 failed, 2 warned (env-only).**
 `compute_level --check` exits 0 on every cycle.
-FAILURES.md: **11 entries** (added FAIL-0011 cycle 14).
+FAILURES.md: **11 entries** (FAIL-0011 added cycle 14, resolved by
+cycle 18 via Track T5 option 3; ledger is append-only).
 Codex spend log: 1 calibration entry (130,162 tokens, plan=pro).
+Zero-deadlock streak: **2/30** (cycles 20 + 21 counted).
+Two `reports/milestone-N.md` artifacts: milestone-1 (cycles 0-10) +
+milestone-2 (cycles 11-20).
 
 ## Cycle ledger
 
@@ -50,6 +55,10 @@ Codex spend log: 1 calibration entry (130,162 tokens, plan=pro).
 | 20260512-072615 | cycle-15/codex-calibration | R | Codex budget guard + ADR-0008 + live calibration call (130K tok, plan=pro) | R 3→4 |
 | 20260512-073953 | cycle-16/codex-wired-in-review | R | codex_reviewer wired into orchestrator/main.py:_do_review; ALERT on disagreement | R 4→5 |
 | 20260512-074343 | cycle-17/worktree-init | C | scripts/spawn_worktree.sh + orchestrator/scheduler.py skeleton + 2nd real worktree | C 3→4 **🎯 overall L=4** |
+| 20260512-080004 | cycle-18/homegrown-mutator | T | scripts/mutate_billable.py AST mutator + anchors → 21/21 killed (FAIL-0011 resolved) | T 4→5 |
+| 20260512-081235 | cycle-19/adversarial-reviewer | R | runner/roles/adversarial_reviewer.md + adapter + wired as 3rd review pass with ALERT on Claude=APPROVE+Adv=REJECT | R 5→6 |
+| 20260512-081718 | cycle-20/dispatch-next-milestone-2 | C+§18 | Scheduler.dispatch_next + zero-deadlock streak counter + milestone-2.md | (C stays L4; streak=1 toward 30) |
+| 20260512-082125 | cycle-21/n-of-3-panel | R | orchestrator/review_panel.py N-of-3 panel + disagreement_escalate + 12 tests | R 6→**7 max** |
 
 Each cycle: own branch, own tag (`autoevo/pre-<id>`), own
 `cycles/<id>/{PLAN,RESULT,REPORT,STATE.before,verify-output,next-track-proposal}.md/json`,
@@ -107,15 +116,24 @@ Until BOTH move past L3, overall L stays at 3.
 
 ## What's next (the BACKLOG P0)
 
-Per `scripts/propose_next_track.py --json`:
+The cheapest dim moves are exhausted: M, S, R are at L7 max. C is
+the sole remaining floor at L4 — and C-L5 requires **observation**
+(30 consecutive no-deadlock cycles), not coding.
 
-1. **Track C3** — Multi-stream dispatch + per-worktree STATE.md
-   shards. Builds on cycle 17's scheduler skeleton; necessary
-   precondition for the 30-cycle zero-deadlock streak that C-L5
-   needs.
-2. **Track T5-workaround** — FAIL-0011 option 3 (homegrown small-scope
-   mutator for `orchestrator/billable.py`).
-3. **Track R4** — Adversarial reviewer subagent (R 5→6).
+The natural next-cycle priorities are:
+
+1. **Accumulate the streak** — each disciplined cycle that completes
+   without deadlock bumps `reports/zero-deadlock-streak.txt` by 1.
+   Currently 2/30. Cycles to C-L5 = 28 at the current cadence. This
+   is the only path to overall L5.
+2. **Track T-L6** — `scripts/v5_live_sanity.sh` + `reports/live-sanity/`
+   directory per kickoff Track L1. Lifts T 5 → 6. ~1 cycle.
+3. **Track E7** — waiting for more overall-L moves; not actionable
+   until overall L5 reaches.
+
+Per `scripts/propose_next_track.py`: continues to recommend Track C3
+(the BACKLOG entry hasn't been split into C3-init / C3-cont so the
+picker still points back to the open follow-up work).
 
 ## Codex CLI integration is now LIVE (Cycle 15-16)
 
@@ -231,24 +249,28 @@ orchestrator/action_evaluator.py  # shell/git command safety scorer
 
 ## Honest assessment (per L7 §18 obligation)
 
-The system is **measurably closer to L7** than at start: 12 dim-internal
-moves + 1 overall-L move (3 → 4). Every dim is now ≥ L4. The L7
-self-discipline loop continues to fire correctly on every cycle.
+The system is **measurably closer to L7** than at start: 15 dim-
+internal moves + 1 overall-L event. Every dim is now ≥ L4. Three
+dims (M, S, R) are at the L7 maximum. The L7 self-discipline loop
+continues to fire correctly on every cycle.
 
-**Cycle 14 was an important learning event** (FAIL_AS_DATA): a real
-attempt at Track T5 hit an external-tool wall, the cycle rolled back
-atomically, and the learning was captured as data (FAIL-0011) rather
-than swept under the rug. This is exactly the §8 "failure is data"
-pattern — demonstrable on a real failure, not just hypothetically.
+**Cycle 14 was an important learning event** (FAIL_AS_DATA): the L7
+§8 "failure is data" pattern proven on a real tooling failure.
 
 **Cycle 15 was the first paid-third-party carve-out** (ADR-0008):
 operator installed Codex; the cycle built budget infrastructure
-BEFORE making any code-spending call; the calibration call observed
-subscription billing; the carve-out is documented + scoped.
+BEFORE making any code-spending call; calibration observed
+subscription billing; carve-out documented + scoped.
 
-**Cycle 17 is the first overall-L move since Bootstrap** 🎯 — the
-worktree infra that took C from L3 to L4, lifting every dim to ≥ L4
-and the overall floor from 3 to 4.
+**Cycle 17 was the first overall-L move since Bootstrap** 🎯.
+
+**Cycle 18 closed FAIL-0011** — the mutmut blocker — via the homegrown
+mutator approach (FAIL-0011 option 3). 21/21 kill rate on billable.py.
+
+**Cycle 21 brought R to L7 max** — the third dimension at ceiling.
+The reviewer panel infrastructure now spans 3 independent voices
+(Claude + Codex + Adversarial) with formal N-of-3 disagreement
+aggregation.
 
 The biggest remaining technical-debt risk is the **three not-yet-fixed
 FAILURES that have code-touching scope**:
@@ -265,15 +287,20 @@ Recommend a "FAIL-0007-fix" cycle before any live e2e is attempted.
 
 | Dim | Now | Path to L7 | Cycles est. |
 |---|---|---|---|
-| M | 7 | (already max) | — |
-| S | 7 | (already max) | — |
-| R | 5 | R4 adversarial reviewer (L6) → N-of-3 panel (L7) | 2-3 |
-| C | 4 | C3 dispatch + 30-cycle zero-deadlock streak (L5) → 5+ worktrees (L7) | 30+ |
-| T | 4 | mutmut workaround (L5) → mutation kill ≥ 80% on 4 modules → live sanity per RC (L6) → golden-diff (L7) | 4-6 |
-| E | 6 | last 3 overall-L moves cite propose_next_track (L7) | 2-3 |
+| M | 7 (max) | — | — |
+| S | 7 (max) | — | — |
+| R | 7 (max NEW) | — | — |
+| C | 4 | 30-cycle zero-deadlock streak (L5, sole gate for overall L5) → 5+ worktrees (L7) | 28+ |
+| T | 5 | live sanity per RC (L6) → golden-diff on all e2e (L7) | 2-3 |
+| E | 6 | last 3 OVERALL level-ups came from propose_next_track (L7) | depends on overall moves |
 
-**Honest forecast: ~6-10 cycles to overall L5 (C is the gate).
-Overall L7 is multi-month; the 30-cycle zero-deadlock streak alone
-is observation work, not coding work.**
+**Honest forecast: 28 disciplined cycles to overall L5 (C is the sole
+gate). Overall L7 still multi-month — the C-L5 streak alone is the
+gate, and getting C to L7 needs 5+ worktrees + 30 more streak cycles
+on top of that.**
+
+The session reached a natural pause point: three dims are saturated,
+the remaining work splits between observation-driven (C streak) and
+shippable single-cycle moves (T-L6 live sanity, golden-diff for T-L7).
 
 — end of summary —
