@@ -10,7 +10,7 @@ S 7 | evidence: 5 active gates: guardian_cost, tdd_invariant, preflight, intake_
 R 5 | evidence: Single-model Reviewer present (orchestrator/roles/reviewer.md); Codex bridge infra ready: code + tests + CLI on PATH + budget guard; Codex bridge wired into orchestrator/main.py
 C 4 | evidence: 2 git worktree(s) detected
   - note: Need 30-cycle zero-deadlock streak (have 0)
-T 4 | evidence: 29 unit test files + e2e replay present; 3 property-based test files
+T 5 | evidence: 31 unit test files + e2e replay present; 3 property-based test files; Mutation kill rate 85.71%
 E 6 | evidence: propose_next_track.py exists; Ran in last 5 cycles; 5 proposals cite FAILURES
 
 Overall L = 4

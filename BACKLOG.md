@@ -9,27 +9,27 @@
 
 ## P0 — immediate next cycle
 
-- [ ] [Track R3] Wire codex_reviewer.run_codex_review into orchestrator/main.py
-      reviewer step (priority: P0, from Cycle 15+ kickoff Phase 2)
-      details: With the budget guard + ADR-0008 + R-L4 infra in place
-      (cycle 15), add a cross-model review step to main.py: run Claude
-      Reviewer and Codex Reviewer side by side, compare verdicts,
-      write ALERT.md on disagreement. Each live PR review will log
-      spend to reports/codex-spend.jsonl and provide N>1 cost data
-      points refining ADR-0008.
-      rubric dim: R (Review) — moves L4 → L5
+- [ ] [Track R6] Adversarial reviewer subagent (priority: P0)
+      details: Per user directive after Cycle 18 + L7 §6 / kickoff Phase 2.
+      Add `runner/roles/adversarial_reviewer.md` with a single-purpose
+      prompt ("find ways this change breaks in production"). Wire into
+      `orchestrator/main.py:_do_review` as a third pass after Claude +
+      Codex. Add disagreement detection so a Claude=APPROVE + Adversarial=
+      REJECT triggers ALERT.md. compute_level evidence path: add a
+      KNOWN_GATES entry / REVIEW_MARKERS adversarial_reviewer entry that
+      detects this. Lifts R 5 → 6.
+      rubric dim: R (Review)
 
-- [ ] [Track T5-workaround] Pick a mutation-testing workaround per FAIL-0011
-      (priority: P1)
-      details: mutmut 3.3.1 blocked (FAIL-0011). Best ROI is option 3
-      (homegrown small-scope mutator for billable.py — only 95 lines).
-      rubric dim: T (Test oracle) — moves L4 → L5
-
-- [ ] [Track C2-or-stay] Decide path for C-dim — single stream → worktrees
-      details: C-dim L4 requires "2-3 worktrees + scheduler + zero deadlock"
-      per §3 rubric. This is a multi-cycle infrastructure investment
-      (orchestrator/scheduler.py + worktree management). Defer until R is
-      addressed; in the meantime C remains the bottleneck at L3.
+- [ ] [Track C3] Multi-issue dispatch via Scheduler.dispatch_next()
+      (priority: P0)
+      details: From the user directive. Implement
+      `orchestrator/scheduler.py:Scheduler.dispatch_next()` that picks the
+      lowest-priority unblocked task and dispatches to whichever worktree
+      is idle. Then run real cycles in worktrees/stream-1/ to start
+      accumulating the 30-cycle zero-deadlock streak that C-L5 requires.
+      Each successful no-deadlock cycle increments
+      `reports/zero-deadlock-streak.txt`.
+      rubric dim: C (Concurrency) — partial step toward L5
 
 ## P1 — next 3 cycles
 
@@ -117,6 +117,10 @@
 
 ## Completed
 
+- [x] [Track T5] scripts/mutate_billable.py homegrown mutator (26 tests) +
+      tests/test_billable_mutation_anchors.py (7 anchor tests) → 21/21
+      mutants killed on orchestrator/billable.py (kill rate 100%)
+      DONE in 20260512-080004 (T-dim L4 → L5)
 - [x] [Track C2-init] scripts/spawn_worktree.sh + orchestrator/scheduler.py skeleton + 2nd worktree + 15 tests
       DONE in 20260512-074343 (C-dim L3 → L4; **OVERALL L=4** 🎯)
 - [x] [Track R3] Wire codex_reviewer into orchestrator/main.py:_do_review + 7 tests
