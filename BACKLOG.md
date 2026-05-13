@@ -9,13 +9,6 @@
 
 ## P0 — immediate next cycle (Phase A of AUTODEV_L7_CONTINUOUS_RUN.md)
 
-- [ ] [Track T7] Golden-diff fixtures for e2e tests (priority: P0)
-      details: tests/golden/ directory with captured stdout/stderr/state-
-      mutation patterns from known-good cycles. tests/test_golden_diff.py
-      with character-level diff vs fixtures. scripts/update_goldens.sh
-      with operator-confirm prompt is the ONLY way to refresh.
-      rubric dim: T (Test oracle) — moves L6 → L7 (max)
-
 - [ ] [Track E7] Verify autonomy of promotions (priority: P0)
       details: Walk CHANGELOG.md for 🎯 entries; check each cycle's
       PLAN.md cites propose_next_track. compute_level E-L7 condition
@@ -116,6 +109,9 @@
 
 ## Completed
 
+- [x] [Track T7] tests/golden/ + tests/test_golden_diff.py + 
+      scripts/update_goldens.sh + tests/test_update_goldens.py
+      DONE in 20260513-045716 (T-dim L6 → L7, **T is now at max**)
 - [x] [Track T6] scripts/v5_live_sanity.sh + reports/live-sanity/ + doctor
       extension + HUMAN_CONFIG safety flag + 8 tests
       DONE in 20260513-045243 (T-dim L5 → L6)

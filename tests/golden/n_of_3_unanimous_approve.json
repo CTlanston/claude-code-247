@@ -1,0 +1,11 @@
+{
+  "agree_count": 3,
+  "disagreement_summary": null,
+  "escalate": false,
+  "overall": "approve",
+  "votes": {
+    "adversarial": "approve",
+    "claude": "approve",
+    "codex": "approve"
+  }
+}

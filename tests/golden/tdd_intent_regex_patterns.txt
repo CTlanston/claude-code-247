@@ -1,0 +1,2 @@
+_TEST_COMMIT_RE=\s*(test|tests|spec|specs|coverage):\s
+_IMPL_COMMIT_RE=\s*(feat|fix|impl|implement|refactor):\s
