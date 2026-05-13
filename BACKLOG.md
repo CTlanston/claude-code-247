@@ -76,6 +76,10 @@ Each cycle:
       public functions + 14 regression tests; LEVEL.md S-evidence
       now 7/7 active gates — no missing-module notes remain)
 
+- [x] [Cycle 37 — Track H1] orchestrator/health.py + autodev_health.sh
+      DONE in 20260513-144902 (9-signal score per §10; first real
+      health.json emit = 94 green; 15 regression tests)
+
 - [ ] [Track C3-live] Real-cycle worktree dispatch (priority: P1)
       details: Wire Scheduler.dispatch_next() into a real dispatch
       loop. Phase D of the continuous-run plan.
@@ -115,11 +119,11 @@ Each cycle:
       `cycles/<id>/next-track-proposal.json`.
       rubric dim: E (Self-improvement) — moves L3 → L4
 
-- [ ] [Track H1] `orchestrator/health.py` — health score computation
-      details: Per §10 of the master prompt: 9 input signals (test pass,
-      lint, recent failure rate, stuck issues, Guardian pauses, flaky tests,
-      large diffs, untracked risk, cost budget) → 0-100 score.
-      rubric dim: cross-cuts (S + E)
+- [x] [Track H1] `orchestrator/health.py` — health score computation
+      DONE in 20260513-144902 (all 9 §10 signals + 0-100 score +
+      green/usable/degraded/red status + 3 output files +
+      scripts/autodev_health.sh + 15 regression tests; first real
+      emit against the repo: score=94 green)
 
 - [ ] [Track P1] Strict Planner output contract enforcement
       details: Per §7 Planner contract — JSON-or-equivalent with all required

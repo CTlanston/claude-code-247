@@ -1,15 +1,15 @@
 # STATE.md — current L7 supervisor state
 
 ```yaml
-current_branch: autoevo/cycle-36/canary-scan
-last_cycle_id: 20260513-142439
+current_branch: autoevo/cycle-37/health-score
+last_cycle_id: 20260513-144902
 last_cycle_result: PASS
 last_green_commit: pending-commit
 last_levelup: 20260513-050048      # E 6→7. No level move this cycle.
 overall_level: 4                     # C is the SOLE remaining floor
 dim_levels:
   M: 7
-  S: 7   # 7/7 active gates (was 6/7 before this cycle; all S-L7 gates active)
+  S: 7   # 7/7 active gates
   R: 7
   C: 4
   T: 7
@@ -19,12 +19,12 @@ session_mission:
   phase_a: 3/3 COMPLETE
   phase_b: 5/5 COMPLETE
   phase_c: 2/2 COMPLETE
-  phase_d: 5 cycles done (K1, FAIL-0009, S5, S-L7 shim, S6 canary)
+  phase_d: 6 cycles done (K1, FAIL-0009, S5, S-L7 shim, S6 canary, H1 health)
 concurrency:
   worktree_count: 2
-  zero_deadlock_streak: 17
+  zero_deadlock_streak: 18
   streak_target_for_L5: 30
-  cycles_to_C_L5: 13
+  cycles_to_C_L5: 12
 launchd_infra:
   wake_script:           scripts/autodev_continuous_cycle.sh     (Cycle 25)
   prompt_file:           scripts/autodev_cycle_prompt.md         (Cycle 26)
@@ -38,46 +38,37 @@ launchd_infra:
   adversarial_return:    whitelist + validator (substance)       (Cycle 34)
   adversarial_return_path: canonical-path shim                   (Cycle 35)
   canary_scan:           CANARY_PATTERN + scan_text/file/paths   (Cycle 36)
+  health_scorer:         9-signal §10 emitter; first score=94    (Cycle 37)
   not_installed_yet:     TRUE — operator runs install ONCE
-s_dim_active_gates: 7/7   # ALL S-L7 gates active — no module-missing notes
+s_dim_active_gates: 7/7
+health_score: 94 (green) — real emit from orchestrator/health.py
 named_risks_resolved:
   - FAIL-0009 (Cycle 33; env-var gate; pytest no longer dirties tree)
+  - launchd health stop-condition non-functional (Cycle 37 emits real scores)
 doctor_count: 13/0/2
-test_total: 578 passed / 2 skipped
+test_total: 593 passed / 2 skipped
 ```
 
-## Progress (37 cycles since Bootstrap)
+## Progress (38 cycles since Bootstrap)
 
 Phase A complete. Phase B complete. Phase C complete.
-Phase D: 5 cycles done. C streak 17/30 — past halfway; 13 more
-disciplined cycles needed for C-L5 → Overall L=5.
-
-## All S-L7 safety gates active
-
-`LEVEL.md` (post-Cycle 36) reads:
-```
-S 7 | evidence: 7 active gates: guardian_cost, tdd_invariant,
-preflight, intake_sanitizer, action_layer_evaluator,
-adversarial_return_check, canary_leakage_scan
-```
-
-Zero remaining missing-module notes on the S dimension.
+Phase D: 6 cycles done. C streak 18/30 → 12 more for C-L5.
 
 ## Next-cycle target
 
-Phase D continuation. Honest candidates now:
-- **Track P1** — strict Planner output contract (medium)
-- **Track H1** — orchestrator/health.py (medium)
-- Smaller polish tracks if surfaced by propose_next_track
+Phase D continuation. Reasonable candidates:
+- **Track P1** — strict Planner output contract validator (small/medium)
+- Encode the M-dim "FAILURES.md empirically_reproduced field"
+  discipline rule from Cycle 33 (small docs cycle)
+- Wire health into the doctor (small) — addresses §10's
+  "Doctor should call it as part of pre-flight"
 
-Context budget is the binding constraint — write
-session-handoff and exit cleanly when approaching ~80% full.
+## Cycle 37 verification snapshot
 
-## Cycle 36 verification snapshot
-
-- pytest: 578 passed, 2 skipped, 0 failed (+14 canary tests)
-- propose_next_track --for-cycle 20260513-142439 → proposal written FIRST
+- pytest: 593 passed, 2 skipped, 0 failed (+15 health tests)
+- propose_next_track --for-cycle 20260513-144902 → proposal written FIRST
 - compute_level --check (post-proposal): passed (Overall L=4 stable)
-- LEVEL.md S evidence: "7 active gates" (was "6")
 - doctor: 13/0/2
-- streak: 17/30 → 13 more disciplined cycles for C-L5
+- LIVE health score (real repo): 94 (green) — wake script's
+  health stop-condition now operates on real data
+- streak: 18/30 → 12 more disciplined cycles for C-L5
