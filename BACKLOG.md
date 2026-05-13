@@ -84,6 +84,19 @@ Each cycle:
       DONE in 20260513-145451 (read-only doctor extension + 7 tests
       including 3 FAIL-0009 regression guards; doctor 13→14/0/2)
 
+- [x] [Cycle 39 — gitignore] reports/health.{json,md,history.jsonl}
+      DONE in 20260513-145929 (untracked + .gitignore'd so
+      wake-refresh doesn't dirty the tree)
+
+- [x] [Cycle 40 — wake-refresh] wake script invokes autodev_health.sh
+      DONE in 20260513-150357 (fail-open + skip-env-var + -x guard)
+
+- [x] [Cycle 41 — empirically_reproduced field] FAILURES.md schema
+      DONE in 20260513-162424 (encodes Cycle 33's M-dim discipline
+      rule; 11 existing entries tagged 4y/5n/1c/1na; integrity tests
+      require the field on every entry going forward; Scheduler API
+      used for streak update for the first time)
+
 - [ ] [Track C3-live] Real-cycle worktree dispatch (priority: P1)
       details: Wire Scheduler.dispatch_next() into a real dispatch
       loop. Phase D of the continuous-run plan.

@@ -4,9 +4,44 @@
 > approach. If a hit is found, cite why this time is different OR pick a
 > different approach. See §5 of `AUTODEV_L7_MASTER_PROMPT.md`.
 
+## Entry schema
+
+Each entry uses these fields:
+
+- `**Date**:`           — when the failure was observed
+- `**Empirically reproduced**:` — root-cause-confidence tag.
+  One of:
+  - `yes` — working fix demonstrated to resolve symptom AND a
+    regression test exists that exercises it.
+  - `no` — root cause inferred from logs / reasoning / analogy;
+    no empirical reproducer was run. Future cycles **must
+    verify** before relying on this entry's root cause.
+  - `corrected_in_<cycle-id>` — was `no`, but a later cycle
+    reproduced empirically and either confirmed or corrected
+    the root cause via an appended "Corrected diagnosis"
+    sub-block.
+  - `not_applicable` — tooling / environmental issue where
+    empirical reproduction isn't meaningful (e.g. mutmut
+    version compatibility).
+- `**Symptom**:`        — what was observed
+- `**Root cause**:`     — what caused it
+- `**Failed fix attempts**:` — what didn't work and why
+- `**Working fix**:`    — what does work
+- `**Regression test**:` — test file/path or "not yet"
+- `**Keywords**:`       — comma/whitespace list for grep
+- `**Linked ADR**:` (optional) — corresponding ADR
+
+The `empirically_reproduced` field was added in
+**Cycle 41 (20260513-162424)** per the discipline rule surfaced
+in Cycle 33's correction of FAIL-0009.
+
 ## FAIL-0001: Reviewer rejected TDD-compliant PR for trailing edge-case test
 
 **Date**: 2026-05-11 (V3 E2E test, issue #14 "chunks")
+
+**Empirically reproduced**: yes (V4 commit `110e7bd` shipped with
+regression tests `tests/test_v4_hardening.py::test_tdd_intent_*`
+that fail without the fix and pass with it)
 
 **Symptom**: Issue #14 produced a clean implementation of `chunks()` with
 the commit sequence `test → feat → test`. The trailing `test:` commit added
@@ -43,6 +78,10 @@ trailing-test, commit-prefix-gate, _check_tdd_invariant
 ## FAIL-0002: Impossible spec looped forever at `coding` state
 
 **Date**: 2026-05-11 (V3 E2E test, issue #15 "reverse")
+
+**Empirically reproduced**: yes (V4 preflight regression tests
+`tests/test_v4_hardening.py::test_preflight_impossible_spec_*`
+fail without the fix and pass with it)
 
 **Symptom**: Issue #15 asked for tests of `reverse()` in `src/utils.py`
 while also stating "Do not modify `src/utils.py`". `reverse()` did not
@@ -86,6 +125,11 @@ infinite-retry, reverse, _do_planning, symbol-absent, forbidden-file
 
 **Date**: 2026-05-11 (V3 E2E test, issue #16 "Guardian phantom-cost spike")
 
+**Empirically reproduced**: yes (V4 commit `110e7bd` shipped with
+regression tests `tests/test_v4_hardening.py::test_db_record_run_zeros_*`
++ `test_billable_load_budget_*` exercising the to_billable_cost
+helper)
+
 **Symptom**: User was on Claude subscription (`sk-ant-oat01-...`), so
 per-call cost should always be $0. But Guardian queried `runs.cost_usd`
 directly from SQLite, and CLI was emitting non-zero estimated USD figures
@@ -127,6 +171,10 @@ billable, cost-mask, record_run, metrics.json, daily-cost-spike,
 
 **Date**: 2026-05-11 (V3 E2E test, environmental)
 
+**Empirically reproduced**: yes (4 V4 regression tests in
+`tests/test_v4_hardening.py::test_resolve_state_db_path_*` and
+`test_pending_work_*` exercise every env-var precedence branch)
+
 **Symptom**: `autodev/supervisor.py:_inner_engine_has_pending_work` raised
 `OSError: [Errno 30] Read-only file system: '/state'` when computing the
 default state DB path on macOS host (no Docker). Worse, the function
@@ -166,6 +214,13 @@ silent-false, env-var-precedence
 **Date**: 2026-05-11 (V3 E2E test environment, observed during dispatch
 of issues #11/#12/#13)
 
+**Empirically reproduced**: no (V3 cleanup-era fix shipped without
+a unit test; would need PyGithub network mocking. The fix is
+believed correct from log evidence but has not been verified
+under controlled reproduction. Future cycle should mock PyGithub
+and add a regression test before relying on the inferred root
+cause.)
+
 **Symptom**: `orchestrator/github_client.py:latest_workflow_run_status`
 raised `IndexError` (or a generic `GithubException`) when a shadow branch
 had not yet been pushed to GitHub (or the workflow had never fired on it).
@@ -203,6 +258,11 @@ defensive-exception, transient-api
 
 **Date**: 2026-05-11 (V3 E2E test, observed for issues #14 and #15 on
 the first dispatch of each shadow branch)
+
+**Empirically reproduced**: no (fix shipped without regression
+test; would need fake-GitHub fixture. Tracked as future Track-T
+candidate. Future cycle should reproduce against a fake remote
+before relying on the inferred root cause.)
 
 **Symptom**: `orchestrator/git_proxy.py:mirror_to_github(branch)` was
 called after Coder committed to the per-issue worktree. The function
@@ -246,6 +306,13 @@ workspace_root, setup.sh
 
 **Date**: 2026-05-10 (pre-V4 inner-engine work; tracked as TASK-007 in
 tasks/backlog.md and GitHub issue #6 on the test repo)
+
+**Empirically reproduced**: no (fix is planned but not yet
+shipped; the inferred root cause is supported by symptom
+analysis but the working `INSERT OR IGNORE` migration has not
+been demonstrated. Future cycle should ship the migration AND
+a regression test that triggers the double-write before fix
+and verifies single-row after.)
 
 **Symptom**: When a Coder role early-exited (e.g. with the CLI returning
 non-zero before any tokens were billed) and the outer recovery loop
@@ -292,6 +359,11 @@ updated to mention the additional row-count safety net.
 
 **Date**: 2026-05-10 (TASK-004 in tasks/backlog.md)
 
+**Empirically reproduced**: no (fix is planned but not yet
+shipped; the symptom is well-understood from `docker build`
+output but the working fix — a `.dockerignore` + test — has
+not landed. Future cycle should add both.)
+
 **Symptom**: `docker build` for both `orchestrator/Dockerfile` and
 `runner/Dockerfile` copied the entire repo context, including
 `state/*.db` (live DB), `workspaces/` (per-issue clones, possibly
@@ -321,6 +393,14 @@ workspaces-leak
 
 **Date**: 2026-05-12 (observed during L7 Cycle 0 and Cycle 1 of this
 session)
+
+**Empirically reproduced**: corrected_in_20260513-141046
+(original root-cause attribution to the doctor was INFERRED;
+Cycle 33's cp/diff experiment proved the doctor is innocent —
+pytest's cli-executor unit tests were the culprit. The
+"Corrected diagnosis" sub-block below preserves the
+misattribution as a learning artifact and documents the
+empirically-verified actual fix.)
 
 **Symptom**: Each invocation of `./scripts/autodev_doctor.sh` runs an
 import smoke test that — to verify CLI classification logic loads —
@@ -404,6 +484,12 @@ before relying on it.
 **Date**: 2026-05-11 (V3 E2E test, captured in
 `reports/state.json` at HEAD time before L7 bootstrap)
 
+**Empirically reproduced**: no (root cause is "suspected" per
+the entry's own language; Diagnose-mode work in Track P4 is
+the planned proper reproducer. Future P4 cycle must verify
+the inferred exit-3 classification before relying on this
+entry.)
+
 **Symptom**: After ~2 hours into the V3 E2E test, `reports/state.json`
 showed:
 ```json
@@ -450,6 +536,12 @@ state.json, recovery-loop
 ## FAIL-0011: mutmut 3.3.1 mutant-tree copy breaks cross-module imports
 
 **Date**: 2026-05-12 (L7 cycle 14 aborted attempt)
+
+**Empirically reproduced**: not_applicable (this is a third-party
+tooling-version incompatibility, not a system root cause we'd
+reproduce. Cycle 18 worked around it via Track T5 option 3 — a
+homegrown AST-based mutator. The entry stays in the ledger as
+a historical note about mutmut 3.x's mutant-tree copy mechanism.)
 
 **Symptom**: Cycle 14 tried to lift T-dim 4 → 5 via mutmut on
 `orchestrator/billable.py`. mutmut 3.3.1 was installed via

@@ -112,3 +112,108 @@ def test_each_entry_keywords_match_preflight_parse():
     for e in entries:
         assert e.id.startswith("FAIL-"), f"bad id {e.id!r}"
         assert e.keywords, f"{e.id} has no parseable keywords"
+
+
+# --- Cycle 41 — empirically_reproduced field --------------------------
+#
+# Cycle 33 surfaced an M-dim discipline rule: every FAILURES entry whose
+# root cause was *inferred* (not empirically reproduced) should be flagged
+# so future cycles verify before relying on it. This cycle encodes the
+# rule on disk via a new schema field.
+
+# Allowed values. "corrected_in_<cycle-id>" is a pattern-matched class
+# (any UTC timestamp suffix).
+_ER_FIXED = {"yes", "no", "not_applicable"}
+_ER_CORRECTED_RE = re.compile(r"^corrected_in_\d{8}-\d{6}$")
+
+
+def _empirically_reproduced_value(block: str) -> str | None:
+    """Find the `**Empirically reproduced**: <value>` line in an entry
+    block and return the leading token (yes / no / not_applicable /
+    corrected_in_<cycle-id>), or None if the field is absent.
+
+    The token is the contiguous non-whitespace run after the colon.
+    Anything after (parenthetical justification, etc.) is allowed
+    and ignored by this validator.
+    """
+    m = re.search(
+        r"\*\*Empirically reproduced\*\*\s*:\s*(\S+)",
+        block,
+    )
+    return m.group(1).strip() if m else None
+
+
+def test_prologue_documents_empirically_reproduced_field():
+    """FAILURES.md's prologue (before the first ## FAIL- heading) must
+    document the new field's name + allowed values."""
+    text = FAILURES_MD.read_text()
+    first_entry = text.find("## FAIL-")
+    assert first_entry > 0
+    prologue = text[:first_entry]
+    assert "empirically_reproduced" in prologue.lower() or \
+        "Empirically reproduced" in prologue, (
+            "FAILURES.md prologue must document the empirically_reproduced "
+            "field (Cycle 41 discipline rule)"
+        )
+    for v in ("yes", "no", "corrected_in_"):
+        assert v in prologue, f"prologue must list value {v!r}"
+
+
+def test_every_entry_has_empirically_reproduced_field():
+    """Mandatory going forward. Every FAIL entry must tag its
+    root-cause-confidence so future cycles know whether to verify."""
+    missing = []
+    for fail_id, _, block in _entries_with_text():
+        if _empirically_reproduced_value(block) is None:
+            missing.append(fail_id)
+    assert not missing, (
+        "These FAILURES entries lack the empirically_reproduced field:\n"
+        + "\n".join(missing)
+        + "\nAdd `**Empirically reproduced**: <yes|no|corrected_in_"
+        + "<cycle-id>|not_applicable>` to each, per Cycle 41's "
+        + "discipline rule."
+    )
+
+
+def test_empirically_reproduced_value_is_valid():
+    """Each entry's value must be one of the allowed strings or match
+    the `corrected_in_<cycle-id>` pattern."""
+    bad = []
+    for fail_id, _, block in _entries_with_text():
+        v = _empirically_reproduced_value(block)
+        if v is None:
+            continue   # covered by the previous test
+        if v in _ER_FIXED:
+            continue
+        if _ER_CORRECTED_RE.match(v):
+            continue
+        bad.append(f"{fail_id}: {v!r}")
+    assert not bad, (
+        "Invalid empirically_reproduced values:\n"
+        + "\n".join(bad)
+        + "\nAllowed: yes | no | not_applicable | "
+          "corrected_in_<YYYYMMDD-HHMMSS>"
+    )
+
+
+def test_empirically_reproduced_breakdown_is_observable(capsys):
+    """Advisory — prints the breakdown so operators see it but does
+    not fail. The breakdown helps a future cycle prioritize which
+    'no' entries to convert to 'yes' via regression tests."""
+    counts = {"yes": 0, "no": 0, "not_applicable": 0, "corrected": 0,
+              "missing": 0}
+    for fail_id, _, block in _entries_with_text():
+        v = _empirically_reproduced_value(block)
+        if v is None:
+            counts["missing"] += 1
+        elif v in _ER_FIXED:
+            counts[v] += 1
+        elif _ER_CORRECTED_RE.match(v):
+            counts["corrected"] += 1
+        else:
+            counts["missing"] += 1   # invalid → treat as missing
+    print(f"empirically_reproduced breakdown: {counts}")
+    # Sanity: yes + no + corrected + not_applicable should equal total
+    total = sum(counts.values())
+    assert total > 0, "no FAILURES entries parsed"
+    # This test never fails on counts — it's advisory.
