@@ -106,6 +106,10 @@ Each cycle:
       DONE in 20260513-163434 (canonicalizes the discipline pattern
       from Cycles 33/38/39/40; ADR count 6→7; FAIL-0009 cross-linked)
 
+- [x] [Cycle 44 — ship FAIL-0008] root .dockerignore
+      DONE in 20260513-163910 (closes §0 rule 3 secret-leak surface;
+      first `no` → `yes` conversion in FAILURES.md ledger; 15 tests)
+
 - [ ] [Track C3-live] Real-cycle worktree dispatch (priority: P1)
       details: Wire Scheduler.dispatch_next() into a real dispatch
       loop. Phase D of the continuous-run plan.

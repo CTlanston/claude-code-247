@@ -1,0 +1,79 @@
+# .dockerignore — exclude paths from `docker build` context.
+#
+# Shipped in Cycle 44 (20260513-163910) to close FAIL-0008 (image
+# bloat + .env credential leak into image layers). See FAILURES.md
+# FAIL-0008 entry for the historical context.
+#
+# Tested by tests/test_dockerignore.py — each pattern has its own
+# assertion so a future edit dropping a critical exclusion fails
+# loudly.
+
+# --- Secrets — §0 rule 3 absolutely forbids these in image layers
+.env
+.env.*
+secrets/
+*.key
+*.pem
+id_rsa
+id_rsa.pub
+
+# --- Live operational data (don't bake into image)
+state/
+state/*.db
+state/*.db-*
+state/PAUSED
+state/PAUSED.human
+state/metrics.json
+workspaces/
+worktrees/
+
+# --- Python build noise
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+.python-version
+.hypothesis/
+
+# --- Git internals
+.git/
+.gitignore.swp
+
+# --- L7 per-cycle + telemetry (not runtime)
+cycles/
+reports/runs/
+reports/heartbeat.json
+reports/codex-reviews.jsonl
+reports/adversarial-reviews.jsonl
+reports/health.json
+reports/health.md
+reports/health.history.jsonl
+reports/session-log.md
+reports/state.corrupt.*.json
+reports/supervisor.stdout.log
+reports/supervisor.stderr.log
+
+# --- macOS
+.DS_Store
+*.DS_Store
+
+# --- IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# --- Claude Code local files
+.claude/scheduled_tasks.lock
+
+# --- Documentation that isn't runtime (orchestrator/runner are
+# the two image builds; docs aren't needed in containers)
+docs/
+README.md
+AUTODEV_*.md
+HUMAN_CONFIG*.md

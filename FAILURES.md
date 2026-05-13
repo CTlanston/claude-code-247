@@ -359,10 +359,14 @@ updated to mention the additional row-count safety net.
 
 **Date**: 2026-05-10 (TASK-004 in tasks/backlog.md)
 
-**Empirically reproduced**: no (fix is planned but not yet
-shipped; the symptom is well-understood from `docker build`
-output but the working fix — a `.dockerignore` + test — has
-not landed. Future cycle should add both.)
+**Empirically reproduced**: yes (Cycle 44 shipped a root
+`.dockerignore` excluding state/, workspaces/, worktrees/,
+.env*, secrets/, *.key, *.pem, id_rsa*, __pycache__/, *.pyc,
+.venv/, cycles/, reports/runs/, plus other operational paths;
+regression test `tests/test_dockerignore.py` verifies each
+critical pattern + sanity-checks no pattern over-excludes the
+orchestrator/runner Dockerfile locations or the autodev/ Python
+package)
 
 **Symptom**: `docker build` for both `orchestrator/Dockerfile` and
 `runner/Dockerfile` copied the entire repo context, including
@@ -375,13 +379,23 @@ gigabytes), `.env` (SECRET — would leak into the image layer), and all
 
 **Failed fix attempts**: none (caught early in inner-engine development).
 
-**Working fix**: planned (NOT YET SHIPPED). Add a root `.dockerignore`
-excluding `state/`, `workspaces/`, `.env*`, `__pycache__/`, `*.pyc`,
-`.venv/`, `cycles/`, `reports/runs/`. Plus a regression test that
-`docker build` (or, more cheaply, a `tar --list` of the build context)
-excludes those paths. Filed in BACKLOG as a small standalone cycle.
+**Working fix**: SHIPPED in Cycle 44 (20260513-163910). Root
+`.dockerignore` excludes:
+- `state/` (live SQLite DBs + lock files)
+- `workspaces/` + `worktrees/` (per-issue clones, possibly GBs)
+- `.env*`, `secrets/`, `*.key`, `*.pem`, `id_rsa*` (§0 rule 3)
+- `__pycache__/`, `*.pyc`, `.venv/`, `.python-version`,
+  `.hypothesis/` (Python build noise)
+- `.git/` (huge; never in image)
+- `cycles/`, `reports/runs/` + several `reports/*.{jsonl,log}`
+  (L7 telemetry, not runtime)
+- `docs/`, top-level `*.md`, `.vscode/`, `.idea/`, `.DS_Store`
+  (not runtime)
 
-**Regression test**: not yet (will land with the fix).
+**Regression test**: `tests/test_dockerignore.py` (Cycle 44,
+15 assertions: existence + 9 pattern-presence checks +
+sanity checks against over-exclusion + cross-reference that
+this entry's Empirically reproduced field is "yes").
 
 **Keywords**: dockerignore, image-bloat, docker-build, credentials-leak,
 .env-leak, build-context, runner-image, orchestrator-image, state-leak,
