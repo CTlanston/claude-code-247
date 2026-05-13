@@ -62,6 +62,10 @@ Each cycle:
       DONE in 20260513-141046 (4 regression tests; pytest no longer
       dirties reports/session-log.md)
 
+- [x] [Cycle 34 — Track S5] Adversarial subagent return-check
+      DONE in 20260513-141553 (whitelist + silent remap + contract
+      validator + 12 tests)
+
 - [ ] [Track C3-live] Real-cycle worktree dispatch (priority: P1)
       details: Wire Scheduler.dispatch_next() into a real dispatch
       loop. Phase D of the continuous-run plan.
@@ -145,7 +149,10 @@ Each cycle:
 - [ ] [Track S4] Action-layer evaluator for shell/git commands
 - [ ] [Track M4] Failure auto-clustering script
 - [ ] [Track R4] Adversarial Reviewer subagent role
-- [ ] [Track S5] Adversarial subagent return-check
+- [x] [Track S5] Adversarial subagent return-check
+      DONE in 20260513-141553 (KNOWN_FINDING_CATEGORIES whitelist +
+      silent unknown→"other" remap + validate_adversarial_review_contract
+      pure inspector + 12 regression tests)
 - [ ] [Track S6] Canary-token leakage scan
 - [ ] [Track L3] Long-running supervisor (`scripts/autodev_supervisor_local.sh`)
 - [ ] [Track L4] launchd autostart install — only after 7 days of L2/L3 green

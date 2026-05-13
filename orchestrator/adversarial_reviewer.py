@@ -33,10 +33,34 @@ except ImportError:
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
+# Track S5 (Cycle 34): subagent-return whitelist.
+#
+# These are the 10 categories the `runner/roles/adversarial_reviewer.md`
+# role prompt instructs the subagent to use, plus "other" as the canonical
+# fallback for anything that doesn't match. Categories outside this set
+# get silently remapped to "other" by `run_adversarial_review`, which
+# guards against subagent prompt drift or prompt-injection that smuggles
+# unexpected category strings into downstream consumers.
+#
+# Exported as a tuple (immutable) so callers can introspect without
+# being able to mutate the whitelist at runtime.
+KNOWN_FINDING_CATEGORIES: tuple = (
+    "race", "trust", "silent_loss", "leak", "n_plus_1",
+    "auth", "incompat", "idempotency", "toctou", "boundary",
+    "other",
+)
+_KNOWN_FINDING_CATEGORIES = frozenset(KNOWN_FINDING_CATEGORIES)
+
+# Mirrors the verdict whitelist already used inside run_adversarial_review.
+_KNOWN_VERDICTS = frozenset({
+    "approve", "request_changes", "reject",
+    "skipped", "error", "unknown",
+})
+
+
 @dataclass
 class AdversarialFinding:
-    category: str            # race | trust | silent_loss | leak | n_plus_1 |
-                             # auth | incompat | idempotency | toctou | boundary
+    category: str            # one of KNOWN_FINDING_CATEGORIES (see above)
     message: str
     file: str = ""
     line: int = 0
@@ -89,8 +113,15 @@ def run_adversarial_review(task: dict, issue_id: int) -> AdversarialReview:
     for c in (result.get("comments") or []):
         if not isinstance(c, dict):
             continue
+        # Track S5 (Cycle 34): silently remap unknown categories to
+        # "other". The subagent's role prompt declares 10 categories;
+        # anything outside that set is treated as a contract violation
+        # and stored as "other" so downstream consumers don't see
+        # surprise strings.
+        raw_cat = str(c.get("category") or "other").strip().lower()
+        cat = raw_cat if raw_cat in _KNOWN_FINDING_CATEGORIES else "other"
         findings.append(AdversarialFinding(
-            category=str(c.get("category") or "other"),
+            category=cat,
             message=str(c.get("msg") or c.get("message") or ""),
             file=str(c.get("file") or ""),
             line=int(c.get("line") or 0),
@@ -127,3 +158,44 @@ def adversarial_disagreement(claude_verdict: str,
                 f"Adversarial verdict={adv_verdict!r}. Per L7 §7 the "
                 "cycle must NOT auto-resolve — escalate to human review.")
     return None
+
+
+# --- Return-check (Track S5, Cycle 34) ---------------------------------
+
+
+def validate_adversarial_review_contract(
+    review: AdversarialReview,
+) -> List[str]:
+    """Return a list of contract-violation strings (empty when the
+    review matches the documented schema). Use this at the boundary
+    between subagent output and downstream consumers to detect drift,
+    prompt-injection, or schema bugs in the adapter.
+
+    The function does NOT raise and does NOT mutate the review; it is
+    a pure inspector. Empty findings lists are allowed (an adversarial
+    pass with nothing to flag is valid).
+    """
+    violations: List[str] = []
+    if review.source != "adversarial":
+        violations.append(
+            f"source must equal 'adversarial' (got {review.source!r})"
+        )
+    verdict_lc = (review.verdict or "").strip().lower()
+    if verdict_lc not in _KNOWN_VERDICTS:
+        violations.append(
+            f"verdict {review.verdict!r} is not one of "
+            f"{sorted(_KNOWN_VERDICTS)}"
+        )
+    for i, f in enumerate(review.findings or []):
+        cat = (f.category or "").strip().lower()
+        if cat not in _KNOWN_FINDING_CATEGORIES:
+            violations.append(
+                f"findings[{i}].category {f.category!r} is not in the "
+                f"known set {sorted(_KNOWN_FINDING_CATEGORIES)}"
+            )
+        if not (f.message or "").strip():
+            violations.append(
+                f"findings[{i}].message is empty (every finding must "
+                f"carry an explanation)"
+            )
+    return violations
