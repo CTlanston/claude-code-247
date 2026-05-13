@@ -71,6 +71,11 @@ Each cycle:
       counts the gate; LEVEL.md S-evidence now 6/7 active gates +
       4 canonical-path tests)
 
+- [x] [Cycle 36 — Track S6] orchestrator/canary_scan.py
+      DONE in 20260513-142439 (last S-L7 gate; CANARY_PATTERN + 3
+      public functions + 14 regression tests; LEVEL.md S-evidence
+      now 7/7 active gates — no missing-module notes remain)
+
 - [ ] [Track C3-live] Real-cycle worktree dispatch (priority: P1)
       details: Wire Scheduler.dispatch_next() into a real dispatch
       loop. Phase D of the continuous-run plan.
@@ -158,7 +163,11 @@ Each cycle:
       DONE in 20260513-141553 (KNOWN_FINDING_CATEGORIES whitelist +
       silent unknown→"other" remap + validate_adversarial_review_contract
       pure inspector + 12 regression tests)
-- [ ] [Track S6] Canary-token leakage scan
+- [x] [Track S6] Canary-token leakage scan
+      DONE in 20260513-142439 (orchestrator/canary_scan.py with
+      CANARY_PATTERN + scan_text/scan_file/scan_paths + 14 tests;
+      S-L7 evidence now reads "7 active gates" — all S-L7 gates
+      active, no missing-module notes remain)
 - [ ] [Track L3] Long-running supervisor (`scripts/autodev_supervisor_local.sh`)
 - [ ] [Track L4] launchd autostart install — only after 7 days of L2/L3 green
 

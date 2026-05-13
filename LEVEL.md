@@ -4,12 +4,11 @@ Per §3 + §9 of AUTODEV_L7_MASTER_PROMPT.md.
 Overall L = min across all dimensions.
 
 M 7 | evidence: CHANGELOG.md present; CONTEXT.md present + 6 ADRs; FAILURES.md has 11 entries + preflight script wired; Failure clustering script + report present; Planner refused 16 times citing FAILURES
-S 7 | evidence: 6 active gates: guardian_cost, tdd_invariant, preflight, intake_sanitizer, action_layer_evaluator, adversarial_return_check
-  - note: canary_leakage_scan: module missing
+S 7 | evidence: 7 active gates: guardian_cost, tdd_invariant, preflight, intake_sanitizer, action_layer_evaluator, adversarial_return_check, canary_leakage_scan
 R 7 | evidence: Single-model Reviewer present (orchestrator/roles/reviewer.md); Codex bridge infra ready: code + tests + CLI on PATH + budget guard; Codex bridge wired into orchestrator/main.py; Adversarial Reviewer active; N-of-3 panel with disagreement-escalation active
 C 4 | evidence: 2 git worktree(s) detected
-  - note: Need 30-cycle zero-deadlock streak (have 15)
-T 7 | evidence: 48 unit test files + e2e replay present; 3 property-based test files; Mutation kill rate 100.00%; Live sanity script + logs present; Golden-diff fixtures present
-E 4 | evidence: propose_next_track.py exists
+  - note: Need 30-cycle zero-deadlock streak (have 17)
+T 7 | evidence: 49 unit test files + e2e replay present; 3 property-based test files; Mutation kill rate 100.00%; Live sanity script + logs present; Golden-diff fixtures present
+E 7 | evidence: propose_next_track.py exists; Ran in last 5 cycles; 5 proposals cite FAILURES; 7 recent promotions cite proposal
 
 Overall L = 4
