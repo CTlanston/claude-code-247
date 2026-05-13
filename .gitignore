@@ -51,3 +51,8 @@ worktrees/
 # (calibration + cycle-level entries) IS committed, but codex-reviews.jsonl
 # (one row per actual PR review) stays operational-only.
 reports/codex-reviews.jsonl
+
+# Adversarial-reviewer runtime log — same pattern as codex-reviews.jsonl.
+# Grows per real PR review; integration tests' stubbed fixtures sometimes
+# leak entries here too. Operational-only.
+reports/adversarial-reviews.jsonl

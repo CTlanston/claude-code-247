@@ -1,6 +1,6 @@
 # Mutation report — billable.py
 
-Total mutations: **21** · killed: **18** · survived: **3** · kill rate: **85.71%**
+Total mutations: **21** · killed: **21** · survived: **0** · kill rate: **100.00%**
 
 ## Per-mutant details
 
@@ -24,6 +24,6 @@ Total mutations: **21** · killed: **18** · survived: **3** · kill rate: **85.
 | 16 | numeric | line 84 | `300` → `301` | killed |
 | 17 | numeric | line 84 | `300` → `299` | killed |
 | 18 | numeric | line 84 | `86400` → `86401` | killed |
-| 19 | numeric | line 84 | `86400` → `86399` | survived |
-| 20 | numeric | line 85 | `5` → `6` | survived |
-| 21 | numeric | line 85 | `5` → `4` | survived |
+| 19 | numeric | line 84 | `86400` → `86399` | killed |
+| 20 | numeric | line 85 | `5` → `6` | killed |
+| 21 | numeric | line 85 | `5` → `4` | killed |

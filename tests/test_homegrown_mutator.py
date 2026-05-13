@@ -309,10 +309,12 @@ def test_cli_writes_kill_rate_file(tmp_path):
         "def test_f(): assert f() == 1\n"
     )
     out = tmp_path / "kill-rate.txt"
+    report_out = tmp_path / "report.md"
     rc = mb.main([
         "--sut", str(sut),
         "--tests", str(test),
         "--out", str(out),
+        "--report-out", str(report_out),
         "--cwd", str(tmp_path),
     ])
     assert rc == 0
