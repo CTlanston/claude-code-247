@@ -9,14 +9,14 @@
 
 ## P0 — immediate next cycle (Phase B of AUTODEV_L7_CONTINUOUS_RUN.md)
 
-- [ ] [Phase B Cycle 25] scripts/autodev_continuous_cycle.sh
-      (priority: P0): the launchd wake script. Stop-condition checks,
-      cooldown, rate-limit detection, health gate, target-L check,
-      45-min timeout on `claude -p`. Plus tests for each branch.
+- [x] [Phase B Cycle 25] scripts/autodev_continuous_cycle.sh
+      DONE in 20260513-050612 (launchd wake script + 15 regression tests;
+      all stop conditions covered; macOS+Linux mtime compat; always exits 0)
 
-- [ ] [Phase B Cycle 26] scripts/autodev_cycle_prompt.md
-      (priority: P0): the prompt fed to `claude -p` on each wake.
-      Self-contained, runs ONE cycle, exits. Plus a structural test.
+- [x] [Phase B Cycle 26] scripts/autodev_cycle_prompt.md
+      DONE in 20260513-051327 (the standing prompt fed to `claude -p`
+      on every launchd wake; 27 structural tests; encodes Cycle 25's
+      propose-before-check ordering lesson)
 
 - [ ] [Phase B Cycle 27] scripts/install_launchd_autodev.sh
       (priority: P0): generates + installs the plist. Idempotent;
@@ -120,6 +120,15 @@
 
 ## Completed
 
+- [x] [Phase B Cycle 26] scripts/autodev_cycle_prompt.md +
+      tests/test_autodev_cycle_prompt.py
+      DONE in 20260513-051327 (standing prompt for `claude -p` on
+      each launchd wake; 27 structural tests; Cycle 25 ordering
+      lesson encoded)
+- [x] [Phase B Cycle 25] scripts/autodev_continuous_cycle.sh +
+      tests/test_autodev_continuous_cycle.py
+      DONE in 20260513-050612 (launchd wake script + 15 tests;
+      all stop conditions covered; always exits 0)
 - [x] [Track E7] retro-cite next-track-proposal in 5 cycle REPORTs +
       🎯 on dim-max CHANGELOG lines + tests/test_e_level_promotion_evidence.py
       DONE in 20260513-050048 (E-dim L6 → L7, **E is now at max** —
