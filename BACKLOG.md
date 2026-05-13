@@ -80,6 +80,10 @@ Each cycle:
       DONE in 20260513-144902 (9-signal score per §10; first real
       health.json emit = 94 green; 15 regression tests)
 
+- [x] [Cycle 38 — H1 doctor wire] autodev_doctor.sh reads health.json
+      DONE in 20260513-145451 (read-only doctor extension + 7 tests
+      including 3 FAIL-0009 regression guards; doctor 13→14/0/2)
+
 - [ ] [Track C3-live] Real-cycle worktree dispatch (priority: P1)
       details: Wire Scheduler.dispatch_next() into a real dispatch
       loop. Phase D of the continuous-run plan.

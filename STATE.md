@@ -1,8 +1,8 @@
 # STATE.md — current L7 supervisor state
 
 ```yaml
-current_branch: autoevo/cycle-37/health-score
-last_cycle_id: 20260513-144902
+current_branch: autoevo/cycle-38/health-doctor-wire
+last_cycle_id: 20260513-145451
 last_cycle_result: PASS
 last_green_commit: pending-commit
 last_levelup: 20260513-050048      # E 6→7. No level move this cycle.
@@ -19,12 +19,12 @@ session_mission:
   phase_a: 3/3 COMPLETE
   phase_b: 5/5 COMPLETE
   phase_c: 2/2 COMPLETE
-  phase_d: 6 cycles done (K1, FAIL-0009, S5, S-L7 shim, S6 canary, H1 health)
+  phase_d: 7 cycles done (K1, FAIL-0009, S5, S-L7 shim, S6, H1, H1 doctor wire)
 concurrency:
   worktree_count: 2
-  zero_deadlock_streak: 18
+  zero_deadlock_streak: 19
   streak_target_for_L5: 30
-  cycles_to_C_L5: 12
+  cycles_to_C_L5: 11
 launchd_infra:
   wake_script:           scripts/autodev_continuous_cycle.sh     (Cycle 25)
   prompt_file:           scripts/autodev_cycle_prompt.md         (Cycle 26)
@@ -39,36 +39,43 @@ launchd_infra:
   adversarial_return_path: canonical-path shim                   (Cycle 35)
   canary_scan:           CANARY_PATTERN + scan_text/file/paths   (Cycle 36)
   health_scorer:         9-signal §10 emitter; first score=94    (Cycle 37)
+  health_doctor_wire:    doctor reads health.json (read-only)    (Cycle 38)
   not_installed_yet:     TRUE — operator runs install ONCE
 s_dim_active_gates: 7/7
-health_score: 94 (green) — real emit from orchestrator/health.py
+doctor_count: 14/0/2   # +1 from Cycle 38 health check
+health_score: 94 (green)
 named_risks_resolved:
-  - FAIL-0009 (Cycle 33; env-var gate; pytest no longer dirties tree)
-  - launchd health stop-condition non-functional (Cycle 37 emits real scores)
-doctor_count: 13/0/2
-test_total: 593 passed / 2 skipped
+  - FAIL-0009 (Cycle 33; pytest no longer dirties; Cycle 38 doctor
+    extension preserves the invariant via 3 regression-guard tests)
+test_total: 600 passed / 2 skipped     # round-number milestone
 ```
 
-## Progress (38 cycles since Bootstrap)
+## Progress (39 cycles since Bootstrap)
 
 Phase A complete. Phase B complete. Phase C complete.
-Phase D: 6 cycles done. C streak 18/30 → 12 more for C-L5.
+Phase D: 7 cycles done. C streak 19/30 → 11 more for C-L5.
 
 ## Next-cycle target
 
-Phase D continuation. Reasonable candidates:
-- **Track P1** — strict Planner output contract validator (small/medium)
+Phase D continuation. Reasonable picks:
+- **Track P1** — strict Planner output contract validator
 - Encode the M-dim "FAILURES.md empirically_reproduced field"
-  discipline rule from Cycle 33 (small docs cycle)
-- Wire health into the doctor (small) — addresses §10's
-  "Doctor should call it as part of pre-flight"
+  rule from Cycle 33 (small docs cycle)
+- Wire health into the wake script's stop-condition logic
+  more explicitly (cosmetic — already works, but the log line
+  could be clearer)
 
-## Cycle 37 verification snapshot
+Watch for context budget approaching ~80% → session-handoff
+and exit.
 
-- pytest: 593 passed, 2 skipped, 0 failed (+15 health tests)
-- propose_next_track --for-cycle 20260513-144902 → proposal written FIRST
+## Cycle 38 verification snapshot
+
+- pytest: 600 passed, 2 skipped, 0 failed (+7 doctor health tests)
+- propose_next_track --for-cycle 20260513-145451 → proposal written FIRST
 - compute_level --check (post-proposal): passed (Overall L=4 stable)
-- doctor: 13/0/2
-- LIVE health score (real repo): 94 (green) — wake script's
-  health stop-condition now operates on real data
-- streak: 18/30 → 12 more disciplined cycles for C-L5
+- doctor: **14/0/2** (was 13/0/2; +1 health check)
+- LIVE: `bash scripts/autodev_doctor.sh` shows
+  `✓ health score=94 (green)`
+- FAIL-0009 regression guards still green (doctor stays
+  strictly read-only)
+- streak: 19/30 → 11 more disciplined cycles for C-L5

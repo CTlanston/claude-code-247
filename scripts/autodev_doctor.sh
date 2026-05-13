@@ -77,6 +77,23 @@ else
   warn "scripts/autodev_status_dashboard.sh missing or not executable (Phase B Cycle 28)"
 fi
 
+# Cycle 38 — Track H wire: surface reports/health.json if present.
+# READ-ONLY by design — doctor does NOT invoke the health emitter
+# (that would write 3 files and re-introduce a FAIL-0009-class
+# dirty-tree side-effect). To refresh health, run:
+#   bash scripts/autodev_health.sh
+if [[ -f reports/health.json ]]; then
+  h_score=$(python3 -c "import json,sys; sys.stdout.write(str(json.load(open('reports/health.json')).get('score','?')))" 2>/dev/null || echo "?")
+  h_status=$(python3 -c "import json,sys; sys.stdout.write(str(json.load(open('reports/health.json')).get('status','?')))" 2>/dev/null || echo "?")
+  if [[ "$h_score" =~ ^[0-9]+$ ]] && (( h_score >= 50 )); then
+    ok "health score=$h_score ($h_status)"
+  else
+    warn "health score=$h_score ($h_status) — below 50; wake script will skip dispatch"
+  fi
+else
+  warn "reports/health.json missing (run scripts/autodev_health.sh)"
+fi
+
 echo
 echo "--- Optional ---"
 command -v tmux >/dev/null && ok "tmux present" || warn "tmux not installed (Phase 14)"
