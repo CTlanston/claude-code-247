@@ -1,8 +1,8 @@
 # STATE.md — current L7 supervisor state
 
 ```yaml
-current_branch: autoevo/cycle-39/gitignore-health
-last_cycle_id: 20260513-145929
+current_branch: autoevo/cycle-40/wake-refreshes-health
+last_cycle_id: 20260513-150357
 last_cycle_result: PASS
 last_green_commit: pending-commit
 last_levelup: 20260513-050048      # E 6→7. No level move this cycle.
@@ -19,14 +19,14 @@ session_mission:
   phase_a: 3/3 COMPLETE
   phase_b: 5/5 COMPLETE
   phase_c: 2/2 COMPLETE
-  phase_d: 8 cycles done
+  phase_d: 9 cycles done
 concurrency:
   worktree_count: 2
-  zero_deadlock_streak: 20      # 2/3 of the way to C-L5
+  zero_deadlock_streak: 21      # 70% of the way to C-L5
   streak_target_for_L5: 30
-  cycles_to_C_L5: 10
+  cycles_to_C_L5: 9
 launchd_infra:
-  wake_script:           scripts/autodev_continuous_cycle.sh     (Cycle 25)
+  wake_script:           scripts/autodev_continuous_cycle.sh     (Cycles 25, 40)
   prompt_file:           scripts/autodev_cycle_prompt.md         (Cycle 26)
   installer (L7):        scripts/install_launchd_continuous.sh   (Cycle 27)
   dashboard:             scripts/autodev_status_dashboard.sh     (Cycle 28)
@@ -40,52 +40,57 @@ launchd_infra:
   canary_scan:           CANARY_PATTERN + scan_text/file/paths   (Cycle 36)
   health_scorer:         9-signal §10 emitter; first score=94    (Cycle 37)
   health_doctor_wire:    doctor reads health.json (read-only)    (Cycle 38)
-  health_gitignored:     untracked + .gitignore'd; no dirty tree (Cycle 39)
+  health_gitignored:     untracked + .gitignore'd                (Cycle 39)
+  wake_refreshes_health: refresh-on-dispatch wired in            (Cycle 40)
   not_installed_yet:     TRUE — operator runs install ONCE
+health_pipeline_complete: TRUE — emit → read → gitignored → wake-refresh
 s_dim_active_gates: 7/7
 doctor_count: 14/0/2
 health_score: 94 (green)
-named_risks_resolved:
-  - FAIL-0009 (Cycle 33; pytest immune via env-var gate)
-  - FAIL-0009-class regression (Cycle 38; doctor stays read-only)
-  - FAIL-0009-class regression (Cycle 39; health files gitignored
-    so wake-script refresh doesn't dirty the tree)
-test_total: 605 passed / 2 skipped
+test_total: 613 passed / 2 skipped
 ```
 
-## Progress (40 cycles since Bootstrap)
+## Progress (41 cycles since Bootstrap)
 
 Phase A complete. Phase B complete. Phase C complete.
-Phase D: 8 cycles done. C streak **20/30** — two-thirds of the
-way; 10 more for C-L5.
+Phase D: 9 cycles done. C streak **21/30** — 70% of the way;
+9 more cycles for C-L5.
+
+## Cycles 37-40 — coherent health-pipeline thread
+
+Across the last 4 cycles, a complete pipeline emerged:
+
+```
+   Cycle 37             Cycle 38             Cycle 39            Cycle 40
+   ─────────            ─────────            ─────────           ─────────
+orchestrator/        scripts/autodev_     .gitignore +       wake script
+health.py emits      doctor.sh READS      git rm --cached    refreshes via
+reports/             reports/             of the 3 health    autodev_health.sh
+health.json          health.json          artifacts (so      before reading
++ health.md +        (read-only;          wake-refresh        the score on
+history.jsonl        no FAIL-0009         doesn't dirty      each dispatch
+                     regression)          tree)               decision
+```
+
+Result: the wake script's "health < 50 → skip" check now
+operates on real, current data. Three FAIL-0009-class regression
+guards (one in cycle 38, two in cycle 39+40) prevent re-
+introduction of dirty-tree side effects.
 
 ## Next-cycle target
 
-The launchd-driven path's health integration is now fully
-deadlock-free:
-- Cycle 37: health.py emits the JSON
-- Cycle 38: doctor reads it (read-only)
-- Cycle 39: artifacts gitignored so wake-script refresh is safe
+Reasonable picks (small):
+- Encode FAILURES.md `empirically_reproduced` field rule (small docs)
+- Track P1 — strict Planner output contract validator (medium)
+- Lint configuration (closes the `lint_typecheck: NO_DATA`
+  signal in the health score)
 
-A future cycle can now have the wake script call
-`autodev_health.sh` before each dispatch decision without
-fearing FAIL-0009-class regression.
+Context budget approaching ~80% — write session-handoff and exit.
 
-Other candidates:
-- Track P1 — strict Planner output contract validator
-- Wake-script integration of health refresh (small)
-- Encode FAILURES.md `empirically_reproduced` field (small)
+## Cycle 40 verification snapshot
 
-Context budget approaching 80% — write session-handoff +
-exit cleanly.
-
-## Cycle 39 verification snapshot
-
-- pytest: 605 passed, 2 skipped, 0 failed (+5 gitignore tests)
+- pytest: 613 passed, 2 skipped, 0 failed (+8 wake-refresh tests)
 - doctor: 14/0/2
-- propose_next_track --for-cycle 20260513-145929 → proposal written FIRST
+- propose_next_track --for-cycle 20260513-150357 → proposal written FIRST
 - compute_level --check (post-proposal): passed
-- LIVE: `autodev_health.sh` rerun produces no NEW dirty entries
-  in `git status --porcelain` (the 3 health files are
-  effectively ignored)
-- streak: 20/30 → 10 more disciplined cycles for C-L5
+- streak: 21/30 → 9 more disciplined cycles for C-L5

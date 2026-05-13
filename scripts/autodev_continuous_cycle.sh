@@ -57,6 +57,21 @@ if [[ -f BLOCKED.md ]]; then
   log "BLOCKED.md is ${age_hours}h old (>= 24h) — proceeding despite block."
 fi
 
+# --- Refresh health score before reading ---
+# Cycle 40: invoke autodev_health.sh so reports/health.json reflects
+# current disk state. The artifacts are gitignored (Cycle 39) so this
+# does NOT dirty the tracked tree. Fail-open via `|| true` — a broken
+# health emitter must not abort the wake. Operator can skip via
+# AUTODEV_SKIP_HEALTH_REFRESH=1 (debugging).
+#
+# The path is relative to $REPO (where we cd'd above) — that way the
+# launchd run picks up the real scripts/autodev_health.sh AND test
+# tmp-path runs can stub it.
+if [[ -z "${AUTODEV_SKIP_HEALTH_REFRESH:-}" ]] \
+   && [[ -x "./scripts/autodev_health.sh" ]]; then
+  bash "./scripts/autodev_health.sh" >/dev/null 2>&1 || true
+fi
+
 # --- Health gate ------------------------------------------------------
 
 if [[ -f reports/health.json ]]; then
