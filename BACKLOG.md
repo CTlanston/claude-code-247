@@ -18,10 +18,12 @@
       on every launchd wake; 27 structural tests; encodes Cycle 25's
       propose-before-check ordering lesson)
 
-- [ ] [Phase B Cycle 27] scripts/install_launchd_autodev.sh
-      (priority: P0): generates + installs the plist. Idempotent;
-      --install/--uninstall/--status flags. Plus plist-generation
-      tests. DO NOT auto-install — leave for operator.
+- [x] [Phase B Cycle 27] scripts/install_launchd_continuous.sh
+      DONE in 20260513-051843 (L7 launchd plist installer + 26 tests;
+      flags: --install/--uninstall/--status/--print-plist; idempotent;
+      AUTODEV_LAUNCHD_DRY_RUN env knob for test path; label
+      `com.lanston.autodev.continuous` is distinct from the v3
+      `com.autodev.supervisor` agent so they coexist)
 
 - [ ] [Phase B Cycle 28] scripts/autodev_status_dashboard.sh
       (priority: P0): read-only ops command. Show overall L, dim
@@ -120,6 +122,10 @@
 
 ## Completed
 
+- [x] [Phase B Cycle 27] scripts/install_launchd_continuous.sh +
+      tests/test_install_launchd_continuous.py
+      DONE in 20260513-051843 (L7 plist installer + 26 tests;
+      coexists with pre-existing v3 install_launchd_autodev.sh)
 - [x] [Phase B Cycle 26] scripts/autodev_cycle_prompt.md +
       tests/test_autodev_cycle_prompt.py
       DONE in 20260513-051327 (standing prompt for `claude -p` on

@@ -1,0 +1,264 @@
+"""Regression tests for scripts/install_launchd_continuous.sh (Cycle 27).
+
+The script generates a macOS launchd plist for the L7 continuous-cycle
+agent and (optionally) loads it. All tests run with
+AUTODEV_LAUNCHD_DRY_RUN=1 so the real launchctl is never touched.
+
+The fixture pattern: each test makes a tmp_path, sets AUTODEV_PLIST_PATH
+into it, and asserts on file existence + plist content.
+"""
+from __future__ import annotations
+
+import os
+import plistlib
+import subprocess
+from pathlib import Path
+
+import pytest
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+SCRIPT = REPO_ROOT / "scripts" / "install_launchd_continuous.sh"
+
+
+def _run(args, *, tmp_path: Path | None = None,
+         extra_env: dict | None = None) -> subprocess.CompletedProcess:
+    env = os.environ.copy()
+    env["AUTODEV_LAUNCHD_DRY_RUN"] = "1"
+    if tmp_path is not None:
+        env["AUTODEV_PLIST_PATH"] = str(tmp_path / "agent.plist")
+        env["AUTODEV_REPO_ROOT"] = str(tmp_path)
+    if extra_env:
+        env.update({k: str(v) for k, v in extra_env.items()})
+    return subprocess.run(
+        [str(SCRIPT), *args],
+        capture_output=True, text=True, env=env, timeout=15,
+    )
+
+
+# --- Existence / executable --------------------------------------------
+
+
+def test_script_exists():
+    assert SCRIPT.exists()
+
+
+def test_script_executable():
+    assert os.access(SCRIPT, os.X_OK)
+
+
+# --- --print-plist: plist generation -----------------------------------
+
+
+def test_print_plist_emits_parseable_xml(tmp_path):
+    r = _run(["--print-plist"], tmp_path=tmp_path)
+    assert r.returncode == 0, r.stderr
+    data = plistlib.loads(r.stdout.encode("utf-8"))
+    assert data["Label"] == "com.lanston.autodev.continuous"
+
+
+def test_plist_has_all_required_keys(tmp_path):
+    r = _run(["--print-plist"], tmp_path=tmp_path)
+    data = plistlib.loads(r.stdout.encode("utf-8"))
+    required = {
+        "Label",
+        "ProgramArguments",
+        "WorkingDirectory",
+        "EnvironmentVariables",
+        "StartInterval",
+        "StandardOutPath",
+        "StandardErrorPath",
+        "ThrottleInterval",
+        "RunAtLoad",
+    }
+    missing = required - set(data.keys())
+    assert not missing, f"missing keys: {missing}"
+
+
+def test_plist_program_runs_wake_script(tmp_path):
+    r = _run(["--print-plist"], tmp_path=tmp_path)
+    data = plistlib.loads(r.stdout.encode("utf-8"))
+    pa = data["ProgramArguments"]
+    assert pa[0] == "/bin/bash"
+    assert pa[1].endswith("/scripts/autodev_continuous_cycle.sh"), pa
+
+
+def test_plist_start_interval_default_is_900(tmp_path):
+    r = _run(["--print-plist"], tmp_path=tmp_path)
+    data = plistlib.loads(r.stdout.encode("utf-8"))
+    assert data["StartInterval"] == 900
+
+
+def test_plist_start_interval_honors_env(tmp_path):
+    r = _run(
+        ["--print-plist"], tmp_path=tmp_path,
+        extra_env={"AUTODEV_INTERVAL_SECONDS": "1800"},
+    )
+    data = plistlib.loads(r.stdout.encode("utf-8"))
+    assert data["StartInterval"] == 1800
+
+
+def test_plist_target_l_default_is_5(tmp_path):
+    r = _run(["--print-plist"], tmp_path=tmp_path)
+    data = plistlib.loads(r.stdout.encode("utf-8"))
+    assert data["EnvironmentVariables"]["AUTODEV_TARGET_L"] == "5"
+
+
+def test_plist_target_l_honors_env(tmp_path):
+    r = _run(
+        ["--print-plist"], tmp_path=tmp_path,
+        extra_env={"AUTODEV_TARGET_L": "6"},
+    )
+    data = plistlib.loads(r.stdout.encode("utf-8"))
+    assert data["EnvironmentVariables"]["AUTODEV_TARGET_L"] == "6"
+
+
+def test_plist_run_at_load_is_false(tmp_path):
+    """We don't want immediate fire on install — launchd's first
+    invocation should be StartInterval later. RunAtLoad=false."""
+    r = _run(["--print-plist"], tmp_path=tmp_path)
+    data = plistlib.loads(r.stdout.encode("utf-8"))
+    assert data["RunAtLoad"] is False
+
+
+def test_plist_throttle_interval_is_60(tmp_path):
+    r = _run(["--print-plist"], tmp_path=tmp_path)
+    data = plistlib.loads(r.stdout.encode("utf-8"))
+    assert data["ThrottleInterval"] == 60
+
+
+def test_plist_working_directory_is_repo(tmp_path):
+    r = _run(["--print-plist"], tmp_path=tmp_path)
+    data = plistlib.loads(r.stdout.encode("utf-8"))
+    assert data["WorkingDirectory"] == str(tmp_path)
+
+
+def test_plist_log_paths_inside_repo(tmp_path):
+    r = _run(["--print-plist"], tmp_path=tmp_path)
+    data = plistlib.loads(r.stdout.encode("utf-8"))
+    assert data["StandardOutPath"].startswith(str(tmp_path))
+    assert data["StandardOutPath"].endswith("/launchd.out.log")
+    assert data["StandardErrorPath"].startswith(str(tmp_path))
+    assert data["StandardErrorPath"].endswith("/launchd.err.log")
+
+
+# --- --install -------------------------------------------------------
+
+
+def test_install_writes_plist_file(tmp_path):
+    r = _run(["--install"], tmp_path=tmp_path)
+    assert r.returncode == 0, r.stderr
+    plist_path = tmp_path / "agent.plist"
+    assert plist_path.exists()
+    # And it's a parseable plist
+    data = plistlib.loads(plist_path.read_bytes())
+    assert data["Label"] == "com.lanston.autodev.continuous"
+
+
+def test_install_is_idempotent(tmp_path):
+    """Two consecutive installs leave exactly one plist with the
+    same contents (modulo nothing — it's a pure regen)."""
+    r1 = _run(["--install"], tmp_path=tmp_path)
+    assert r1.returncode == 0
+    first_bytes = (tmp_path / "agent.plist").read_bytes()
+    r2 = _run(["--install"], tmp_path=tmp_path)
+    assert r2.returncode == 0
+    second_bytes = (tmp_path / "agent.plist").read_bytes()
+    assert first_bytes == second_bytes
+
+
+def test_install_dry_run_does_not_invoke_launchctl(tmp_path):
+    """Dry-run should print a hint that launchctl was skipped."""
+    r = _run(["--install"], tmp_path=tmp_path)
+    assert "[dry-run]" in r.stdout
+
+
+# --- --uninstall ----------------------------------------------------
+
+
+def test_uninstall_removes_plist(tmp_path):
+    _run(["--install"], tmp_path=tmp_path)
+    assert (tmp_path / "agent.plist").exists()
+    r = _run(["--uninstall"], tmp_path=tmp_path)
+    assert r.returncode == 0
+    assert not (tmp_path / "agent.plist").exists()
+
+
+def test_uninstall_when_not_installed_is_idempotent(tmp_path):
+    """Uninstall with no plist present should still exit 0."""
+    r = _run(["--uninstall"], tmp_path=tmp_path)
+    assert r.returncode == 0
+    assert "nothing to uninstall" in r.stdout.lower()
+
+
+# --- --status ------------------------------------------------------
+
+
+def test_status_when_not_installed(tmp_path):
+    r = _run(["--status"], tmp_path=tmp_path)
+    assert r.returncode == 0
+    out = r.stdout
+    assert "Label:" in out
+    assert "com.lanston.autodev.continuous" in out
+    assert "not installed" in out.lower()
+
+
+def test_status_when_installed(tmp_path):
+    _run(["--install"], tmp_path=tmp_path)
+    r = _run(["--status"], tmp_path=tmp_path)
+    assert r.returncode == 0
+    out = r.stdout
+    assert "exists" in out.lower()
+
+
+def test_status_reports_stop_conditions(tmp_path):
+    """If STOPSWITCH is present in the repo root, --status surfaces it."""
+    (tmp_path / "reports").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "reports" / "STOPSWITCH").write_text("halt\n")
+    r = _run(["--status"], tmp_path=tmp_path)
+    assert r.returncode == 0
+    assert "STOPSWITCH" in r.stdout
+
+
+def test_status_reports_overall_level(tmp_path):
+    (tmp_path / "LEVEL.md").write_text(
+        "# LEVEL.md\n\nOverall L = 4\n"
+    )
+    r = _run(["--status"], tmp_path=tmp_path)
+    assert r.returncode == 0
+    assert "Overall L = 4" in r.stdout
+
+
+# --- Unknown / bare invocation -----------------------------------
+
+
+def test_unknown_flag_exits_nonzero(tmp_path):
+    r = _run(["--bogus"], tmp_path=tmp_path)
+    assert r.returncode != 0
+    assert "unknown flag" in r.stderr.lower() or "usage" in r.stderr.lower()
+
+
+def test_bare_invocation_exits_nonzero(tmp_path):
+    """Calling with no args prints usage and exits 1."""
+    r = _run([], tmp_path=tmp_path)
+    assert r.returncode == 1
+    assert "usage" in r.stderr.lower()
+
+
+def test_help_flag_exits_zero(tmp_path):
+    r = _run(["--help"], tmp_path=tmp_path)
+    assert r.returncode == 0
+    assert "usage" in r.stdout.lower()
+
+
+# --- Plist file location safety --------------------------------------
+
+
+def test_plist_label_is_l7_not_v3(tmp_path):
+    """The L7 installer must NOT clobber the v3 supervisor agent.
+    LABEL must be `com.lanston.autodev.continuous`, distinct from
+    the v3 `com.autodev.supervisor`."""
+    r = _run(["--print-plist"], tmp_path=tmp_path)
+    data = plistlib.loads(r.stdout.encode("utf-8"))
+    assert data["Label"] == "com.lanston.autodev.continuous"
+    assert data["Label"] != "com.autodev.supervisor"
