@@ -1,1 +1,0 @@
-{"ts": "2026-05-13T14:52:02.218590+00:00", "score": 94, "status": "green", "signals": {"test_status": "PASS", "lint_typecheck": "NO_DATA", "recent_failure_rate": 0.0, "stuck_issue_count": 2, "guardian_pauses_last_24h": 0, "flaky_test_signs": "NO_DATA", "large_diff_signs": 0, "untracked_file_risk": "clean", "cost_budget_remaining_pct": 100.0}}

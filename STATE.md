@@ -1,15 +1,15 @@
 # STATE.md — current L7 supervisor state
 
 ```yaml
-current_branch: autoevo/cycle-38/health-doctor-wire
-last_cycle_id: 20260513-145451
+current_branch: autoevo/cycle-39/gitignore-health
+last_cycle_id: 20260513-145929
 last_cycle_result: PASS
 last_green_commit: pending-commit
 last_levelup: 20260513-050048      # E 6→7. No level move this cycle.
 overall_level: 4                     # C is the SOLE remaining floor
 dim_levels:
   M: 7
-  S: 7   # 7/7 active gates
+  S: 7
   R: 7
   C: 4
   T: 7
@@ -19,12 +19,12 @@ session_mission:
   phase_a: 3/3 COMPLETE
   phase_b: 5/5 COMPLETE
   phase_c: 2/2 COMPLETE
-  phase_d: 7 cycles done (K1, FAIL-0009, S5, S-L7 shim, S6, H1, H1 doctor wire)
+  phase_d: 8 cycles done
 concurrency:
   worktree_count: 2
-  zero_deadlock_streak: 19
+  zero_deadlock_streak: 20      # 2/3 of the way to C-L5
   streak_target_for_L5: 30
-  cycles_to_C_L5: 11
+  cycles_to_C_L5: 10
 launchd_infra:
   wake_script:           scripts/autodev_continuous_cycle.sh     (Cycle 25)
   prompt_file:           scripts/autodev_cycle_prompt.md         (Cycle 26)
@@ -40,42 +40,52 @@ launchd_infra:
   canary_scan:           CANARY_PATTERN + scan_text/file/paths   (Cycle 36)
   health_scorer:         9-signal §10 emitter; first score=94    (Cycle 37)
   health_doctor_wire:    doctor reads health.json (read-only)    (Cycle 38)
+  health_gitignored:     untracked + .gitignore'd; no dirty tree (Cycle 39)
   not_installed_yet:     TRUE — operator runs install ONCE
 s_dim_active_gates: 7/7
-doctor_count: 14/0/2   # +1 from Cycle 38 health check
+doctor_count: 14/0/2
 health_score: 94 (green)
 named_risks_resolved:
-  - FAIL-0009 (Cycle 33; pytest no longer dirties; Cycle 38 doctor
-    extension preserves the invariant via 3 regression-guard tests)
-test_total: 600 passed / 2 skipped     # round-number milestone
+  - FAIL-0009 (Cycle 33; pytest immune via env-var gate)
+  - FAIL-0009-class regression (Cycle 38; doctor stays read-only)
+  - FAIL-0009-class regression (Cycle 39; health files gitignored
+    so wake-script refresh doesn't dirty the tree)
+test_total: 605 passed / 2 skipped
 ```
 
-## Progress (39 cycles since Bootstrap)
+## Progress (40 cycles since Bootstrap)
 
 Phase A complete. Phase B complete. Phase C complete.
-Phase D: 7 cycles done. C streak 19/30 → 11 more for C-L5.
+Phase D: 8 cycles done. C streak **20/30** — two-thirds of the
+way; 10 more for C-L5.
 
 ## Next-cycle target
 
-Phase D continuation. Reasonable picks:
-- **Track P1** — strict Planner output contract validator
-- Encode the M-dim "FAILURES.md empirically_reproduced field"
-  rule from Cycle 33 (small docs cycle)
-- Wire health into the wake script's stop-condition logic
-  more explicitly (cosmetic — already works, but the log line
-  could be clearer)
+The launchd-driven path's health integration is now fully
+deadlock-free:
+- Cycle 37: health.py emits the JSON
+- Cycle 38: doctor reads it (read-only)
+- Cycle 39: artifacts gitignored so wake-script refresh is safe
 
-Watch for context budget approaching ~80% → session-handoff
-and exit.
+A future cycle can now have the wake script call
+`autodev_health.sh` before each dispatch decision without
+fearing FAIL-0009-class regression.
 
-## Cycle 38 verification snapshot
+Other candidates:
+- Track P1 — strict Planner output contract validator
+- Wake-script integration of health refresh (small)
+- Encode FAILURES.md `empirically_reproduced` field (small)
 
-- pytest: 600 passed, 2 skipped, 0 failed (+7 doctor health tests)
-- propose_next_track --for-cycle 20260513-145451 → proposal written FIRST
-- compute_level --check (post-proposal): passed (Overall L=4 stable)
-- doctor: **14/0/2** (was 13/0/2; +1 health check)
-- LIVE: `bash scripts/autodev_doctor.sh` shows
-  `✓ health score=94 (green)`
-- FAIL-0009 regression guards still green (doctor stays
-  strictly read-only)
-- streak: 19/30 → 11 more disciplined cycles for C-L5
+Context budget approaching 80% — write session-handoff +
+exit cleanly.
+
+## Cycle 39 verification snapshot
+
+- pytest: 605 passed, 2 skipped, 0 failed (+5 gitignore tests)
+- doctor: 14/0/2
+- propose_next_track --for-cycle 20260513-145929 → proposal written FIRST
+- compute_level --check (post-proposal): passed
+- LIVE: `autodev_health.sh` rerun produces no NEW dirty entries
+  in `git status --porcelain` (the 3 health files are
+  effectively ignored)
+- streak: 20/30 → 10 more disciplined cycles for C-L5
