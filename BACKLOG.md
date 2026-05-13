@@ -25,9 +25,10 @@
       `com.lanston.autodev.continuous` is distinct from the v3
       `com.autodev.supervisor` agent so they coexist)
 
-- [ ] [Phase B Cycle 28] scripts/autodev_status_dashboard.sh
-      (priority: P0): read-only ops command. Show overall L, dim
-      table, C streak, last cycles, stop conditions, launchctl status.
+- [x] [Phase B Cycle 28] scripts/autodev_status_dashboard.sh
+      DONE in 20260513-052318 (read-only operator dashboard with 7
+      sections + 28 tests + doctor extension to 13 checks; surfaces
+      both L7 and v3 launchctl agents)
 
 - [ ] [Phase B Cycle 29] foreground smoke test of the continuous infra
 
@@ -122,6 +123,10 @@
 
 ## Completed
 
+- [x] [Phase B Cycle 28] scripts/autodev_status_dashboard.sh +
+      doctor extension + tests/test_autodev_status_dashboard.py
+      DONE in 20260513-052318 (read-only 7-section operator dashboard
+      + 28 tests + doctor now 13/0/2)
 - [x] [Phase B Cycle 27] scripts/install_launchd_continuous.sh +
       tests/test_install_launchd_continuous.py
       DONE in 20260513-051843 (L7 plist installer + 26 tests;

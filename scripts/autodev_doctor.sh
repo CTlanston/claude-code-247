@@ -70,6 +70,13 @@ else
   warn "scripts/v5_live_sanity.sh missing or not executable (Track T6)"
 fi
 
+# Cycle 28 — Phase B: status dashboard
+if [[ -x scripts/autodev_status_dashboard.sh ]]; then
+  ok "autodev_status_dashboard.sh present + executable"
+else
+  warn "scripts/autodev_status_dashboard.sh missing or not executable (Phase B Cycle 28)"
+fi
+
 echo
 echo "--- Optional ---"
 command -v tmux >/dev/null && ok "tmux present" || warn "tmux not installed (Phase 14)"
