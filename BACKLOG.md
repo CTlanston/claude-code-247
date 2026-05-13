@@ -37,11 +37,9 @@
 
 ## P0.5 — Phase C handoff documentation (next 2 cycles)
 
-- [ ] [Phase C Cycle 30] reports/L7-handoff-to-launchd.md
-      (priority: P0): comprehensive operator handoff. What runs 24/7,
-      one-command install, monitor, pause, resume, stop, inspect
-      failures, "done" state, cost monitoring, when to come back
-      manually.
+- [x] [Phase C Cycle 30] reports/L7-handoff-to-launchd.md
+      DONE in 20260513-053023 (10-section operator handoff + 27
+      structural tests; cites L7 installer path correctly)
 
 - [ ] [Phase C Cycle 31] reports/milestone-3.md
       (priority: P0): per L7 §18 — cumulative progress since Cycle 0,
@@ -139,6 +137,10 @@
 
 ## Completed
 
+- [x] [Phase C Cycle 30] reports/L7-handoff-to-launchd.md +
+      tests/test_l7_handoff_doc.py
+      DONE in 20260513-053023 (10-section operator handoff + 27
+      structural tests; 500-test milestone)
 - [x] [Phase B Cycle 29] tests/test_autodev_continuous_cycle_smoke.py
       DONE in 20260513-052713 (7 multi-wake scenarios; Phase B
       5/5 COMPLETE — launchd infra ready for operator install)
