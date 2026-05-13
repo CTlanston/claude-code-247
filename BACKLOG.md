@@ -113,11 +113,10 @@ Each cycle:
       Flow: reproduce → minimize → 3 hypotheses → fix → regression test.
       rubric dim: cross-cuts (M + S + R + T)
 
-- [ ] [Track K1] `.claude/skills/` directory + minimal Wave 1 SKILL.md files
-      details: matt.diagnose, matt.tdd, matt.to-issues,
-      matt.improve-codebase-architecture, matt.grill-with-docs. Each is a
-      single .md file, no external dependencies.
-      rubric dim: aux (supports all tracks)
+- [x] [Track K1] `.claude/skills/` directory + 5 Wave 1 SKILL.md files
+      DONE in 20260513-053857 (matt.diagnose, matt.tdd, matt.to-issues,
+      matt.improve-codebase-architecture, matt.grill-with-docs;
+      18 structural tests; future K2 wires these into skill_router.py)
 
 - [ ] [Track K2] SkillRouter module + tests (`orchestrator/skill_router.py`)
       details: Per §8 — classify task type + risk, select skills.
@@ -147,6 +146,10 @@ Each cycle:
 
 ## Completed
 
+- [x] [Track K1] .claude/skills/matt.*.md (5 Wave 1 stubs) +
+      tests/test_wave1_skills.py
+      DONE in 20260513-053857 (Phase D opportunistic streak bump;
+      18 structural tests; 544 total passing tests)
 - [x] [Phase C Cycle 31] reports/milestone-3.md +
       tests/test_milestone_3.py
       DONE in 20260513-053421 (final session milestone per L7 §18;
