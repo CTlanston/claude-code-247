@@ -43,6 +43,33 @@ Read these in order before any tool use beyond Read:
 If `git status --porcelain` returns non-empty when you start: write
 `BLOCKED.md` with the dirty state listing and exit 0. Never auto-clean.
 
+### Verify-before-relying on FAILURES entries (Cycle 42 rule)
+
+Every FAILURES.md entry carries an `**Empirically reproduced**:`
+field (added in Cycle 41). When this cycle's PLAN preflight cites
+a FAIL-NNNN entry, check that field. If the value is:
+
+- `yes` — the entry has a regression test that exercises the
+  fix; cite normally with "different layer / different system /
+  not a repeat" disambiguation.
+- `no` — the root cause is INFERRED, not empirically verified.
+  The cycle MUST either:
+    (a) pick a different approach so the inferred cause is not
+        load-bearing for this cycle, OR
+    (b) reproduce the failure empirically as part of THIS cycle
+        and either confirm the root cause (update the entry to
+        `yes`) or correct it (write a "Corrected diagnosis"
+        sub-block and update to `corrected_in_<this-cycle-id>`)
+        before relying on it.
+- `corrected_in_<cycle-id>` — read the corrected-diagnosis
+  sub-block at the end of the entry. The original root cause
+  was wrong; cite the corrected one.
+- `not_applicable` — tooling/environment issue; cite normally.
+
+This rule prevents the FAIL-0009 misattribution pattern that
+sat in the ledger for ~30 cycles before Cycle 33's empirical
+cp/diff reproducer corrected it.
+
 ---
 
 ## DECISIONS (deterministic, no asking)

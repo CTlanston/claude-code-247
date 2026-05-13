@@ -97,6 +97,11 @@ Each cycle:
       require the field on every entry going forward; Scheduler API
       used for streak update for the first time)
 
+- [x] [Cycle 42 — prompt verify-rule] cycle prompt instructs the
+      wake to check the field
+      DONE in 20260513-163040 (closes the 3-cycle thread: rule
+      surfaced 33 → schema encoded 41 → prompt instructs 42)
+
 - [ ] [Track C3-live] Real-cycle worktree dispatch (priority: P1)
       details: Wire Scheduler.dispatch_next() into a real dispatch
       loop. Phase D of the continuous-run plan.

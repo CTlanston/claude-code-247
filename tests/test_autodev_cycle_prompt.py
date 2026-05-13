@@ -306,6 +306,34 @@ def test_mentions_blocked_md():
 # --- Forbidden things --------------------------------------------------
 
 
+def test_prompt_documents_empirically_reproduced_check():
+    """Cycle 42 — when the cycle's PLAN preflight cites a FAILURES
+    entry, the wake must check the `empirically_reproduced` field
+    and treat `no`-tagged entries differently from `yes`-tagged
+    ones. This is the prompt-side encoding of Cycle 33's discipline
+    rule (Cycle 41 encoded the FAILURES.md side)."""
+    txt = _text()
+    # Must reference the field name + the four allowed values
+    assert "empirically_reproduced" in txt or \
+        "Empirically reproduced" in txt, (
+        "prompt must reference the empirically_reproduced field "
+        "(Cycle 41 schema)"
+    )
+    # Must mention that `no`-tagged entries need special handling
+    # (verify before relying, or pick a different approach)
+    lowered = txt.lower()
+    assert ("verify" in lowered and "rely" in lowered) or \
+        "verify-before-relying" in lowered or \
+        "verify before relying" in lowered, (
+        "prompt must instruct the wake to verify-before-relying on "
+        "inferred FAILURES entries"
+    )
+    # Specifically the `no` value handling must be called out
+    assert ("`no`" in txt or " no " in lowered) and "infer" in lowered, (
+        "prompt must explain that `no` tag means inferred, not verified"
+    )
+
+
 def test_no_git_push_instruction():
     """Per §0 rule 2: NEVER git push."""
     txt = _text()
