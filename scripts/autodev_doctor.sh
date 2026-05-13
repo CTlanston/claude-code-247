@@ -63,6 +63,13 @@ else
   warn "HUMAN_CONFIG.md missing (template at HUMAN_CONFIG.template.md) — cost defaults apply"
 fi
 
+# Cycle 22 — Track T6: live-sanity script
+if [[ -x scripts/v5_live_sanity.sh ]]; then
+  ok "v5_live_sanity.sh present + executable"
+else
+  warn "scripts/v5_live_sanity.sh missing or not executable (Track T6)"
+fi
+
 echo
 echo "--- Optional ---"
 command -v tmux >/dev/null && ok "tmux present" || warn "tmux not installed (Phase 14)"

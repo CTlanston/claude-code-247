@@ -7,28 +7,28 @@
 > See §6 of `AUTODEV_L7_MASTER_PROMPT.md` for the canonical track roadmap
 > and §4 Step 4 for the picker logic.
 
-## P0 — immediate next cycle
+## P0 — immediate next cycle (Phase A of AUTODEV_L7_CONTINUOUS_RUN.md)
 
-- [ ] [Track C3] Multi-issue dispatch via Scheduler.dispatch_next()
-      (priority: P0)
-      details: From the user directive. Implement
-      `orchestrator/scheduler.py:Scheduler.dispatch_next()` that picks the
-      lowest-priority unblocked task and dispatches to whichever worktree
-      is idle. Then run real cycles in worktrees/stream-1/ to start
-      accumulating the 30-cycle zero-deadlock streak that C-L5 requires.
-      Each successful no-deadlock cycle increments
-      `reports/zero-deadlock-streak.txt`.
-      rubric dim: C (Concurrency) — partial step toward L5
+- [ ] [Track T7] Golden-diff fixtures for e2e tests (priority: P0)
+      details: tests/golden/ directory with captured stdout/stderr/state-
+      mutation patterns from known-good cycles. tests/test_golden_diff.py
+      with character-level diff vs fixtures. scripts/update_goldens.sh
+      with operator-confirm prompt is the ONLY way to refresh.
+      rubric dim: T (Test oracle) — moves L6 → L7 (max)
 
-- [ ] [Track R7] N-of-3 reviewer panel with disagreement-as-signal
-      (priority: P1)
-      details: Combine Claude (main) + Codex + Adversarial into a
-      single review_panel module. Disagreement on any dim with 2+ votes
-      against → escalate (don't auto-resolve). Lifts R 6 → 7. Needs
-      `orchestrator/review_panel.py` + `tests/test_review_panel.py`
-      per the compute_level REVIEW_MARKERS["n_of_3_with_escalation"]
-      detection path.
-      rubric dim: R (Review) — moves L6 → L7
+- [ ] [Track E7] Verify autonomy of promotions (priority: P0)
+      details: Walk CHANGELOG.md for 🎯 entries; check each cycle's
+      PLAN.md cites propose_next_track. compute_level E-L7 condition
+      already exists. If proposals were made but evidence wasn't
+      written, add retroactive citation in the PLAN's frontmatter.
+      rubric dim: E (Self-improvement) — moves L6 → L7 (max)
+
+- [ ] [Track C3-live] Real-cycle worktree dispatch (priority: P1)
+      details: Wire Scheduler.dispatch_next() into a real dispatch
+      loop that runs cycles in worktrees/stream-1/. Each successful
+      cycle bumps the streak counter. Phase D of the continuous-run
+      plan.
+      rubric dim: C (Concurrency) — observation toward L5
 
 ## P1 — next 3 cycles
 
@@ -116,6 +116,9 @@
 
 ## Completed
 
+- [x] [Track T6] scripts/v5_live_sanity.sh + reports/live-sanity/ + doctor
+      extension + HUMAN_CONFIG safety flag + 8 tests
+      DONE in 20260513-045243 (T-dim L5 → L6)
 - [x] [Track R7] orchestrator/review_panel.py N-of-3 panel + 12 tests
       DONE in 20260512-082125 (R-dim L6 → L7, **R is now at max**)
 - [x] [Track C3-init] Scheduler.dispatch_next + record_cycle_success +

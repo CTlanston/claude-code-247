@@ -45,6 +45,8 @@ runtime:
   codex_per_call_cap_tokens: 60000                       # anomaly threshold (log + alert)
   codex_fallback_on_refusal: true                        # fall back to single-Claude review when guard refuses
   codex_binary: codex                                    # PATH-resolved; budget guard wraps every call
+  # --- Track T6 live sanity (Cycle 22) ---
+  live_sanity_authorized: false                          # AUTODEV_LIVE=1 requires THIS to be true; default dry-run only
 ```
 
 ## Project commands
