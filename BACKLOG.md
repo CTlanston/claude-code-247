@@ -102,6 +102,10 @@ Each cycle:
       DONE in 20260513-163040 (closes the 3-cycle thread: rule
       surfaced 33 → schema encoded 41 → prompt instructs 42)
 
+- [x] [Cycle 43 — ADR-0009] runtime-emission-no-tree-dirty
+      DONE in 20260513-163434 (canonicalizes the discipline pattern
+      from Cycles 33/38/39/40; ADR count 6→7; FAIL-0009 cross-linked)
+
 - [ ] [Track C3-live] Real-cycle worktree dispatch (priority: P1)
       details: Wire Scheduler.dispatch_next() into a real dispatch
       loop. Phase D of the continuous-run plan.

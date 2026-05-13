@@ -428,6 +428,11 @@ cli-executor unit tests no longer dirty the file when
 **Keywords**: doctor, autodev_doctor, session-log, import-side-effect,
 working-tree-dirty, cli-classify, audit-log-leak, cycle-clean
 
+**Linked ADR**: docs/adr/0009-runtime-emission-no-tree-dirty.md
+(Cycle 43; canonicalizes the discipline this entry's corrected
+diagnosis surfaced — "runtime emission must not dirty the
+tracked tree")
+
 ### Corrected diagnosis (2026-05-13, Cycle 33)
 
 The original "Root cause" above was **wrong on disk evidence**.
