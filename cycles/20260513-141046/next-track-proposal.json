@@ -1,0 +1,75 @@
+{
+  "chosen": {
+    "track_id": "Track C3-live",
+    "title": "Real-cycle worktree dispatch",
+    "priority": "P1",
+    "dim": "C",
+    "status": "open",
+    "details": "details: Wire Scheduler.dispatch_next() into a real dispatch\n      loop. Phase D of the continuous-run plan.\n      rubric dim: C (Concurrency) \u2014 observation toward L5"
+  },
+  "alternatives": [
+    {
+      "track_id": "Track C2",
+      "priority": "P2",
+      "dim": "C",
+      "score": 5.0,
+      "components": {
+        "priority": 2.0,
+        "floor_pref": 3.0,
+        "failure_penalty": -0.0
+      }
+    },
+    {
+      "track_id": "Track S2",
+      "priority": "P1",
+      "dim": "S",
+      "score": 3.0,
+      "components": {
+        "priority": 3.0,
+        "floor_pref": 0.0,
+        "failure_penalty": -0.0
+      }
+    },
+    {
+      "track_id": "Track H1",
+      "priority": "P2",
+      "dim": null,
+      "score": 3.0,
+      "components": {
+        "priority": 2.0,
+        "floor_pref": 1.0,
+        "failure_penalty": -0.0
+      }
+    }
+  ],
+  "levels": {
+    "M": 7,
+    "S": 7,
+    "R": 7,
+    "C": 4,
+    "T": 7,
+    "E": 7
+  },
+  "failure_citations": [],
+  "considered_failures": [
+    {
+      "id": "FAIL-0001",
+      "overlap_keywords": [],
+      "score": 0.0,
+      "fixed": true
+    },
+    {
+      "id": "FAIL-0002",
+      "overlap_keywords": [],
+      "score": 0.0,
+      "fixed": true
+    },
+    {
+      "id": "FAIL-0003",
+      "overlap_keywords": [],
+      "score": 0.0,
+      "fixed": true
+    }
+  ],
+  "reasoning": "Chose Track C3-live (priority=P1, dim=C, score=6.00). C-dim is currently L4; this track aims to lift it. FAILURES consulted: FAIL-0001, FAIL-0002, FAIL-0003."
+}

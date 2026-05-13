@@ -327,6 +327,12 @@ class ClaudeCodeCLIExecutor:
     # ----- log helper ---------------------------------------------------
 
     def _log(self, event: str, r: ExecutionResult) -> None:
+        # FAIL-0009 working fix: tests and other in-repo invocations
+        # set AUTODEV_AUDIT_LOG_SUPPRESS=1 in the env to skip the
+        # disk write. Production paths leave it unset so the real
+        # audit log keeps accumulating.
+        if os.environ.get("AUTODEV_AUDIT_LOG_SUPPRESS"):
+            return
         try:
             log = session_log_path()
             log.parent.mkdir(parents=True, exist_ok=True)

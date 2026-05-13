@@ -47,7 +47,7 @@
 
 ## P0.75 — Phase D (opportunistic; uses remaining session context)
 
-Drive real disciplined cycles for the C streak (currently 12/30).
+Drive real disciplined cycles for the C streak (currently 14/30).
 Each cycle:
 - Picks via `propose_next_track.py` (already selects Track C3-live)
 - Or a small P1/P2 track that's capable and ≤45 min
@@ -55,6 +55,12 @@ Each cycle:
 - Always: bump streak_after by 1 in cycle-history.jsonl
 - Stop when session context approaches ~80% full OR cycle budget
   exhausts; then write reports/session-handoff-<ts>.md and exit
+
+- [x] [Cycle 33 — FAIL-0009 fix] env-var-gated suppression of
+      cli-executor `_log()`; corrects mis-attributed root cause in
+      FAILURES.md; unblocks launchd's "git status clean" check
+      DONE in 20260513-141046 (4 regression tests; pytest no longer
+      dirties reports/session-log.md)
 
 - [ ] [Track C3-live] Real-cycle worktree dispatch (priority: P1)
       details: Wire Scheduler.dispatch_next() into a real dispatch

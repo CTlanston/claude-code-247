@@ -19,6 +19,15 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
+# FAIL-0009 working fix (Cycle 33): the cli-executor's `_log()` writes
+# to the REAL reports/session-log.md every time `run_prompt()` is called.
+# The unit tests in tests/test_autodev_claude_code_cli.py mock subprocess
+# but still hit the real `_log()` path. Setting this env var at conftest
+# import time (which pytest loads before collecting any test) makes every
+# pytest run immune. Production cli executor calls run without pytest and
+# never set this var, so audit logging continues normally.
+os.environ.setdefault("AUTODEV_AUDIT_LOG_SUPPRESS", "1")
+
 
 @pytest.fixture
 def autodev_tmp_repo(tmp_path: Path, monkeypatch):

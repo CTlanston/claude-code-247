@@ -396,3 +396,39 @@ Outcome: ready for Phase 1.
 - 2026-05-13T05:10:01Z  cli.execution  classify=permission_needed  exit=0  duration=0.0s  cost~$0.0000  summary=permission denied
 - 2026-05-13T05:10:01Z  cli.execution  classify=success  exit=0  duration=0.0s  cost~$0.0000  summary=all good
 - 2026-05-13T05:10:01Z  cli.timeout  classify=timeout  exit=None  duration=0.0s  cost~$0.0000  summary=CLI timed out
+- 2026-05-13T05:16:23Z  cli.execution  classify=rate_limited  exit=0  duration=0.0s  cost~$0.0000  summary=Rate limit exceeded
+- 2026-05-13T05:16:23Z  cli.execution  classify=permission_needed  exit=0  duration=0.0s  cost~$0.0000  summary=permission denied
+- 2026-05-13T05:16:23Z  cli.execution  classify=success  exit=0  duration=0.0s  cost~$0.0000  summary=all good
+- 2026-05-13T05:16:23Z  cli.timeout  classify=timeout  exit=None  duration=0.0s  cost~$0.0000  summary=CLI timed out
+- 2026-05-13T05:21:25Z  cli.execution  classify=rate_limited  exit=0  duration=0.0s  cost~$0.0000  summary=Rate limit exceeded
+- 2026-05-13T05:21:25Z  cli.execution  classify=permission_needed  exit=0  duration=0.0s  cost~$0.0000  summary=permission denied
+- 2026-05-13T05:21:25Z  cli.execution  classify=success  exit=0  duration=0.0s  cost~$0.0000  summary=all good
+- 2026-05-13T05:21:25Z  cli.timeout  classify=timeout  exit=None  duration=0.0s  cost~$0.0000  summary=CLI timed out
+- 2026-05-13T05:25:21Z  cli.execution  classify=rate_limited  exit=0  duration=0.0s  cost~$0.0000  summary=Rate limit exceeded
+- 2026-05-13T05:25:21Z  cli.execution  classify=permission_needed  exit=0  duration=0.0s  cost~$0.0000  summary=permission denied
+- 2026-05-13T05:25:21Z  cli.execution  classify=success  exit=0  duration=0.0s  cost~$0.0000  summary=all good
+- 2026-05-13T05:25:21Z  cli.timeout  classify=timeout  exit=None  duration=0.0s  cost~$0.0000  summary=CLI timed out
+- 2026-05-13T05:28:30Z  cli.execution  classify=rate_limited  exit=0  duration=0.0s  cost~$0.0000  summary=Rate limit exceeded
+- 2026-05-13T05:28:30Z  cli.execution  classify=permission_needed  exit=0  duration=0.0s  cost~$0.0000  summary=permission denied
+- 2026-05-13T05:28:30Z  cli.execution  classify=success  exit=0  duration=0.0s  cost~$0.0000  summary=all good
+- 2026-05-13T05:28:30Z  cli.timeout  classify=timeout  exit=None  duration=0.0s  cost~$0.0000  summary=CLI timed out
+- 2026-05-13T05:32:28Z  cli.execution  classify=rate_limited  exit=0  duration=0.0s  cost~$0.0000  summary=Rate limit exceeded
+- 2026-05-13T05:32:28Z  cli.execution  classify=permission_needed  exit=0  duration=0.0s  cost~$0.0000  summary=permission denied
+- 2026-05-13T05:32:28Z  cli.execution  classify=success  exit=0  duration=0.0s  cost~$0.0000  summary=all good
+- 2026-05-13T05:32:28Z  cli.timeout  classify=timeout  exit=None  duration=0.0s  cost~$0.0000  summary=CLI timed out
+- 2026-05-13T05:36:38Z  cli.execution  classify=rate_limited  exit=0  duration=0.0s  cost~$0.0000  summary=Rate limit exceeded
+- 2026-05-13T05:36:38Z  cli.execution  classify=permission_needed  exit=0  duration=0.0s  cost~$0.0000  summary=permission denied
+- 2026-05-13T05:36:38Z  cli.execution  classify=success  exit=0  duration=0.0s  cost~$0.0000  summary=all good
+- 2026-05-13T05:36:38Z  cli.timeout  classify=timeout  exit=None  duration=0.0s  cost~$0.0000  summary=CLI timed out
+- 2026-05-13T05:41:10Z  cli.execution  classify=rate_limited  exit=0  duration=0.0s  cost~$0.0000  summary=Rate limit exceeded
+- 2026-05-13T05:41:10Z  cli.execution  classify=permission_needed  exit=0  duration=0.0s  cost~$0.0000  summary=permission denied
+- 2026-05-13T05:41:10Z  cli.execution  classify=success  exit=0  duration=0.0s  cost~$0.0000  summary=all good
+- 2026-05-13T05:41:10Z  cli.timeout  classify=timeout  exit=None  duration=0.0s  cost~$0.0000  summary=CLI timed out
+- 2026-05-13T14:10:24Z  cli.execution  classify=rate_limited  exit=0  duration=0.0s  cost~$0.0000  summary=Rate limit exceeded
+- 2026-05-13T14:10:24Z  cli.execution  classify=permission_needed  exit=0  duration=0.0s  cost~$0.0000  summary=permission denied
+- 2026-05-13T14:10:24Z  cli.execution  classify=success  exit=0  duration=0.0s  cost~$0.0000  summary=all good
+- 2026-05-13T14:10:24Z  cli.timeout  classify=timeout  exit=None  duration=0.0s  cost~$0.0000  summary=CLI timed out
+- 2026-05-13T14:11:45Z  cli.execution  classify=rate_limited  exit=0  duration=0.0s  cost~$0.0000  summary=Rate limit exceeded
+- 2026-05-13T14:11:45Z  cli.execution  classify=permission_needed  exit=0  duration=0.0s  cost~$0.0000  summary=permission denied
+- 2026-05-13T14:11:45Z  cli.execution  classify=success  exit=0  duration=0.0s  cost~$0.0000  summary=all good
+- 2026-05-13T14:11:45Z  cli.timeout  classify=timeout  exit=None  duration=0.0s  cost~$0.0000  summary=CLI timed out

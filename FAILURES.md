@@ -337,18 +337,65 @@ import-time self-tests; everything goes through `reports/session-log.md`.
 
 **Failed fix attempts**: none (only just observed).
 
-**Working fix**: planned (NOT YET SHIPPED). Either (a) route the
-import-time self-tests through a stub audit-log writer that doesn't
-touch disk, or (b) make doctor's smoke test a no-op import without
-calling the classifier, or (c) gitignore the suffix of session-log.md
-lines that match the smoke-test pattern (least preferred — hides real
-information).
+**Working fix**: SHIPPED in Cycle 33 (20260513-141046). See
+"Corrected diagnosis" sub-block below.
 
-**Regression test**: a future test should assert
-`./scripts/autodev_doctor.sh` exits 0 AND leaves `git status` clean.
+**Regression test**: `tests/test_doctor_no_side_effect.py` (Cycle 33,
+4 tests). Asserts both that the doctor is innocent AND that the
+cli-executor unit tests no longer dirty the file when
+`AUTODEV_AUDIT_LOG_SUPPRESS=1` is set.
 
 **Keywords**: doctor, autodev_doctor, session-log, import-side-effect,
 working-tree-dirty, cli-classify, audit-log-leak, cycle-clean
+
+### Corrected diagnosis (2026-05-13, Cycle 33)
+
+The original "Root cause" above was **wrong on disk evidence**.
+Empirical test:
+
+```bash
+$ cp reports/session-log.md /tmp/before.md
+$ bash scripts/autodev_doctor.sh > /dev/null
+$ diff /tmp/before.md reports/session-log.md && echo "no change"
+no change                                # doctor IS innocent
+$ cp reports/session-log.md /tmp/before2.md
+$ python3 -m pytest tests/test_autodev_claude_code_cli.py -q > /dev/null
+$ diff /tmp/before2.md reports/session-log.md | head
+# 4 lines appended                       # PYTEST is the culprit
+```
+
+**Actual root cause**: the unit tests in
+`tests/test_autodev_claude_code_cli.py` (4 tests: rate_limit,
+permission, success, timeout) call `ClaudeCodeCLIExecutor.run_prompt()`
+with mocked subprocess responses. Those calls flow through
+`_parse_result()` → `_log()`, which writes to the REAL
+`reports/session-log.md` path in the repo. No test mocked
+`session_log_path()` or `_log()`. Each pytest run appended 4
+lines.
+
+**Actual working fix**:
+1. `autodev/executors/claude_code_cli.py:_log()` checks
+   `os.environ.get("AUTODEV_AUDIT_LOG_SUPPRESS")` at the very
+   start. If truthy, return without writing.
+2. `tests/conftest.py` sets
+   `os.environ.setdefault("AUTODEV_AUDIT_LOG_SUPPRESS", "1")` at
+   import time, before any test collection. All pytest runs in
+   this repo inherit the suppression. Production cli executor
+   calls (real `claude -p` invocations from the orchestrator)
+   run without pytest and never set this var; audit logging
+   continues normally there.
+
+**Why the misattribution happened**: the doctor's import line
+(`python3 -c "import autodev, ..., autodev.executors.claude_code_cli, ..."`)
+was the most plausible immediate suspect when FAIL-0009 was
+first observed. Nobody actually ran the
+`cp / doctor / diff` experiment until Cycle 33. M-dim discipline:
+when evidence contradicts the ledger, fix the ledger.
+
+**Lesson for future failure-ledger discipline**: every FAILURES.md
+entry whose root cause was inferred (rather than empirically
+reproduced) should be tagged so future cycles know to verify
+before relying on it.
 
 ---
 
