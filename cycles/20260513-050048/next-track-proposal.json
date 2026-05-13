@@ -1,0 +1,75 @@
+{
+  "chosen": {
+    "track_id": "Track E7",
+    "title": "Verify autonomy of promotions",
+    "priority": "P0",
+    "dim": "E",
+    "status": "open",
+    "details": "details: Walk CHANGELOG.md for \ud83c\udfaf entries; check each cycle's\n      PLAN.md cites propose_next_track. compute_level E-L7 condition\n      already exists. If proposals were made but evidence wasn't\n      written, add retroactive citation in the PLAN's frontmatter.\n      rubric dim: E (Self-improvement) \u2014 moves L6 \u2192 L7 (max)"
+  },
+  "alternatives": [
+    {
+      "track_id": "Track C3-live",
+      "priority": "P1",
+      "dim": "C",
+      "score": 6.0,
+      "components": {
+        "priority": 3.0,
+        "floor_pref": 3.0,
+        "failure_penalty": -0.0
+      }
+    },
+    {
+      "track_id": "Track C2",
+      "priority": "P2",
+      "dim": "C",
+      "score": 5.0,
+      "components": {
+        "priority": 2.0,
+        "floor_pref": 3.0,
+        "failure_penalty": -0.0
+      }
+    },
+    {
+      "track_id": "Track E2",
+      "priority": "P2",
+      "dim": "E",
+      "score": 5.0,
+      "components": {
+        "priority": 2.0,
+        "floor_pref": 3.0,
+        "failure_penalty": -0.0
+      }
+    }
+  ],
+  "levels": {
+    "M": 7,
+    "S": 7,
+    "R": 7,
+    "C": 4,
+    "T": 7,
+    "E": 4
+  },
+  "failure_citations": [],
+  "considered_failures": [
+    {
+      "id": "FAIL-0001",
+      "overlap_keywords": [],
+      "score": 0.0,
+      "fixed": true
+    },
+    {
+      "id": "FAIL-0002",
+      "overlap_keywords": [],
+      "score": 0.0,
+      "fixed": true
+    },
+    {
+      "id": "FAIL-0003",
+      "overlap_keywords": [],
+      "score": 0.0,
+      "fixed": true
+    }
+  ],
+  "reasoning": "Chose Track E7 (priority=P0, dim=E, score=7.00). E-dim is currently L4; this track aims to lift it. FAILURES consulted: FAIL-0001, FAIL-0002, FAIL-0003."
+}

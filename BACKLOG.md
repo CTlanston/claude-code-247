@@ -7,20 +7,31 @@
 > See §6 of `AUTODEV_L7_MASTER_PROMPT.md` for the canonical track roadmap
 > and §4 Step 4 for the picker logic.
 
-## P0 — immediate next cycle (Phase A of AUTODEV_L7_CONTINUOUS_RUN.md)
+## P0 — immediate next cycle (Phase B of AUTODEV_L7_CONTINUOUS_RUN.md)
 
-- [ ] [Track E7] Verify autonomy of promotions (priority: P0)
-      details: Walk CHANGELOG.md for 🎯 entries; check each cycle's
-      PLAN.md cites propose_next_track. compute_level E-L7 condition
-      already exists. If proposals were made but evidence wasn't
-      written, add retroactive citation in the PLAN's frontmatter.
-      rubric dim: E (Self-improvement) — moves L6 → L7 (max)
+- [ ] [Phase B Cycle 25] scripts/autodev_continuous_cycle.sh
+      (priority: P0): the launchd wake script. Stop-condition checks,
+      cooldown, rate-limit detection, health gate, target-L check,
+      45-min timeout on `claude -p`. Plus tests for each branch.
+
+- [ ] [Phase B Cycle 26] scripts/autodev_cycle_prompt.md
+      (priority: P0): the prompt fed to `claude -p` on each wake.
+      Self-contained, runs ONE cycle, exits. Plus a structural test.
+
+- [ ] [Phase B Cycle 27] scripts/install_launchd_autodev.sh
+      (priority: P0): generates + installs the plist. Idempotent;
+      --install/--uninstall/--status flags. Plus plist-generation
+      tests. DO NOT auto-install — leave for operator.
+
+- [ ] [Phase B Cycle 28] scripts/autodev_status_dashboard.sh
+      (priority: P0): read-only ops command. Show overall L, dim
+      table, C streak, last cycles, stop conditions, launchctl status.
+
+- [ ] [Phase B Cycle 29] foreground smoke test of the continuous infra
 
 - [ ] [Track C3-live] Real-cycle worktree dispatch (priority: P1)
       details: Wire Scheduler.dispatch_next() into a real dispatch
-      loop that runs cycles in worktrees/stream-1/. Each successful
-      cycle bumps the streak counter. Phase D of the continuous-run
-      plan.
+      loop. Phase D of the continuous-run plan.
       rubric dim: C (Concurrency) — observation toward L5
 
 ## P1 — next 3 cycles
@@ -109,6 +120,10 @@
 
 ## Completed
 
+- [x] [Track E7] retro-cite next-track-proposal in 5 cycle REPORTs +
+      🎯 on dim-max CHANGELOG lines + tests/test_e_level_promotion_evidence.py
+      DONE in 20260513-050048 (E-dim L6 → L7, **E is now at max** —
+      Phase A complete: M=S=R=T=E=7, only C remains)
 - [x] [Track T7] tests/golden/ + tests/test_golden_diff.py + 
       scripts/update_goldens.sh + tests/test_update_goldens.py
       DONE in 20260513-045716 (T-dim L6 → L7, **T is now at max**)
