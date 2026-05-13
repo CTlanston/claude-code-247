@@ -30,7 +30,23 @@
       sections + 28 tests + doctor extension to 13 checks; surfaces
       both L7 and v3 launchctl agents)
 
-- [ ] [Phase B Cycle 29] foreground smoke test of the continuous infra
+- [x] [Phase B Cycle 29] foreground smoke test of the continuous infra
+      DONE in 20260513-052713 (tests/test_autodev_continuous_cycle_smoke.py
+      with 7 multi-wake scenarios exercising the full state machine;
+      Phase B 5/5 COMPLETE — launchd infra ready for operator install)
+
+## P0.5 — Phase C handoff documentation (next 2 cycles)
+
+- [ ] [Phase C Cycle 30] reports/L7-handoff-to-launchd.md
+      (priority: P0): comprehensive operator handoff. What runs 24/7,
+      one-command install, monitor, pause, resume, stop, inspect
+      failures, "done" state, cost monitoring, when to come back
+      manually.
+
+- [ ] [Phase C Cycle 31] reports/milestone-3.md
+      (priority: P0): per L7 §18 — cumulative progress since Cycle 0,
+      all level-up events, codex spend MTD, top patterns, honest
+      30-cycle assessment, next-30-cycle recommendations.
 
 - [ ] [Track C3-live] Real-cycle worktree dispatch (priority: P1)
       details: Wire Scheduler.dispatch_next() into a real dispatch
@@ -123,6 +139,9 @@
 
 ## Completed
 
+- [x] [Phase B Cycle 29] tests/test_autodev_continuous_cycle_smoke.py
+      DONE in 20260513-052713 (7 multi-wake scenarios; Phase B
+      5/5 COMPLETE — launchd infra ready for operator install)
 - [x] [Phase B Cycle 28] scripts/autodev_status_dashboard.sh +
       doctor extension + tests/test_autodev_status_dashboard.py
       DONE in 20260513-052318 (read-only 7-section operator dashboard
