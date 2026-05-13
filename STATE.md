@@ -1,8 +1,8 @@
 # STATE.md — current L7 supervisor state
 
 ```yaml
-current_branch: autoevo/cycle-30/handoff-doc
-last_cycle_id: 20260513-053023
+current_branch: autoevo/cycle-31/milestone-3
+last_cycle_id: 20260513-053421
 last_cycle_result: PASS
 last_green_commit: pending-commit
 last_levelup: 20260513-050048      # E 6→7. No level move this cycle.
@@ -18,13 +18,13 @@ session_mission:
   source: AUTODEV_L7_CONTINUOUS_RUN.md
   phase_a: 3/3 COMPLETE (T6 + T7 + E7)
   phase_b: 5/5 COMPLETE
-  phase_c: 1/2 (handoff doc done; milestone-3 NEXT)
-  phase_d: pending (real cycles for C-streak after milestone-3)
+  phase_c: 2/2 COMPLETE
+  phase_d: in_progress (opportunistic C-streak cycles)
 concurrency:
   worktree_count: 2
-  zero_deadlock_streak: 11
+  zero_deadlock_streak: 12
   streak_target_for_L5: 30
-  cycles_to_C_L5: 19
+  cycles_to_C_L5: 18
 launchd_infra:
   wake_script:        scripts/autodev_continuous_cycle.sh        (Cycle 25 ✓)
   prompt_file:        scripts/autodev_cycle_prompt.md            (Cycle 26 ✓)
@@ -32,54 +32,55 @@ launchd_infra:
   dashboard:          scripts/autodev_status_dashboard.sh        (Cycle 28 ✓)
   smoke_test:         tests/test_autodev_continuous_cycle_smoke.py (Cycle 29 ✓)
   handoff_doc:        reports/L7-handoff-to-launchd.md           (Cycle 30 ✓)
-  not_installed_yet:  TRUE — operator runs install ONCE after Cycle 31
+  milestone_report:   reports/milestone-3.md                     (Cycle 31 ✓)
+  not_installed_yet:  TRUE — operator runs install ONCE
 doctor_count: 13/0/2
-test_total: 500 passed / 2 skipped     # half-thousand milestone
+test_total: 526 passed / 2 skipped
 ```
 
-## Progress (31 cycles since Bootstrap)
+## Progress (32 cycles since Bootstrap)
 
-Phase A complete. Phase B complete. Phase C 1/2 done. C streak 11/30.
+Phase A complete. Phase B complete. **Phase C complete.**
+Now in Phase D (opportunistic real cycles for C-streak).
+C streak at 12/30.
 
 ## Next-cycle target
 
-**Phase C Cycle 31**: `reports/milestone-3.md` per L7 §18 —
-the final session milestone report. Cumulative progress since
-Cycle 0; all 8 level-up events with dates + root causes; codex
-spend MTD; top patterns from FAILURES.md; honest 30-cycle
-assessment ("did the past 30 cycles correlate with actual
-system quality?"); three recommended tracks for the next 30
-cycles (almost certainly 28 C-streak + 2 polish).
+**Phase D**: any disciplined cycle that adds 1 to the C streak
+without deadlocking. Candidates (per propose_next_track.py and
+BACKLOG):
+- Track S2 — preflight as first-class gate (small)
+- Track H1 — orchestrator/health.py (medium)
+- Track K1 — .claude/skills/ Wave 1 SKILL.md (small)
+- Track P1 — strict Planner output contract (medium)
+- Track S5 — adversarial subagent return-check (small)
+- Track S6 — canary-token leakage scan (small)
 
-## Cycle 30 verification snapshot
+When session context approaches ~80% full OR the current cycle
+budget exhausts, write `reports/session-handoff-<ts>.md` and exit
+cleanly. The launchd-driven path takes over from there.
 
-- pytest: 500 passed, 2 skipped, 0 failed (+27 handoff tests this cycle)
-- propose_next_track --for-cycle 20260513-053023 → proposal written FIRST
+## Cycle 31 verification snapshot
+
+- pytest: 526 passed, 2 skipped, 0 failed (+26 milestone tests this cycle)
+- propose_next_track --for-cycle 20260513-053421 → proposal written FIRST
 - compute_level --check (post-proposal): passed (Overall L=4 stable)
 - doctor: 13/0/2
-- streak: 11/30 → 19 more disciplined cycles for C-L5
+- streak: 12/30 → 18 more disciplined cycles for C-L5
 
-## Handoff doc summary
+## Phase C complete summary
 
-`reports/L7-handoff-to-launchd.md` is the operator's primary reference
-after this session ends. Top-of-doc quick reference:
+| Cycle | Deliverable | Tests |
+|---|---|---|
+| 30 | `reports/L7-handoff-to-launchd.md` (operator handoff) | 27 |
+| 31 | `reports/milestone-3.md` (cumulative §18 report) | 26 |
+| | **Total** | **53** |
 
+The launchd-driven 7×24 system is fully documented and operator-ready.
+The operator's one-command install:
 ```bash
-# INSTALL  (one-time, after Cycle 31)
 bash scripts/install_launchd_continuous.sh --install
-# MONITOR  (read-only, anytime)
-bash scripts/autodev_status_dashboard.sh
-# PAUSE
-touch reports/STOPSWITCH
-# RESUME
-rm reports/STOPSWITCH
-# FULLY STOP
-bash scripts/install_launchd_continuous.sh --uninstall
 ```
 
-The doc also covers: inspecting failures (`reports/runs/*.log`,
-`cycles/<id>/REPORT.md`, `FAILURES.md`, `ALERT.md`), what "done"
-looks like (`reports/AUTODEV_DONE.md`), cost monitoring
-(`reports/codex-spend.jsonl`), and when to come back manually
-(BLOCKED.md / ALERT.md / Overall L stuck >5 days). FAQ at the
-bottom answers common scenarios.
+After that, the system runs every 15 min until AUTODEV_DONE.md /
+STOPSWITCH / BLOCKED.md (>24h) / health < 50 / uninstall.

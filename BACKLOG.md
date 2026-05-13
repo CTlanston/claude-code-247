@@ -41,10 +41,20 @@
       DONE in 20260513-053023 (10-section operator handoff + 27
       structural tests; cites L7 installer path correctly)
 
-- [ ] [Phase C Cycle 31] reports/milestone-3.md
-      (priority: P0): per L7 §18 — cumulative progress since Cycle 0,
-      all level-up events, codex spend MTD, top patterns, honest
-      30-cycle assessment, next-30-cycle recommendations.
+- [x] [Phase C Cycle 31] reports/milestone-3.md
+      DONE in 20260513-053421 (final session milestone per L7 §18;
+      9 sections + 26 structural tests; Phase C 2/2 COMPLETE)
+
+## P0.75 — Phase D (opportunistic; uses remaining session context)
+
+Drive real disciplined cycles for the C streak (currently 12/30).
+Each cycle:
+- Picks via `propose_next_track.py` (already selects Track C3-live)
+- Or a small P1/P2 track that's capable and ≤45 min
+- Always: rollback tag, PLAN, preflight, TDD, atomic commit
+- Always: bump streak_after by 1 in cycle-history.jsonl
+- Stop when session context approaches ~80% full OR cycle budget
+  exhausts; then write reports/session-handoff-<ts>.md and exit
 
 - [ ] [Track C3-live] Real-cycle worktree dispatch (priority: P1)
       details: Wire Scheduler.dispatch_next() into a real dispatch
@@ -137,6 +147,10 @@
 
 ## Completed
 
+- [x] [Phase C Cycle 31] reports/milestone-3.md +
+      tests/test_milestone_3.py
+      DONE in 20260513-053421 (final session milestone per L7 §18;
+      9 sections + 26 structural tests; 526 total passing tests)
 - [x] [Phase C Cycle 30] reports/L7-handoff-to-launchd.md +
       tests/test_l7_handoff_doc.py
       DONE in 20260513-053023 (10-section operator handoff + 27
