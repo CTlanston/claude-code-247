@@ -66,6 +66,11 @@ Each cycle:
       DONE in 20260513-141553 (whitelist + silent remap + contract
       validator + 12 tests)
 
+- [x] [Cycle 35 — S-L7 evidence] orchestrator/adversarial_return.py
+      DONE in 20260513-142134 (canonical-path shim so compute_level
+      counts the gate; LEVEL.md S-evidence now 6/7 active gates +
+      4 canonical-path tests)
+
 - [ ] [Track C3-live] Real-cycle worktree dispatch (priority: P1)
       details: Wire Scheduler.dispatch_next() into a real dispatch
       loop. Phase D of the continuous-run plan.
