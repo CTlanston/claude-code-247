@@ -65,6 +65,7 @@ def _stub_claude(tmp_path: Path, *, output: str = "",
 def _run_wake(tmp_path: Path, *,
               target_l: int = 5,
               claude_stub: Path | None = None,
+              extra_env: dict | None = None,
               timeout: int = 30) -> subprocess.CompletedProcess:
     env = os.environ.copy()
     env["AUTODEV_REPO_ROOT"] = str(tmp_path)
@@ -72,6 +73,8 @@ def _run_wake(tmp_path: Path, *,
     if claude_stub is None:
         claude_stub = _stub_claude(tmp_path)
     env["AUTODEV_CLAUDE_BIN"] = str(claude_stub)
+    if extra_env:
+        env.update({k: str(v) for k, v in extra_env.items()})
     return subprocess.run(
         [str(SCRIPT)], capture_output=True, text=True, env=env,
         timeout=timeout,
@@ -180,10 +183,19 @@ def test_smoke_scenario_2_rate_limit_cycle(tmp_path):
 
 def test_smoke_scenario_3_target_l_reached_done_md_writes_and_holds(tmp_path):
     """Wake 1 with LEVEL.md=5 and target_l=5: should write AUTODEV_DONE.md
-    and not invoke claude. Subsequent wakes skip even after time passes."""
-    _seed(tmp_path, level_overall=5)
+    and not invoke claude. Subsequent wakes skip even after time passes.
 
-    r1 = _run_wake(tmp_path, target_l=5)
+    Cycle ε changed the default to require 5 consecutive at-target
+    cycles. This smoke test's intent is the end-to-end DONE.md
+    write path, so it sets AUTODEV_SKIP_STABILITY_GATE=1 (the
+    emergency-stop env) to keep the one-shot trip behavior under
+    test. The 5-cycle stability path is exercised by
+    test_five_consecutive_at_target_writes_done in the unit suite.
+    """
+    _seed(tmp_path, level_overall=5)
+    skip_gate = {"AUTODEV_SKIP_STABILITY_GATE": "1"}
+
+    r1 = _run_wake(tmp_path, target_l=5, extra_env=skip_gate)
     assert r1.returncode == 0
     done = tmp_path / "reports" / "AUTODEV_DONE.md"
     assert done.exists(), "wake 1 should write AUTODEV_DONE.md at target"
@@ -193,17 +205,17 @@ def test_smoke_scenario_3_target_l_reached_done_md_writes_and_holds(tmp_path):
 
     # Wake 2: fast-forward cooldown, AUTODEV_DONE still present → skip
     _fast_forward_last_wake(tmp_path, seconds_ago=600)
-    r2 = _run_wake(tmp_path, target_l=5)
+    r2 = _run_wake(tmp_path, target_l=5, extra_env=skip_gate)
     assert r2.returncode == 0
     assert _invocation_count(tmp_path) == 0, (
         "wake 2 with AUTODEV_DONE present should NOT invoke claude"
     )
 
     # Wake 3: remove AUTODEV_DONE, LEVEL.md still says 5 → should
-    # re-write AUTODEV_DONE.md
+    # re-write AUTODEV_DONE.md (emergency-stop env still set).
     done.unlink()
     _fast_forward_last_wake(tmp_path, seconds_ago=600)
-    r3 = _run_wake(tmp_path, target_l=5)
+    r3 = _run_wake(tmp_path, target_l=5, extra_env=skip_gate)
     assert r3.returncode == 0
     assert done.exists(), (
         "wake 3 should re-write AUTODEV_DONE.md if target-L still reached"
