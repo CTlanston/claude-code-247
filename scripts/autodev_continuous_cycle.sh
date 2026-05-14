@@ -104,23 +104,118 @@ if [[ -f reports/quota-rate-limit-until.ts ]]; then
   log "rate-limit window expired, cleared."
 fi
 
-# --- Termination check: Overall L >= target --------------------------
+# --- Termination check: Overall L >= target (with stability gate) ----
+#
+# Cycle ε: don't celebrate on a single-cycle level-up — require N
+# consecutive cycles at or above target before writing AUTODEV_DONE.md.
+# Threshold: AUTODEV_STABILITY_THRESHOLD (default 5).
+# Emergency stop: AUTODEV_SKIP_STABILITY_GATE=1 trips DONE.md on the
+# first cycle at or above target (the pre-ε behavior).
 
 if [[ -f LEVEL.md ]]; then
   overall=$(grep -oE 'Overall L = [0-9]+' LEVEL.md | grep -oE '[0-9]+$' | head -1)
+  stability_file="reports/level5-stability.txt"
+  stability_threshold=${AUTODEV_STABILITY_THRESHOLD:-5}
+
   if [[ -n "${overall:-}" ]] && (( overall >= TARGET_L )); then
-    cat > reports/AUTODEV_DONE.md <<EOF
-# AutoDev L7 mission complete
+    # Increment stability counter
+    stab=$(cat "$stability_file" 2>/dev/null || echo 0)
+    stab=$((stab + 1))
+    echo "$stab" > "$stability_file"
+    log "L${overall} >= target=${TARGET_L}; stability=${stab}/${stability_threshold}"
 
-Overall L = $overall reached target $TARGET_L at $(date -u +%Y-%m-%dT%H:%M:%SZ).
-launchd will keep checking but no further cycles will run.
+    # Trip DONE.md when stable (or when operator forces it via env)
+    if [[ -n "${AUTODEV_SKIP_STABILITY_GATE:-}" ]] || (( stab >= stability_threshold )); then
+      # Gather data for the expanded DONE.md schema (Cycle ε / ADR-0013).
+      # All sources are best-effort; missing data renders as "NO_DATA".
+      done_ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+      total_cycles=$(grep -cE '^[0-9]{8}-[0-9]{6} \|' CHANGELOG.md 2>/dev/null || echo NO_DATA)
+      total_commits=$(git rev-list --count HEAD 2>/dev/null || echo NO_DATA)
+      c_streak_hwm=$(cat reports/zero-deadlock-streak.txt 2>/dev/null || echo NO_DATA)
+      bootstrap_ts=$(git log --reverse --format=%cI 2>/dev/null | head -1 || echo NO_DATA)
+      codex_spend_total=$(python3 - <<'PYEOF' 2>/dev/null || echo NO_DATA
+import json, pathlib
+p = pathlib.Path("reports/codex-spend.jsonl")
+if not p.exists():
+    print("NO_DATA")
+else:
+    total = 0
+    for ln in p.read_text().splitlines():
+        try:
+            row = json.loads(ln)
+        except Exception:
+            continue
+        total += int(row.get("tokens_used", 0) or 0)
+    print(total)
+PYEOF
+)
+      level_md_block=$(grep -E '^[MSRCTE] [0-9] \|' LEVEL.md 2>/dev/null \
+                        || echo "(LEVEL.md unreadable)")
 
-To resume work toward higher L:
-  rm reports/AUTODEV_DONE.md
-  Optionally raise AUTODEV_TARGET_L env (default 5) in the plist.
+      cat > reports/AUTODEV_DONE.md <<EOF
+# AutoDev L7 — Mission Complete
+
+**Reached at**: ${done_ts}
+**Overall L**: ${overall} (target: ${TARGET_L})
+**Stability**: ${stab} consecutive cycles at or above target
+**Triggering threshold**: ${stability_threshold}
+
+## Per-dimension levels (from LEVEL.md)
+
+\`\`\`
+${level_md_block}
+\`\`\`
+
+## Cumulative totals since Bootstrap
+
+| Metric                              | Value |
+|-------------------------------------|-------|
+| Cycles executed (CHANGELOG entries) | ${total_cycles} |
+| Git commits on this branch          | ${total_commits} |
+| C-dim streak high-water mark        | ${c_streak_hwm} |
+| Bootstrap commit timestamp          | ${bootstrap_ts} |
+| Codex token spend (sum reports/codex-spend.jsonl) | ${codex_spend_total} |
+
+## Honest assessment
+
+This system has reached \`Overall L >= ${TARGET_L}\` and held that
+level for ${stab} consecutive cycles. What it can do now:
+
+- Drive disciplined L7-rubric cycles on its own (Planner / Coder /
+  Reviewer / Guardian, all gated, all recording).
+- Survive launchd-spawned wakes (Cycle β fixed keychain ACL; ADR-0010).
+- Reinstall its own launchd agent reproducibly (Cycle γ; ADR-0011).
+- Escalate repeat failures via BLOCKED.md within 3 wakes (Cycle δ;
+  ADR-0012).
+- Decide for itself when it's done (this cycle; ADR-0013).
+
+What it still can NOT do (the §1 honest ceiling, unchanged):
+- Make product / UX / stakeholder decisions.
+- Resolve novel architectural choices without operator input.
+- Crisis response (the operator is still the on-call human).
+
+## To resume work toward higher L
+
+\`\`\`bash
+rm reports/AUTODEV_DONE.md
+# Optionally raise AUTODEV_TARGET_L (default 5) in the launchd plist:
+AUTODEV_TARGET_L=6 bash scripts/install_launchd_continuous.sh --install
+\`\`\`
+
+launchd will keep firing per its StartInterval but exit 0
+immediately on detecting this file. Removing it re-enables
+dispatch on the next wake.
 EOF
-    log "Overall L=$overall >= target=$TARGET_L → wrote AUTODEV_DONE.md"
-    exit 0
+      log "Overall L=${overall} >= target=${TARGET_L} stable ${stab}/${stability_threshold} → wrote AUTODEV_DONE.md"
+      exit 0
+    fi
+  else
+    # L dropped below target → reset stability window. Drops are a
+    # signal that the level isn't load-bearing yet.
+    if [[ -f "$stability_file" ]]; then
+      rm -f "$stability_file"
+      log "L${overall:-?} < target=${TARGET_L}; stability counter reset"
+    fi
   fi
 fi
 

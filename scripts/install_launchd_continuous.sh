@@ -57,9 +57,23 @@ fi
 REPO="${AUTODEV_REPO_ROOT}"
 
 PLIST="${AUTODEV_PLIST_PATH:-$HOME/Library/LaunchAgents/${LABEL}.plist}"
-INTERVAL="${AUTODEV_INTERVAL_SECONDS:-900}"
 TARGET_L="${AUTODEV_TARGET_L:-5}"
 DRY_RUN="${AUTODEV_LAUNCHD_DRY_RUN:-}"
+
+# INTERVAL resolution order (Cycle ε / ADR-0013):
+#   1. AUTODEV_INTERVAL_SECONDS env (operator/test override)
+#   2. HUMAN_CONFIG.md runtime.launchd_interval_seconds (canonical)
+#   3. 900-second default
+if [[ -n "${AUTODEV_INTERVAL_SECONDS:-}" ]]; then
+  INTERVAL="$AUTODEV_INTERVAL_SECONDS"
+elif [[ -f "${AUTODEV_REPO_ROOT}/HUMAN_CONFIG.md" ]]; then
+  hc_interval=$(grep -oE 'launchd_interval_seconds:[[:space:]]*[0-9]+' \
+                  "${AUTODEV_REPO_ROOT}/HUMAN_CONFIG.md" 2>/dev/null \
+                | grep -oE '[0-9]+$' | head -1)
+  INTERVAL="${hc_interval:-900}"
+else
+  INTERVAL=900
+fi
 
 # HOME for launchd-spawned children (NOT inherited from user session).
 # Embedded as an absolute path — never a literal `$HOME` in the plist.

@@ -37,6 +37,14 @@ runtime:
   live_allowed: true                                     # dry-run passed 2026-05-11; live cycle OK
   autostart_allowed: false                               # do NOT auto-launch supervisor — start it manually
   interval_seconds: 900                                  # 15-min cadence when supervisor IS running
+  launchd_interval_seconds: 900                          # Cycle ε / ADR-0013 — cadence for the L7
+                                                         # launchd continuous-cycle agent
+                                                         # (com.lanston.autodev.continuous).
+                                                         # 900 = 15 min (default). Recommend 3600 =
+                                                         # 1 hour for steady-state operation (lower
+                                                         # log churn, lower CPU). install_launchd_
+                                                         # continuous.sh reads this when
+                                                         # AUTODEV_INTERVAL_SECONDS env is unset.
   max_repair_attempts_per_task: 3
   max_review_rounds_per_task: 5
   # --- Codex CLI cross-model review (added Cycle 15; see ADR-0008) ---
