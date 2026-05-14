@@ -26,7 +26,7 @@ Phase A's rebuild bakes these into the orchestrator image.
 
 ## Pre-flight (mandatory; abort on any RED)
 
-Run from `/Users/lanston/Desktop/Claude Code/claude-code-247`:
+Run from `/Users/lanston/projects/claude-code-247`:
 
 ```bash
 # Verify the 3 fixes are on disk
@@ -45,7 +45,7 @@ Every line must succeed. If anything RED, append to `reports/human-hold.md` and 
 ## Phase A — Rebuild image with the 3 fixes
 
 ```bash
-cd "/Users/lanston/Desktop/Claude Code/claude-code-247"
+cd "/Users/lanston/projects/claude-code-247"
 docker compose stop orchestrator
 docker compose build orchestrator
 docker compose up -d orchestrator

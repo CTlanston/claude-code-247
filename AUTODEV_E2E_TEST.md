@@ -38,7 +38,7 @@ fix is the line of defense; this test exercises it under multi-task load.
 
 ## Pre-flight (mandatory; abort on any RED)
 
-Run from `/Users/lanston/Desktop/Claude Code/claude-code-247`:
+Run from `/Users/lanston/projects/claude-code-247`:
 
 ```bash
 cat HUMAN_CONFIG.md | grep -E 'live_allowed|cost\.mode' | head -3
@@ -57,7 +57,7 @@ Every line above must succeed. If anything is RED, append a HOLD entry to
 ## Phase A — Stop the compose stack (one driver only)
 
 ```bash
-cd "/Users/lanston/Desktop/Claude Code/claude-code-247"
+cd "/Users/lanston/projects/claude-code-247"
 docker compose stop orchestrator
 docker ps --filter name=claude-code-247-orchestrator --format '{{.Names}}\t{{.Status}}'
 docker image inspect claude-code-247/runner:latest --format '{{.Id}}'

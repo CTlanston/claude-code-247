@@ -3,7 +3,7 @@
 ## Context
 
 On the first wake under the L7 Master Prompt (`AUTODEV_L7_MASTER_PROMPT.md`),
-the working tree at `/Users/lanston/Desktop/Claude Code/claude-code-247` was
+the working tree at `/Users/lanston/projects/claude-code-247` was
 not clean:
 
 - `orchestrator/git_proxy.py` and `orchestrator/github_client.py` were

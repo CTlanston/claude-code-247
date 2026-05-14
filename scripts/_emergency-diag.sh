@@ -6,7 +6,7 @@ set -u
 # Make sure brew-installed CLIs are reachable regardless of which shell rc loaded.
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 
-repo_dir="/Users/lanston/Desktop/Claude Code/claude-code-247"
+repo_dir="/Users/lanston/projects/claude-code-247"
 cd "$repo_dir" || { echo "cannot cd into $repo_dir"; exit 1; }
 
 hr() { printf '\n── %s ──\n' "$1"; }

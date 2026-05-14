@@ -2,7 +2,7 @@ You are wrapping up a successful recovery. Read this whole file first, then exec
 
 ## Context
 
-Working dir: /Users/lanston/Desktop/Claude Code/claude-code-247
+Working dir: /Users/lanston/projects/claude-code-247
 Harness purpose: this is the 4-role auto-evolve orchestrator that operates on the test repo CTlanston/auto-evo-playground via GitHub Issues + shadow branches.
 
 We just recovered the orchestrator from a Guardian-induced freeze. Root cause:

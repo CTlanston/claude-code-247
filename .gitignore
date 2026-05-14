@@ -65,3 +65,9 @@ reports/adversarial-reviews.jsonl
 reports/health.json
 reports/health.md
 reports/health.history.jsonl
+
+# launchd wake-cycle logs — one file per wake (timestamped under
+# reports/runs/2026*.log). Pure operational output, not source.
+# Tracking them would dirty the tree on every wake and fail the §4
+# step 1 "git status clean" gate (FAIL-0009 class, like health.* above).
+reports/runs/

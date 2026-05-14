@@ -204,7 +204,7 @@ Per L7 §0:
 ## How to resume
 
 ```bash
-cd "/Users/lanston/Desktop/Claude Code/claude-code-247"
+cd "/Users/lanston/projects/claude-code-247"
 git checkout main           # only if you want to inspect; not required
 cat reports/L7-session-wakeup-summary.md   # this file
 cat STATE.md                # current cursor

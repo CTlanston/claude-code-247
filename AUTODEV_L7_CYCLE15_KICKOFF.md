@@ -4,7 +4,7 @@
 > previous "skip Codex" architectural decision because the operator has
 > installed and OAuth-authenticated Codex CLI.
 
-Read `/Users/lanston/Desktop/Claude Code/claude-code-247/AUTODEV_L7_MASTER_PROMPT.md` and `reports/L7-session-wakeup-summary.md` first. Then continue from Cycle 15 per §4 protocol with the following updates.
+Read `/Users/lanston/projects/claude-code-247/AUTODEV_L7_MASTER_PROMPT.md` and `reports/L7-session-wakeup-summary.md` first. Then continue from Cycle 15 per §4 protocol with the following updates.
 
 ## Architectural updates from the human (apply immediately)
 

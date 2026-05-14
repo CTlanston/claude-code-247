@@ -9,7 +9,7 @@ test/CI/Guardian run, and blocker event. Latest entries at bottom.
 
 ### Phase 0 — Preflight
 
-- Working dir: `/Users/lanston/Desktop/Claude Code/claude-code-247`
+- Working dir: `/Users/lanston/projects/claude-code-247`
 - Existing Auto-Evo inner engine present at `orchestrator/`, `runner/`
 - Tools present: python3 3.9, docker 29.4.2, gh 2.91.0, git
 - Tools missing: `tmux`, `claude` (CLI on host PATH — Docker container has it)

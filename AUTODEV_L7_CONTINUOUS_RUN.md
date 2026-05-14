@@ -228,7 +228,7 @@ Generates and installs a launchd plist that runs `autodev_continuous_cycle.sh` e
 set -u
 LABEL="com.lanston.autodev.continuous"
 PLIST="$HOME/Library/LaunchAgents/${LABEL}.plist"
-REPO="/Users/lanston/Desktop/Claude Code/claude-code-247"
+REPO="/Users/lanston/projects/claude-code-247"
 INTERVAL=${AUTODEV_INTERVAL_SECONDS:-900}   # 15 min default
 TARGET_L=${AUTODEV_TARGET_L:-5}
 

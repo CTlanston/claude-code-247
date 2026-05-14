@@ -42,7 +42,7 @@ You'll verify #1/#4/#5 made it into the rebuilt image, fix #2/#3 yourself with T
 
 ## Phase 0 — Pre-flight & decision memo
 
-Run from `/Users/lanston/Desktop/Claude Code/claude-code-247`. Every check must pass; if anything is RED, append a HOLD entry to `reports/human-hold.md` and stop.
+Run from `/Users/lanston/projects/claude-code-247`. Every check must pass; if anything is RED, append a HOLD entry to `reports/human-hold.md` and stop.
 
 ```bash
 # Confirm the 3 inner-engine patches are on disk (applied by Cowork last session)
