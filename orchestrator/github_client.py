@@ -6,11 +6,14 @@ without a real repo. Stub state lives at $WORKSPACE_ROOT/_github_stub/.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import time
 from pathlib import Path
 from typing import Optional
+
+log = logging.getLogger(__name__)
 
 _TOKEN = os.getenv("GITHUB_TOKEN")
 _REPO_NAME = os.getenv("GITHUB_REPO")

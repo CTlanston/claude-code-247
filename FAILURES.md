@@ -214,12 +214,13 @@ silent-false, env-var-precedence
 **Date**: 2026-05-11 (V3 E2E test environment, observed during dispatch
 of issues #11/#12/#13)
 
-**Empirically reproduced**: no (V3 cleanup-era fix shipped without
-a unit test; would need PyGithub network mocking. The fix is
-believed correct from log evidence but has not been verified
-under controlled reproduction. Future cycle should mock PyGithub
-and add a regression test before relying on the inferred root
-cause.)
+**Empirically reproduced**: yes (Cycle 45 `20260514-164714` added
+`tests/test_github_client_workflow_status.py` with 7 tests that
+patch `_local_mode` + `_gh` to trigger the failure paths;
+test_indexerror_in_runs_subscript_returns_none fails on the
+pre-Cycle-45 code with the exact production symptom AND surfaces
+a latent NameError in the "Working fix" — see the "Cycle 45
+verification" sub-block at the end of this entry).
 
 **Symptom**: `orchestrator/github_client.py:latest_workflow_run_status`
 raised `IndexError` (or a generic `GithubException`) when a shadow branch
@@ -239,18 +240,64 @@ try/except wrapper, any transient API hiccup also bubbled up.
 - (rejected) check `runs.totalCount > 0` first — PyGithub raises during
   `totalCount` resolution on some auth-permission edge cases too.
 
-**Working fix**: pre-V4 (V3 cleanup era) commit `9df48f6`. Wrap the entire
-PyGithub call site in `try / except Exception`, log a warning via the
-module logger, and return `None` so callers move on to the next task.
-Also probe `runs.totalCount` defensively (also try/except).
+**Working fix**:
+1. (pre-V4, V3 cleanup era) commit `9df48f6` — wrap the PyGithub
+   call site in `try / except Exception`, log a warning, return
+   `None`; probe `runs.totalCount` defensively (also try/except).
+2. (Cycle 45, `20260514-164714`) Fixed a latent NameError shipped
+   in step 1: the except branch called `log.warning(...)` but the
+   `log` name was never imported/defined at module scope, so any
+   real exception path raised `NameError` and propagated — i.e.
+   the "defensive" fix reproduced FAIL-0005's original symptom
+   via a different code path. Cycle 45 added
+   `import logging` + `log = logging.getLogger(__name__)` at
+   module top. With both fixes in place, the except branch now
+   logs and returns `None` as originally intended.
 
-**Regression test**: not yet (the V3-era fix shipped without a unit test
-because the code path needs network mocking; a future cycle can add a
-`pytest-vcr`-style or `unittest.mock` test stub).
+**Regression test**:
+- `tests/test_github_client_workflow_status.py` (Cycle 45, 7
+  tests): IndexError in `runs[:1]` → None; generic exception
+  in `_gh()` → None; `runs.totalCount` raises → swallowed and
+  falls through; `totalCount == 0` → None; success conclusion
+  passes through; None conclusion → "running"; module exposes
+  `log` as `logging.Logger`.
 
 **Keywords**: pygithub, paginatedlist, indexerror, workflow-runs,
 shadow-branch, dispatch-freeze, github-client, latest_workflow_run_status,
-defensive-exception, transient-api
+defensive-exception, transient-api, namerror, latent-bug, logging
+
+### Cycle 45 verification (2026-05-14, `20260514-164714`)
+
+Empirical reproduction (TDD discipline):
+
+```bash
+$ git checkout autoevo/pre-20260514-164714
+$ python3 -m pytest tests/test_github_client_workflow_status.py -q
+...
+E   NameError: name 'log' is not defined
+orchestrator/github_client.py:157: NameError
+=== 3 failed, 4 passed in 0.13s ===
+```
+
+The IndexError code path (the exact scenario FAIL-0005 was
+filed against) raised `NameError` because line 157's
+`log.warning(...)` referenced an undefined name. The defensive
+fix was shipped without a regression test; mocked tests would
+have caught this on day one. Under real PyGithub the first
+transient API hiccup would have re-frozen the inner-engine
+loop with a confusing `NameError` traceback instead of the
+original IndexError — strictly worse than no fix at all
+(now plus a misleading stack).
+
+After Cycle 45's `import logging` + `log = logging.getLogger(__name__)`
+addition (2 lines, byte-identical for all success paths), all
+7 tests pass; the except branch logs the warning as intended
+and returns `None`.
+
+**Lesson**: defensive `except Exception:` clauses must be
+exercised by at least one unit test. A try/except without a
+regression test exercising the except branch is **not** a fix
+— it's a latent multiplier on the original failure mode.
 
 ---
 

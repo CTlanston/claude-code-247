@@ -110,6 +110,31 @@ Each cycle:
       DONE in 20260513-163910 (closes §0 rule 3 secret-leak surface;
       first `no` → `yes` conversion in FAILURES.md ledger; 15 tests)
 
+- [x] [Cycle 45 — ship FAIL-0005] orchestrator/github_client.py
+      `import logging` + `log = logging.getLogger(__name__)` fix +
+      tests/test_github_client_workflow_status.py (7 mock-based
+      regression tests)
+      DONE in 20260514-164714 (second `no` → `yes` conversion;
+      empirical reproduction surfaced a latent NameError in the
+      V3-era "Working fix" — `log` was referenced but never
+      imported; FAILURES tag count now 6y/3n/1c/1na)
+
+## P0 — operator action (env cleanup; surfaced by Cycle 45)
+
+- [ ] **Install `gh` CLI locally** — `brew install gh` (macOS) or
+      equivalent. Doctor's "gh missing" required check fails, doctor
+      exits 1, `tests/test_doctor_health_check.py::test_doctor_still_exits_0`
+      fails. Pre-existed before Cycle 45.
+- [ ] **Prune stale worktree registration** — `git worktree list`
+      shows a `prunable` entry pointing at `/Users/lanston/Desktop/...`
+      from before the repo was moved. Run `git worktree prune` and
+      either re-register `worktrees/stream-1` or remove the dir.
+      `tests/test_spawn_worktree.py::test_script_noop_when_worktree_exists`
+      fails because of this. Pre-existed before Cycle 45.
+- [ ] **Isolate flaky `test_subscription_detection_examples`** —
+      passes alone, fails in full pytest suite. Likely Hypothesis
+      ordering. Add a fixture seed or randomization isolation.
+
 - [ ] [Track C3-live] Real-cycle worktree dispatch (priority: P1)
       details: Wire Scheduler.dispatch_next() into a real dispatch
       loop. Phase D of the continuous-run plan.
