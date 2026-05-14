@@ -210,4 +210,53 @@ if (( cycle_exit == 124 )); then
   log "cycle hit 45-min wall-clock cap, will retry next wake"
 fi
 
+# --- Self-repair trigger (Cycle δ — ADR-0012) -------------------------
+#
+# When a cycle fails (nonzero exit) with the SAME signature as the
+# previous N wakes, escalate to scripts/autodev_self_repair.sh. The
+# signature is SHA-256 of the last 10 lines of the cycle log; that's
+# stable across identical failures, distinct across different ones.
+#
+# State files (gitignored under reports/runs/):
+#   .failure-signature.last   — last signature seen
+#   .failure-signature.count  — consecutive wakes hitting it
+#
+# Threshold = 3 (operator-tunable via AUTODEV_SELF_REPAIR_THRESHOLD).
+# Successful cycles clear both state files. Timeouts (exit 124) and
+# rate-limit signals don't count toward the threshold — they're
+# already handled upstream.
+#
+# Escape hatch: AUTODEV_SKIP_SELF_REPAIR=1 disables the trigger.
+
+if [[ -z "${AUTODEV_SKIP_SELF_REPAIR:-}" ]] && (( cycle_exit != 0 && cycle_exit != 124 )); then
+  _autodev_self_repair_threshold=${AUTODEV_SELF_REPAIR_THRESHOLD:-3}
+  _autodev_new_sig=$(tail -10 "$cycle_log" 2>/dev/null \
+                     | shasum -a 256 2>/dev/null | cut -d' ' -f1)
+  if [[ -n "$_autodev_new_sig" ]]; then
+    _autodev_last_sig=$(cat reports/runs/.failure-signature.last 2>/dev/null || echo "")
+    if [[ "$_autodev_new_sig" == "$_autodev_last_sig" ]]; then
+      _autodev_count=$(cat reports/runs/.failure-signature.count 2>/dev/null || echo 0)
+      _autodev_count=$((_autodev_count + 1))
+    else
+      _autodev_count=1
+      echo "$_autodev_new_sig" > reports/runs/.failure-signature.last
+    fi
+    echo "$_autodev_count" > reports/runs/.failure-signature.count
+    log "failure-signature ${_autodev_new_sig:0:12}... count=${_autodev_count}/${_autodev_self_repair_threshold}"
+
+    if (( _autodev_count >= _autodev_self_repair_threshold )); then
+      _autodev_repair_bin=${AUTODEV_SELF_REPAIR_BIN:-bash $REPO/scripts/autodev_self_repair.sh}
+      log "SELF-REPAIR triggered (signature ${_autodev_new_sig:0:12}... matched ${_autodev_count} consecutive cycles)"
+      $_autodev_repair_bin "$cycle_log" "$_autodev_new_sig" >> "$cycle_log" 2>&1 || true
+      # Reset the counter so the self-repair handler gets one shot
+      # per 3-strike window (operator action expected after BLOCKED).
+      : > reports/runs/.failure-signature.count
+    fi
+  fi
+  unset _autodev_new_sig _autodev_last_sig _autodev_count _autodev_self_repair_threshold _autodev_repair_bin
+elif (( cycle_exit == 0 )); then
+  # Successful cycle clears any prior failure-signature state.
+  rm -f reports/runs/.failure-signature.last reports/runs/.failure-signature.count 2>/dev/null || true
+fi
+
 exit 0
