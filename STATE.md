@@ -1,10 +1,10 @@
 # STATE.md — current L7 supervisor state
 
 ```yaml
-current_branch: autoevo/cycle-beta/launchd-auth-env-var
-last_cycle_id: 20260514-164425
+current_branch: autoevo/cycle-gamma/install-idempotent-dry-run
+last_cycle_id: 20260514-170538
 last_cycle_result: PASS
-last_green_commit: 94f92bd  # ADR-0010 + cycle β artifacts
+last_green_commit: (γ ADR+artifacts commit; see git log)
 last_levelup: 20260513-050048
 overall_level: 4
 dim_levels:
@@ -17,15 +17,15 @@ dim_levels:
 session_mission:
   source: AUTODEV_L7_AUTH_AND_SELFREPAIR.md
   cycle_alpha: SUBSUMED by BLOCKED.md path #1 resolution (commits 5f921bc + ce6c649)
-  cycle_beta:  COMPLETE (this cycle, 20260514-164425)
-  cycle_gamma: PENDING (codify out-of-band plist patches + idempotence + --dry-run)
+  cycle_beta:  COMPLETE (20260514-164425; PASS; branch autoevo/cycle-beta/...)
+  cycle_gamma: COMPLETE (this cycle, 20260514-170538; PASS; --dry-run + ADR-0011)
   cycle_delta: PENDING (self-repair on 3 consecutive same-signature failures)
   cycle_epsilon: PENDING (hourly cadence option + AUTODEV_DONE.md celebration)
 concurrency:
   worktree_count: 2
-  zero_deadlock_streak: 27      # 90% of the way to C-L5
+  zero_deadlock_streak: 28      # 93% of the way to C-L5
   streak_target_for_L5: 30
-  cycles_to_C_L5: 3
+  cycles_to_C_L5: 2
 streak_update_pattern:
   - 20260513-162424→25 via Scheduler.record_cycle_success()
   - 20260514-164714  via direct file write (Scheduler API path
@@ -40,7 +40,7 @@ verify_before_relying_thread:
   first_no_to_yes:    20260513-163910 (Cycle 44; FAIL-0008 shipped)
   second_no_to_yes:   20260514-164714 (Cycle 45; FAIL-0005 shipped +
                                        latent NameError surfaced)
-adr_count: 8  # ADR-0010 added by Cycle β
+adr_count: 9  # ADR-0010 (β) + ADR-0011 (γ) added this session
 s_dim_active_gates: 7/7
 s_dim_code_path_gates_added_in_β: 1  # launchd-auth env-var routing
   # New gate: token-prefix routing of .env's ANTHROPIC_API_KEY line into
