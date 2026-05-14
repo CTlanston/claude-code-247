@@ -248,3 +248,125 @@ def test_always_exits_0_even_when_claude_fails(tmp_path):
     _seed_repo(tmp_path)
     r = _run_wake(tmp_path, extra_env={"AUTODEV_CLAUDE_BIN": str(stub)})
     assert r.returncode == 0
+
+
+# --- Cycle β: OAuth/API token routing ----------------------------------
+
+
+def _env_dumping_claude_stub(tmp_path: Path) -> Path:
+    """Stub `claude` that dumps a few specific env vars to a sidecar
+    file so the test can assert on routing decisions.
+
+    Important: the sidecar file is plain text, one `KEY=value` per
+    line. Only the two vars we route to are dumped; nothing else
+    in the real environment is exposed. This stub never touches the
+    real keychain or .env.
+    """
+    stub = tmp_path / "claude_env_stub.sh"
+    stub.write_text(
+        "#!/usr/bin/env bash\n"
+        f"{{\n"
+        f"  echo \"CLAUDE_CODE_OAUTH_TOKEN=${{CLAUDE_CODE_OAUTH_TOKEN:-}}\"\n"
+        f"  echo \"ANTHROPIC_API_KEY=${{ANTHROPIC_API_KEY:-}}\"\n"
+        f"}} > {tmp_path}/claude_env_dump.txt\n"
+        f"exit 0\n"
+    )
+    stub.chmod(0o755)
+    return stub
+
+
+def _read_env_dump(tmp_path: Path) -> dict[str, str]:
+    dump = tmp_path / "claude_env_dump.txt"
+    assert dump.exists(), "claude stub did not write env dump"
+    out: dict[str, str] = {}
+    for line in dump.read_text().splitlines():
+        if "=" in line:
+            k, v = line.split("=", 1)
+            out[k] = v
+    return out
+
+
+def test_oauth_token_routed_to_correct_env_var(tmp_path):
+    """A `sk-ant-oat01-…` value in .env must export
+    CLAUDE_CODE_OAUTH_TOKEN (and clear ANTHROPIC_API_KEY) before
+    `claude` runs. This is the Cycle β core fix for the keychain
+    ACL block under launchd."""
+    fake_token = "sk-ant-oat01-FAKE-TEST-TOKEN-DO-NOT-USE"
+    _seed_repo(tmp_path)
+    # Note: this `.env` is INSIDE the tmp_path (the per-test repo
+    # root), NOT the real repo's .env. §0 rule 3 is honored — the
+    # test never reads or writes the live ~/projects/claude-code-247
+    # .env at any point.
+    (tmp_path / ".env").write_text(
+        f"# fake test .env\nANTHROPIC_API_KEY={fake_token}\n"
+    )
+    stub = _env_dumping_claude_stub(tmp_path)
+    # Pre-set ANTHROPIC_API_KEY in the env to verify it gets cleared
+    # when an oat01 token is loaded from .env.
+    r = _run_wake(
+        tmp_path,
+        extra_env={
+            "AUTODEV_CLAUDE_BIN": str(stub),
+            "ANTHROPIC_API_KEY": "stale-value-must-be-cleared",
+        },
+    )
+    assert r.returncode == 0
+    env = _read_env_dump(tmp_path)
+    assert env["CLAUDE_CODE_OAUTH_TOKEN"] == fake_token, (
+        f"oat01 token should route to CLAUDE_CODE_OAUTH_TOKEN; "
+        f"got {env}"
+    )
+    assert env["ANTHROPIC_API_KEY"] == "", (
+        f"ANTHROPIC_API_KEY should be cleared when oat01 routed; "
+        f"got {env['ANTHROPIC_API_KEY']!r}"
+    )
+
+
+def test_api_key_routed_correctly(tmp_path):
+    """A `sk-ant-api03-…` value in .env must export ANTHROPIC_API_KEY
+    (and NOT touch CLAUDE_CODE_OAUTH_TOKEN). This branch is for
+    operators who run the system with a real API key rather than an
+    OAuth token — same .env line, prefix discriminates."""
+    fake_token = "sk-ant-api03-FAKE-TEST-KEY-DO-NOT-USE"
+    _seed_repo(tmp_path)
+    (tmp_path / ".env").write_text(
+        f"ANTHROPIC_API_KEY={fake_token}\n"
+    )
+    stub = _env_dumping_claude_stub(tmp_path)
+    r = _run_wake(
+        tmp_path, extra_env={"AUTODEV_CLAUDE_BIN": str(stub)},
+    )
+    assert r.returncode == 0
+    env = _read_env_dump(tmp_path)
+    assert env["ANTHROPIC_API_KEY"] == fake_token, (
+        f"api03 key should route to ANTHROPIC_API_KEY; got {env}"
+    )
+    assert env["CLAUDE_CODE_OAUTH_TOKEN"] == "", (
+        f"CLAUDE_CODE_OAUTH_TOKEN should not be set for api03; "
+        f"got {env['CLAUDE_CODE_OAUTH_TOKEN']!r}"
+    )
+
+
+def test_no_env_file_falls_back_to_environment(tmp_path):
+    """No `.env` in the repo root → the wake script leaves the
+    pre-existing environment alone. Operators who source their
+    token in launchd plist EnvironmentVariables (instead of .env)
+    must not have it clobbered."""
+    pre_existing_token = "sk-ant-api03-FROM-PLIST-ENV"
+    _seed_repo(tmp_path)
+    # Deliberately do NOT write .env
+    assert not (tmp_path / ".env").exists()
+    stub = _env_dumping_claude_stub(tmp_path)
+    r = _run_wake(
+        tmp_path,
+        extra_env={
+            "AUTODEV_CLAUDE_BIN": str(stub),
+            "ANTHROPIC_API_KEY": pre_existing_token,
+        },
+    )
+    assert r.returncode == 0
+    env = _read_env_dump(tmp_path)
+    assert env["ANTHROPIC_API_KEY"] == pre_existing_token, (
+        f"pre-existing ANTHROPIC_API_KEY should pass through when "
+        f"no .env file is present; got {env}"
+    )

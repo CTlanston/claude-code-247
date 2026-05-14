@@ -262,3 +262,90 @@ def test_plist_label_is_l7_not_v3(tmp_path):
     data = plistlib.loads(r.stdout.encode("utf-8"))
     assert data["Label"] == "com.lanston.autodev.continuous"
     assert data["Label"] != "com.autodev.supervisor"
+
+
+# --- Cycle β: HOME env + claude bin dir + no $HOME literal -----------
+
+
+def test_plist_has_HOME_env(tmp_path):
+    """EnvironmentVariables.HOME must be set as an absolute path so
+    launchd-spawned children inherit a usable HOME (they don't get
+    one from the user session). Without this, `claude` can't find
+    its config dir under ~/.claude/ and degrades.
+    """
+    r = _run(
+        ["--print-plist"], tmp_path=tmp_path,
+        extra_env={"AUTODEV_HOME": "/Users/testuser"},
+    )
+    data = plistlib.loads(r.stdout.encode("utf-8"))
+    env = data["EnvironmentVariables"]
+    assert "HOME" in env, "plist EnvironmentVariables missing HOME"
+    assert env["HOME"] == "/Users/testuser"
+    assert env["HOME"].startswith("/"), "HOME must be an absolute path"
+
+
+def test_plist_path_contains_claude_dir(tmp_path):
+    """The plist PATH must contain the directory holding `claude` so
+    launchd-spawned children can `command -v claude`. The install
+    script auto-discovers it (Cycle β); AUTODEV_CLAUDE_BIN_DIR is
+    the explicit override hook used here.
+    """
+    r = _run(
+        ["--print-plist"], tmp_path=tmp_path,
+        extra_env={"AUTODEV_CLAUDE_BIN_DIR": "/opt/fake/claude/bin"},
+    )
+    data = plistlib.loads(r.stdout.encode("utf-8"))
+    path = data["EnvironmentVariables"]["PATH"]
+    assert "/opt/fake/claude/bin" in path, (
+        f"claude dir missing from plist PATH: {path}"
+    )
+    # And it should be FIRST so it wins over any later shadowing entry.
+    assert path.split(":")[0] == "/opt/fake/claude/bin", (
+        f"claude dir should be first in PATH, got: {path}"
+    )
+
+
+def test_no_unexpanded_home_variable(tmp_path):
+    """The raw plist text must NOT contain literal `$HOME` or `${HOME}`
+    — launchd does NOT expand env-var references inside plist strings,
+    so any literal would break runtime path resolution.
+    """
+    r = _run(
+        ["--print-plist"], tmp_path=tmp_path,
+        extra_env={
+            "AUTODEV_HOME": "/Users/testuser",
+            "AUTODEV_CLAUDE_BIN_DIR": "/opt/fake/claude/bin",
+        },
+    )
+    assert "$HOME" not in r.stdout, (
+        "literal $HOME found in plist — launchd won't expand it"
+    )
+    assert "${HOME}" not in r.stdout, (
+        "literal ${HOME} found in plist — launchd won't expand it"
+    )
+
+
+def test_plist_xml_valid_plutil_lint(tmp_path):
+    """`plutil -lint` is macOS's authoritative plist parser; if it
+    rejects ours, launchd will too. Skip on non-Darwin (CI).
+    """
+    import platform
+    if platform.system() != "Darwin":
+        pytest.skip("plutil only available on macOS")
+    plist_file = tmp_path / "lint.plist"
+    r = _run(
+        ["--print-plist"], tmp_path=tmp_path,
+        extra_env={
+            "AUTODEV_HOME": "/Users/testuser",
+            "AUTODEV_CLAUDE_BIN_DIR": "/opt/fake/claude/bin",
+        },
+    )
+    plist_file.write_text(r.stdout)
+    lint = subprocess.run(
+        ["plutil", "-lint", str(plist_file)],
+        capture_output=True, text=True, timeout=10,
+    )
+    assert lint.returncode == 0, (
+        f"plutil -lint rejected the generated plist:\n"
+        f"stdout: {lint.stdout}\nstderr: {lint.stderr}"
+    )
