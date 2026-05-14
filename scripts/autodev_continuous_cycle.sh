@@ -230,7 +230,7 @@ fi
 
 if [[ -z "${AUTODEV_SKIP_SELF_REPAIR:-}" ]] && (( cycle_exit != 0 && cycle_exit != 124 )); then
   _autodev_self_repair_threshold=${AUTODEV_SELF_REPAIR_THRESHOLD:-3}
-  _autodev_new_sig=$(tail -10 "$cycle_log" 2>/dev/null \
+  _autodev_new_sig=$(tail -n +2 "$cycle_log" 2>/dev/null | tail -10 \
                      | shasum -a 256 2>/dev/null | cut -d' ' -f1)
   if [[ -n "$_autodev_new_sig" ]]; then
     _autodev_last_sig=$(cat reports/runs/.failure-signature.last 2>/dev/null || echo "")
