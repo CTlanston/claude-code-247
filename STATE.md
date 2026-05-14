@@ -4,12 +4,12 @@
 current_branch: autoevo/cycle-delta/self-repair-on-repeat-failure
 last_cycle_id: 20260514-171119
 last_cycle_result: PASS
-last_green_commit: (γ ADR+artifacts commit; see git log)
+last_green_commit: (δ self-repair trigger + ADR-0012; see git log)
 last_levelup: 20260513-050048
 overall_level: 4
 dim_levels:
-  M: 7   # ADR count 8 (now includes ADR-0010); failures ledger discipline intact
-  S: 7   # All 7 S-L7 gates active; cycle β codifies launchd-auth gate (code-path)
+  M: 7   # ADR count 10 (ADR-0010/0011/0012 added this session); failures ledger intact
+  S: 7   # All 7 S-L7 gates active; cycle δ adds 3-strike escalation gate
   R: 7
   C: 4
   T: 7
@@ -49,9 +49,9 @@ s_dim_code_path_gates_added_in_β: 1  # launchd-auth env-var routing
 doctor_count: 14/1/1  # gh CLI missing locally (pre-existing env issue);
                       # rest green
 failures_ledger_tagged: 6 yes / 3 no / 1 corrected / 1 not_applicable
-  # Unchanged by Cycle β (PASS, no new FAIL entry)
-test_total: 650 passed / 2 skipped / 3 deselected-pre-existing
-  # +7 tests from Cycle β vs Cycle 45's snapshot (4 install + 3 cycle-script)
+  # Unchanged by Cycle δ (PASS, no new FAIL entry)
+test_total: 667 passed / 2 skipped / 3 deselected-pre-existing
+  # +11 tests from Cycle δ vs Cycle γ (4 trigger + 7 handler)
 concurrent_cycles_observed:
   - cycle_id: 20260514-164714
     branch: autoevo/cycle-45/fail-0005-pygithub-namerror
@@ -77,11 +77,11 @@ concurrent_cycles_observed:
    shared-state ordering. Not blocking; future cycle should isolate
    the fixture or use a deterministic seed.
 
-## Progress (47 cycles since Bootstrap)
+## Progress (48 cycles since Bootstrap)
 
 Phase A complete. Phase B complete. Phase C complete. Phase D
-running (Cycle 45 + β = 15 done). C streak **27/30** — 90% there;
-3 more disciplined cycles for C-L5 → Overall L=5.
+running (Cycle 45 + β + γ + δ = 18 done). C streak **29/30** — 97% there;
+1 more disciplined cycle for C-L5 → Overall L=5.
 
 ## Cycle β verification snapshot
 
