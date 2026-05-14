@@ -349,3 +349,116 @@ def test_plist_xml_valid_plutil_lint(tmp_path):
         f"plutil -lint rejected the generated plist:\n"
         f"stdout: {lint.stdout}\nstderr: {lint.stderr}"
     )
+
+
+# --- Cycle γ: --dry-run operator-facing simulation -------------------
+
+
+def test_dry_run_exits_zero_and_writes_no_file(tmp_path):
+    """`--dry-run` must be a pure-stdout operation: exit 0, plist
+    file MUST NOT appear on disk afterward."""
+    r = _run(["--dry-run"], tmp_path=tmp_path)
+    assert r.returncode == 0, r.stderr
+    assert r.stdout != "", "dry-run produced no output"
+    # The configured AUTODEV_PLIST_PATH is tmp_path/agent.plist; it
+    # MUST NOT exist after dry-run.
+    assert not (tmp_path / "agent.plist").exists(), (
+        "dry-run wrote a plist file — violates the dry-run contract"
+    )
+
+
+def test_dry_run_includes_target_path(tmp_path):
+    """`--dry-run` must show WHERE the plist would land so the
+    operator can verify the destination before committing to install."""
+    r = _run(["--dry-run"], tmp_path=tmp_path)
+    assert str(tmp_path / "agent.plist") in r.stdout, (
+        f"dry-run output missing target plist path; got:\n{r.stdout[:500]}"
+    )
+
+
+def test_dry_run_includes_plist_body(tmp_path):
+    """The plist XML must be embedded inside the dry-run output so
+    the operator can visually verify the EnvironmentVariables (HOME,
+    PATH) AND the absence of $HOME literals before any actual install."""
+    r = _run(["--dry-run"], tmp_path=tmp_path)
+    assert "<key>Label</key>" in r.stdout
+    assert "com.lanston.autodev.continuous" in r.stdout
+    # And no literal $HOME / ${HOME} (Cycle β's safety property
+    # extends to dry-run output too).
+    assert "$HOME" not in r.stdout
+    assert "${HOME}" not in r.stdout
+
+
+def test_dry_run_plist_body_is_valid_plist(tmp_path):
+    """Extract the plist XML from --dry-run output (between the
+    XML prolog and the closing </plist>) and confirm it parses."""
+    r = _run(
+        ["--dry-run"], tmp_path=tmp_path,
+        extra_env={
+            "AUTODEV_HOME": "/Users/testuser",
+            "AUTODEV_CLAUDE_BIN_DIR": "/opt/fake/claude/bin",
+        },
+    )
+    assert r.returncode == 0
+    # Find the embedded plist XML
+    start = r.stdout.find("<?xml")
+    end = r.stdout.find("</plist>")
+    assert start != -1 and end != -1, (
+        f"could not locate plist XML in dry-run output; got:\n{r.stdout[:500]}"
+    )
+    plist_xml = r.stdout[start : end + len("</plist>")]
+    data = plistlib.loads(plist_xml.encode("utf-8"))
+    # Same invariants the --print-plist tests assert
+    assert data["Label"] == "com.lanston.autodev.continuous"
+    assert data["EnvironmentVariables"]["HOME"] == "/Users/testuser"
+    assert "/opt/fake/claude/bin" in data["EnvironmentVariables"]["PATH"]
+
+
+def test_dry_run_does_not_invoke_launchctl(tmp_path):
+    """`--dry-run` must explicitly mention the launchctl commands that
+    `--install` would run, but it must NOT invoke them. We can't
+    intercept launchctl from a unit test, but we can confirm the
+    output is informational and the dry-run command echoes them.
+    """
+    r = _run(["--dry-run"], tmp_path=tmp_path)
+    # The simulation should mention `launchctl load -w` so operators
+    # know what would happen — but we never actually run it (the test
+    # framework already sets AUTODEV_LAUNCHD_DRY_RUN=1, and the
+    # _cmd_dry_run path doesn't call _launchctl at all).
+    assert "launchctl" in r.stdout, (
+        "dry-run should describe the launchctl commands that --install "
+        "would invoke; got:\n" + r.stdout[:500]
+    )
+    assert "load -w" in r.stdout
+
+
+def test_dry_run_idempotent_byte_identical(tmp_path):
+    """Two consecutive `--dry-run` invocations with the same env produce
+    byte-identical output APART from the timestamp header line. This
+    is the operator's confidence signal that `--install`'s plist
+    contents are deterministic (the timestamp header is in the
+    simulation preamble only, NOT in the plist body)."""
+    r1 = _run(
+        ["--dry-run"], tmp_path=tmp_path,
+        extra_env={
+            "AUTODEV_HOME": "/Users/testuser",
+            "AUTODEV_CLAUDE_BIN_DIR": "/opt/fake/claude/bin",
+        },
+    )
+    r2 = _run(
+        ["--dry-run"], tmp_path=tmp_path,
+        extra_env={
+            "AUTODEV_HOME": "/Users/testuser",
+            "AUTODEV_CLAUDE_BIN_DIR": "/opt/fake/claude/bin",
+        },
+    )
+    # Strip the timestamped header line; the rest must be identical.
+    def _strip_ts(text: str) -> str:
+        lines = text.splitlines(keepends=True)
+        return "".join(
+            ln for ln in lines if "DRY RUN @" not in ln
+        )
+    assert _strip_ts(r1.stdout) == _strip_ts(r2.stdout), (
+        "dry-run output diverges between runs (excluding timestamp); "
+        "plist body or simulation header is non-deterministic"
+    )
