@@ -257,6 +257,36 @@ _cmd_print_plist() {
   _emit_plist
 }
 
+# Operator-facing simulation: show the target plist path, the
+# launchctl commands `--install` would invoke, and the plist XML
+# body — all to stdout, no side effects (no file write, no
+# launchctl, no warning suppressed). Distinct from --print-plist
+# (which emits pure XML for downstream tooling).
+_cmd_dry_run() {
+  echo "=== AutoDev L7 launchd install — DRY RUN @ $(date -u) ==="
+  echo
+  echo "Target plist path:"
+  echo "  $PLIST"
+  echo
+  echo "launchctl commands --install would invoke (skipped in dry-run):"
+  echo "  launchctl unload \"$PLIST\"  # idempotent; ignore failure"
+  echo "  launchctl load -w \"$PLIST\""
+  echo
+  if [[ -n "$CLAUDE_DIR" ]]; then
+    echo "Discovered claude bin dir:"
+    echo "  $CLAUDE_DIR"
+    echo
+  else
+    echo "WARNING: no claude bin dir discovered — plist PATH will not"
+    echo "include one. The installed launchd agent will rely on the"
+    echo "operator's default PATH to find \`claude\`."
+    echo
+  fi
+  echo "--- plist content (would be written to the path above) ---"
+  _emit_plist
+  echo "--- end plist content ---"
+}
+
 # --- Dispatch ----------------------------------------------------------
 
 case "${1:-}" in
@@ -272,15 +302,21 @@ case "${1:-}" in
   --print-plist)
     _cmd_print_plist
     ;;
+  --dry-run)
+    _cmd_dry_run
+    ;;
   -h|--help)
     cat <<EOF
-Usage: $0 --install | --uninstall | --status | --print-plist
+Usage: $0 --install | --uninstall | --status | --print-plist | --dry-run
 
   --install      Generate plist and load into launchd.
   --uninstall    Unload from launchd and remove the plist file.
   --status       Show plist path, launchctl registration, stop conditions,
                  and current Overall L.
   --print-plist  Emit plist XML to stdout (no side effects, no launchctl).
+  --dry-run      Operator-facing simulation: show target path, the launchctl
+                 commands --install would run, and the plist XML body. No
+                 file writes, no launchctl. Use this BEFORE --install.
 
 Env overrides (advanced):
   AUTODEV_REPO_ROOT, AUTODEV_PLIST_PATH, AUTODEV_INTERVAL_SECONDS,
@@ -290,12 +326,12 @@ EOF
     exit 0
     ;;
   "")
-    echo "Usage: $0 --install | --uninstall | --status | --print-plist" >&2
+    echo "Usage: $0 --install | --uninstall | --status | --print-plist | --dry-run" >&2
     exit 1
     ;;
   *)
     echo "Unknown flag: $1" >&2
-    echo "Usage: $0 --install | --uninstall | --status | --print-plist" >&2
+    echo "Usage: $0 --install | --uninstall | --status | --print-plist | --dry-run" >&2
     exit 1
     ;;
 esac
