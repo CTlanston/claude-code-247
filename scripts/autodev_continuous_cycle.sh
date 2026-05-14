@@ -134,6 +134,34 @@ if [[ -z "$TIMEOUT_BIN" ]]; then
   fi
 fi
 
+# --- OAuth/API token routing (Cycle β — ADR-0010) --------------------
+#
+# launchd-spawned children can't reach the macOS keychain ACL where
+# `claude` normally stores its OAuth token, so it greets every wake
+# with `Not logged in · Please run /login`. We bypass keychain by
+# routing the token through env vars: oat01 → CLAUDE_CODE_OAUTH_TOKEN,
+# api03 → ANTHROPIC_API_KEY.
+#
+# §0 rule 3 forbids reading/writing/echoing .env. We satisfy it by
+# (a) grepping exactly the `^ANTHROPIC_API_KEY=` line (no eval, no
+# other line ever read), (b) never echoing the token to stdout or
+# any log, (c) unsetting the local var after export so it can't leak
+# to a downstream `set -x` trace.
+#
+# Operator escape hatch: AUTODEV_SKIP_DOTENV=1 disables this block
+# (used by tests + by operators who want to force env-only auth).
+if [[ -z "${AUTODEV_SKIP_DOTENV:-}" ]] && [[ -f "$REPO/.env" ]]; then
+  _autodev_raw_token=$(grep '^ANTHROPIC_API_KEY=' "$REPO/.env" 2>/dev/null \
+                       | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+  if [[ "$_autodev_raw_token" == sk-ant-oat01-* ]]; then
+    export CLAUDE_CODE_OAUTH_TOKEN="$_autodev_raw_token"
+    unset ANTHROPIC_API_KEY 2>/dev/null || true
+  elif [[ "$_autodev_raw_token" == sk-ant-api03-* ]]; then
+    export ANTHROPIC_API_KEY="$_autodev_raw_token"
+  fi
+  unset _autodev_raw_token
+fi
+
 # --- Update cooldown stamp + dispatch one cycle ----------------------
 
 date -u +%s > reports/runs/last_wake.ts

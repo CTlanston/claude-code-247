@@ -21,7 +21,19 @@
 #   AUTODEV_INTERVAL_SECONDS     StartInterval; default 900 (15 min)
 #   AUTODEV_TARGET_L             Overall L termination target; default 5
 #   AUTODEV_LAUNCHD_PATH         PATH passed into the plist's
-#                                EnvironmentVariables; sensible Homebrew default
+#                                EnvironmentVariables. If unset, the script
+#                                auto-discovers a sensible PATH (see below).
+#   AUTODEV_CLAUDE_BIN_DIR       Directory containing the `claude` binary.
+#                                If unset, discovered via `command -v claude`
+#                                with `mdfind` fallback. Prepended to the
+#                                plist PATH so launchd-spawned children can
+#                                find claude even when not Terminal-spawned
+#                                (Cycle β fix — see ADR-0010).
+#   AUTODEV_HOME                 HOME embedded in the plist's
+#                                EnvironmentVariables. Defaults to $HOME at
+#                                install time. Required because launchd
+#                                children do NOT inherit HOME from the
+#                                user session.
 #   AUTODEV_LAUNCHD_DRY_RUN      if non-empty, skip all `launchctl` calls
 #                                (used by tests; never by operators)
 #
@@ -47,8 +59,68 @@ REPO="${AUTODEV_REPO_ROOT}"
 PLIST="${AUTODEV_PLIST_PATH:-$HOME/Library/LaunchAgents/${LABEL}.plist}"
 INTERVAL="${AUTODEV_INTERVAL_SECONDS:-900}"
 TARGET_L="${AUTODEV_TARGET_L:-5}"
-LAUNCHD_PATH="${AUTODEV_LAUNCHD_PATH:-/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:$HOME/Library/pnpm/nodejs/20.20.2/bin}"
 DRY_RUN="${AUTODEV_LAUNCHD_DRY_RUN:-}"
+
+# HOME for launchd-spawned children (NOT inherited from user session).
+# Embedded as an absolute path — never a literal `$HOME` in the plist.
+AUTODEV_HOME_VALUE="${AUTODEV_HOME:-$HOME}"
+
+# Discover the directory containing `claude` so launchd-spawned children
+# can find it. Order:
+#   1. AUTODEV_CLAUDE_BIN_DIR explicit override (tests)
+#   2. `command -v claude` in the current PATH (operator's shell)
+#   3. `mdfind -name claude` matching a node_modules/.bin path
+#   4. (give up; emit warning; the plist still installs but claude
+#       binary discovery falls back to the operator's default PATH)
+_discover_claude_dir() {
+  if [[ -n "${AUTODEV_CLAUDE_BIN_DIR:-}" ]]; then
+    echo "$AUTODEV_CLAUDE_BIN_DIR"
+    return 0
+  fi
+  if claude_path=$(command -v claude 2>/dev/null) && [[ -n "$claude_path" ]]; then
+    # Resolve symlinks (pnpm/.bin points to a versioned dir we want).
+    if real=$(readlink -f "$claude_path" 2>/dev/null) && [[ -n "$real" ]]; then
+      claude_path="$real"
+    fi
+    dirname "$claude_path"
+    return 0
+  fi
+  if command -v mdfind >/dev/null 2>&1; then
+    mdfind_hit=$(mdfind -name claude 2>/dev/null \
+                  | grep -E 'node_modules/\.bin/claude$' \
+                  | head -1)
+    if [[ -n "$mdfind_hit" ]]; then
+      dirname "$mdfind_hit"
+      return 0
+    fi
+  fi
+  return 1
+}
+
+CLAUDE_DIR="$(_discover_claude_dir || true)"
+
+# If discovered claude path is inside the npx ephemeral cache, warn —
+# that directory hash changes when npx re-downloads the package.
+if [[ -n "$CLAUDE_DIR" && "$CLAUDE_DIR" == *".npm/_npx/"* ]]; then
+  echo "WARNING: discovered claude at ephemeral npx cache: $CLAUDE_DIR" >&2
+  echo "         For stable launchd operation, prefer:" >&2
+  echo "           npm install -g @anthropic-ai/claude-code" >&2
+  echo "         The plist will reference this path, but it can break" >&2
+  echo "         if npx re-downloads claude under a new cache hash." >&2
+fi
+
+# Compose the plist PATH. CLAUDE_DIR goes first so it wins; the rest
+# is the standard macOS PATH plus a pnpm fallback.
+_default_launchd_path() {
+  local parts=()
+  [[ -n "$CLAUDE_DIR" ]] && parts+=("$CLAUDE_DIR")
+  parts+=("/usr/local/bin" "/opt/homebrew/bin" "/usr/bin" "/bin")
+  parts+=("${AUTODEV_HOME_VALUE}/Library/pnpm/nodejs/20.20.2/bin")
+  local IFS=":"
+  echo "${parts[*]}"
+}
+
+LAUNCHD_PATH="${AUTODEV_LAUNCHD_PATH:-$(_default_launchd_path)}"
 
 # --- Helpers -----------------------------------------------------------
 
@@ -81,6 +153,8 @@ _emit_plist() {
   <dict>
     <key>AUTODEV_TARGET_L</key>
     <string>${TARGET_L}</string>
+    <key>HOME</key>
+    <string>${AUTODEV_HOME_VALUE}</string>
     <key>PATH</key>
     <string>${LAUNCHD_PATH}</string>
   </dict>
@@ -210,7 +284,8 @@ Usage: $0 --install | --uninstall | --status | --print-plist
 
 Env overrides (advanced):
   AUTODEV_REPO_ROOT, AUTODEV_PLIST_PATH, AUTODEV_INTERVAL_SECONDS,
-  AUTODEV_TARGET_L, AUTODEV_LAUNCHD_PATH, AUTODEV_LAUNCHD_DRY_RUN
+  AUTODEV_TARGET_L, AUTODEV_LAUNCHD_PATH, AUTODEV_CLAUDE_BIN_DIR,
+  AUTODEV_HOME, AUTODEV_LAUNCHD_DRY_RUN
 EOF
     exit 0
     ;;
