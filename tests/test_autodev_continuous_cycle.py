@@ -370,3 +370,175 @@ def test_no_env_file_falls_back_to_environment(tmp_path):
         f"pre-existing ANTHROPIC_API_KEY should pass through when "
         f"no .env file is present; got {env}"
     )
+
+
+# --- Cycle δ: self-repair on 3 consecutive identical failures --------
+
+
+def _failing_claude_stub(tmp_path: Path, *, output: str,
+                         exit_code: int = 7) -> Path:
+    """A stub that prints `output` to stdout and exits nonzero, so the
+    wake script computes a signature on `tail -10 cycle_log`."""
+    stub = tmp_path / f"failing_claude_{exit_code}_{abs(hash(output)) % 100000}.sh"
+    # heredoc to avoid escaping nightmare
+    stub.write_text(
+        "#!/usr/bin/env bash\n"
+        f"cat <<'STUB_OUTPUT'\n{output}\nSTUB_OUTPUT\n"
+        f"exit {exit_code}\n"
+    )
+    stub.chmod(0o755)
+    return stub
+
+
+def _stub_self_repair(tmp_path: Path) -> Path:
+    """Stub the self-repair handler so we can assert it was invoked
+    without running the real script's BLOCKED.md side effects.
+    Records its invocation to <tmp_path>/self_repair_invocation.log.
+    """
+    stub = tmp_path / "self_repair_stub.sh"
+    stub.write_text(
+        "#!/usr/bin/env bash\n"
+        f"echo \"self_repair called with: $@\" > {tmp_path}/self_repair_invocation.log\n"
+        "exit 0\n"
+    )
+    stub.chmod(0o755)
+    return stub
+
+
+def test_failure_signature_persists_across_wakes(tmp_path):
+    """One failing wake writes .failure-signature.last and .count=1."""
+    fail_stub = _failing_claude_stub(
+        tmp_path, output="ERROR: persistent-test-failure-A"
+    )
+    repair_stub = _stub_self_repair(tmp_path)
+    _seed_repo(tmp_path)
+    r = _run_wake(
+        tmp_path,
+        extra_env={
+            "AUTODEV_CLAUDE_BIN": str(fail_stub),
+            "AUTODEV_SELF_REPAIR_BIN": f"bash {repair_stub}",
+        },
+    )
+    assert r.returncode == 0  # wake always exits 0
+    sig_file = tmp_path / "reports" / "runs" / ".failure-signature.last"
+    cnt_file = tmp_path / "reports" / "runs" / ".failure-signature.count"
+    assert sig_file.exists(), "signature file should be written on failure"
+    assert sig_file.read_text().strip() != "", "signature must be non-empty"
+    assert cnt_file.exists(), "count file should be written on failure"
+    assert cnt_file.read_text().strip() == "1", (
+        f"count should be 1 after first failing wake; got {cnt_file.read_text()!r}"
+    )
+    # And the self-repair handler must NOT have been invoked at count=1.
+    assert not (tmp_path / "self_repair_invocation.log").exists()
+
+
+def test_three_consecutive_same_signature_triggers_repair(tmp_path):
+    """3 wakes with the same failing output → self-repair handler invoked
+    on the 3rd."""
+    same_output = "ERROR: identical-failure-signature-trigger-test"
+    fail_stub = _failing_claude_stub(tmp_path, output=same_output)
+    repair_stub = _stub_self_repair(tmp_path)
+    _seed_repo(tmp_path)
+    env_extras = {
+        "AUTODEV_CLAUDE_BIN": str(fail_stub),
+        "AUTODEV_SELF_REPAIR_BIN": f"bash {repair_stub}",
+    }
+    # Wake 1: count → 1
+    r1 = _run_wake(tmp_path, extra_env=env_extras)
+    assert r1.returncode == 0
+    # Reset cooldown timestamp so wake 2 proceeds (cooldown is 5 min default)
+    (tmp_path / "reports" / "runs" / "last_wake.ts").write_text(
+        str(int(time.time() - 600))
+    )
+    # Wake 2: count → 2
+    r2 = _run_wake(tmp_path, extra_env=env_extras)
+    assert r2.returncode == 0
+    cnt = (tmp_path / "reports" / "runs" / ".failure-signature.count").read_text().strip()
+    assert cnt == "2", f"expected count=2 after second failing wake; got {cnt!r}"
+    assert not (tmp_path / "self_repair_invocation.log").exists()
+    # Reset cooldown for wake 3
+    (tmp_path / "reports" / "runs" / "last_wake.ts").write_text(
+        str(int(time.time() - 600))
+    )
+    # Wake 3: count → 3 → triggers self-repair
+    r3 = _run_wake(tmp_path, extra_env=env_extras)
+    assert r3.returncode == 0
+    invocation_log = tmp_path / "self_repair_invocation.log"
+    assert invocation_log.exists(), (
+        "self-repair handler should have been invoked on the 3rd "
+        "consecutive identical failure"
+    )
+    # And the counter should be cleared so we don't re-trigger every wake
+    cnt_after = (tmp_path / "reports" / "runs" / ".failure-signature.count").read_text().strip()
+    assert cnt_after == "", (
+        f"count should be cleared after self-repair invocation; got {cnt_after!r}"
+    )
+
+
+def test_one_off_failure_does_not_trigger_repair(tmp_path):
+    """A single failed wake followed by a successful wake → no trigger."""
+    fail_stub = _failing_claude_stub(
+        tmp_path, output="ERROR: one-off-failure-only"
+    )
+    repair_stub = _stub_self_repair(tmp_path)
+    _seed_repo(tmp_path)
+    # Wake 1: fails
+    r1 = _run_wake(
+        tmp_path,
+        extra_env={
+            "AUTODEV_CLAUDE_BIN": str(fail_stub),
+            "AUTODEV_SELF_REPAIR_BIN": f"bash {repair_stub}",
+        },
+    )
+    assert r1.returncode == 0
+    # Wake 2: succeeds (default stub via _run_wake auto-stubs an exit-0 claude)
+    (tmp_path / "reports" / "runs" / "last_wake.ts").write_text(
+        str(int(time.time() - 600))
+    )
+    # Note: passing AUTODEV_SELF_REPAIR_BIN through to wake 2 doesn't matter
+    # because cycle_exit == 0 means the trigger block doesn't execute.
+    r2 = _run_wake(
+        tmp_path,
+        extra_env={"AUTODEV_SELF_REPAIR_BIN": f"bash {repair_stub}"},
+    )
+    assert r2.returncode == 0
+    # No invocation of self-repair
+    assert not (tmp_path / "self_repair_invocation.log").exists()
+
+
+def test_signature_resets_after_successful_cycle(tmp_path):
+    """A successful wake (exit 0) clears .failure-signature.last AND
+    .count, so prior failing wakes don't accumulate against future
+    intermittent failures."""
+    fail_stub = _failing_claude_stub(
+        tmp_path, output="ERROR: pre-success-failure"
+    )
+    repair_stub = _stub_self_repair(tmp_path)
+    _seed_repo(tmp_path)
+    # Wake 1: fail → state files written
+    r1 = _run_wake(
+        tmp_path,
+        extra_env={
+            "AUTODEV_CLAUDE_BIN": str(fail_stub),
+            "AUTODEV_SELF_REPAIR_BIN": f"bash {repair_stub}",
+        },
+    )
+    assert r1.returncode == 0
+    sig_file = tmp_path / "reports" / "runs" / ".failure-signature.last"
+    cnt_file = tmp_path / "reports" / "runs" / ".failure-signature.count"
+    assert sig_file.exists() and cnt_file.exists()
+    # Wake 2: succeeds → state files cleared
+    (tmp_path / "reports" / "runs" / "last_wake.ts").write_text(
+        str(int(time.time() - 600))
+    )
+    r2 = _run_wake(
+        tmp_path,
+        extra_env={"AUTODEV_SELF_REPAIR_BIN": f"bash {repair_stub}"},
+    )
+    assert r2.returncode == 0
+    assert not sig_file.exists(), (
+        f"signature file should be removed after success; still exists"
+    )
+    assert not cnt_file.exists(), (
+        f"count file should be removed after success; still exists"
+    )
