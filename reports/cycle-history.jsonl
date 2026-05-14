@@ -28,3 +28,4 @@
 {"cycle_id": "20260514-170538", "ts": "2026-05-14T17:10:32+00:00", "deadlock": false, "streak_after": 28}
 {"cycle_id": "20260514-171119", "ts": "2026-05-14T17:11:19+00:00", "deadlock": false, "streak_after": 29}
 {"cycle_id": "20260514-201707", "ts": "2026-05-14T20:26:15+00:00", "deadlock": false, "streak_after": 30}
+{"cycle_id": "20260514-205454", "timestamp": "2026-05-14T20:56:20.246718Z", "dim": "terminal", "result": "PASS", "overall_l_before": 4, "overall_l_after": 5, "streak_after": 31, "deadlock": false, "summary": "Terminal cycle: compute_level confirmed Overall L=5 (C streak 30); DONE.md written per DECISIONS section"}

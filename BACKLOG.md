@@ -135,10 +135,17 @@ Each cycle:
       passes alone, fails in full pytest suite. Likely Hypothesis
       ordering. Add a fixture seed or randomization isolation.
 
-- [ ] [Track C3-live] Real-cycle worktree dispatch (priority: P1)
+- [x] [Cycle 50 — MISSION COMPLETE] Overall L=5 confirmed by compute_level.py;
+      reports/AUTODEV_DONE.md written (20260514-205454). AUTODEV_TARGET_L=5
+      achieved. To resume, operator removes DONE.md and optionally raises
+      AUTODEV_TARGET_L=6 before re-installing launchd.
+      DONE in 20260514-205454 (terminal cycle; no code changes; C streak 31)
+
+- [ ] [Track C3-live] Real-cycle worktree dispatch (priority: P1, next-after-L5)
       details: Wire Scheduler.dispatch_next() into a real dispatch
-      loop. Phase D of the continuous-run plan.
-      rubric dim: C (Concurrency) — observation toward L5
+      loop. Phase D of the continuous-run plan. Unblocked once operator
+      decides to raise AUTODEV_TARGET_L=6 and resume cycles.
+      rubric dim: C (Concurrency) — observation toward L6
 
 ## P1 — next 3 cycles
 
