@@ -20,14 +20,20 @@ FAILURES entry has been written for it.
 ## Decision
 
 **The wake script computes a SHA-256 signature over the last 10
-lines of each cycle log and trips a self-repair handler when 3
-consecutive nonzero-exit wakes share the same signature.**
+lines of claude's output in each cycle log and trips a self-repair
+handler when 3 consecutive nonzero-exit wakes share the same
+signature.**
 
 Implementation:
 
 1. `scripts/autodev_continuous_cycle.sh` (post-`claude -p` block):
    - On `cycle_exit != 0 && != 124` (124 = timeout, already
-     handled): `sig = sha256(tail -10 cycle_log)`.
+     handled): `sig = sha256(tail -n +2 cycle_log | tail -10)`.
+     Skipping line 1 (the `[<timestamp>] Cycle dispatch starting`
+     header) ensures the signature is stable across wakes for
+     identical failure output; without this, short failure logs
+     would include the wake-specific timestamp and always look
+     distinct.
    - Compare to `reports/runs/.failure-signature.last`. If
      identical: increment `reports/runs/.failure-signature.count`.
      If different: reset both files (new failure → count=1).
