@@ -1,31 +1,36 @@
 # STATE.md — current L7 supervisor state
 
 ```yaml
-current_branch: autoevo/cycle-delta/self-repair-on-repeat-failure
-last_cycle_id: 20260514-171119
+current_branch: autoevo/cycle-epsilon/hourly-cadence-and-done-celebration
+last_cycle_id: 20260514-201707
 last_cycle_result: PASS
-last_green_commit: (δ self-repair trigger + ADR-0012; see git log)
-last_levelup: 20260513-050048
-overall_level: 4
+last_green_commit: (ε ADR-0013 + cycle artifacts + smoke-fix; see git log)
+last_levelup: 20260513-050048   # last LEVEL.md-driven level-up; C → 5
+                                # pending if compute_level reruns post-ε
+overall_level: 4   # LEVEL.md still shows 4; C=4 there. The next
+                   # compute_level run will likely tick C → 5 because
+                   # zero-deadlock streak reached 30 this cycle.
 dim_levels:
-  M: 7   # ADR count 10 (ADR-0010/0011/0012 added this session); failures ledger intact
-  S: 7   # All 7 S-L7 gates active; cycle δ adds 3-strike escalation gate
+  M: 7   # ADR count 11 (ADR-0010/0011/0012/0013 added this session)
+  S: 7   # All 7 S-L7 gates active; cycle ε's stability gate is the 5th
+         # code-path strengthening this session (β/γ/δ/ε all touched S)
   R: 7
-  C: 4
+  C: 4   # → 5 pending compute_level rerun (streak now 30/30)
   T: 7
   E: 7
 session_mission:
   source: AUTODEV_L7_AUTH_AND_SELFREPAIR.md
   cycle_alpha: SUBSUMED by BLOCKED.md path #1 resolution (commits 5f921bc + ce6c649)
-  cycle_beta:  COMPLETE (20260514-164425; PASS; branch autoevo/cycle-beta/...)
-  cycle_gamma: COMPLETE (20260514-170538; PASS; --dry-run + ADR-0011)
-  cycle_delta: COMPLETE (this cycle, 20260514-171119; PASS; 3-strike trigger + handler + ADR-0012)
-  cycle_epsilon: PENDING (hourly cadence option + AUTODEV_DONE.md celebration)
+  cycle_beta:  COMPLETE (20260514-164425; PASS; ADR-0010)
+  cycle_gamma: COMPLETE (20260514-170538; PASS; ADR-0011 + --dry-run)
+  cycle_delta: COMPLETE (20260514-171119; PASS; ADR-0012 + 3-strike trigger + handler)
+  cycle_epsilon: COMPLETE (this cycle, 20260514-201707; PASS; ADR-0013 + stability gate + DONE.md schema + HUMAN_CONFIG cadence)
+  status: all 5 cycles complete; session-handoff written; awaiting operator post-session actions
 concurrency:
   worktree_count: 2
-  zero_deadlock_streak: 29      # 97% of the way to C-L5
+  zero_deadlock_streak: 30      # AT C-L5 threshold!
   streak_target_for_L5: 30
-  cycles_to_C_L5: 1
+  cycles_to_C_L5: 0             # done, pending compute_level rerun
 streak_update_pattern:
   - 20260513-162424→25 via Scheduler.record_cycle_success()
   - 20260514-164714  via direct file write (Scheduler API path
@@ -40,7 +45,7 @@ verify_before_relying_thread:
   first_no_to_yes:    20260513-163910 (Cycle 44; FAIL-0008 shipped)
   second_no_to_yes:   20260514-164714 (Cycle 45; FAIL-0005 shipped +
                                        latent NameError surfaced)
-adr_count: 10  # ADR-0010 (β) + ADR-0011 (γ) + ADR-0012 (δ) added this session
+adr_count: 11  # ADR-0010 (β) + 0011 (γ) + 0012 (δ) + 0013 (ε) added this session
 s_dim_active_gates: 7/7
 s_dim_code_path_gates_added_in_β: 1  # launchd-auth env-var routing
   # New gate: token-prefix routing of .env's ANTHROPIC_API_KEY line into
