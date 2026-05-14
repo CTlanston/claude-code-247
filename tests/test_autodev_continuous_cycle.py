@@ -143,14 +143,24 @@ def test_health_below_50_skips_cycle(tmp_path):
 
 
 def test_target_l_reached_writes_done_md(tmp_path):
-    """Overall L >= AUTODEV_TARGET_L → writes AUTODEV_DONE.md, no claude."""
+    """Overall L >= AUTODEV_TARGET_L → AUTODEV_SKIP_STABILITY_GATE=1
+    trips DONE.md on the first cycle (emergency-stop path).
+
+    Cycle ε changed the default: without skip-gate, the wake
+    requires 5 consecutive cycles at target before writing DONE.md.
+    This test preserves the original "immediate DONE.md" assertion
+    against the skip-gate env which is now the explicit opt-in.
+    """
     _seed_repo(tmp_path, level_overall=5)
-    r = _run_wake(tmp_path, target_l=5)
+    r = _run_wake(
+        tmp_path, target_l=5,
+        extra_env={"AUTODEV_SKIP_STABILITY_GATE": "1"},
+    )
     assert r.returncode == 0
     done = tmp_path / "reports" / "AUTODEV_DONE.md"
     assert done.exists(), "AUTODEV_DONE.md should have been written"
     text = done.read_text()
-    assert "Overall L = 5" in text or "target 5" in text
+    assert "Overall L" in text and "5" in text
     assert not (tmp_path / "claude_invocation.log").exists()
 
 
@@ -542,3 +552,87 @@ def test_signature_resets_after_successful_cycle(tmp_path):
     assert not cnt_file.exists(), (
         f"count file should be removed after success; still exists"
     )
+
+
+# --- Cycle ε: stability gate + expanded AUTODEV_DONE.md schema -------
+
+
+def test_stability_counter_increments_at_target(tmp_path):
+    """Overall L >= TARGET_L → stability counter file appears with
+    value 1 on the first qualifying wake. No DONE.md yet
+    (single cycle is below the 5-cycle threshold)."""
+    _seed_repo(tmp_path, level_overall=5)
+    r = _run_wake(tmp_path, target_l=5)
+    assert r.returncode == 0
+    stab = tmp_path / "reports" / "level5-stability.txt"
+    assert stab.exists(), "stability file should be created at target"
+    assert stab.read_text().strip() == "1", (
+        f"stability should be 1 after first qualifying wake; got {stab.read_text()!r}"
+    )
+    done = tmp_path / "reports" / "AUTODEV_DONE.md"
+    assert not done.exists(), (
+        "DONE.md should NOT be written until 5 consecutive cycles"
+    )
+
+
+def test_stability_counter_resets_on_level_drop(tmp_path):
+    """Overall L < TARGET_L on a wake removes the stability file."""
+    _seed_repo(tmp_path, level_overall=5)
+    # Wake 1: at target → stability=1
+    r1 = _run_wake(tmp_path, target_l=5)
+    assert r1.returncode == 0
+    stab = tmp_path / "reports" / "level5-stability.txt"
+    assert stab.exists() and stab.read_text().strip() == "1"
+    # Mutate LEVEL.md to below target
+    (tmp_path / "LEVEL.md").write_text(
+        "# LEVEL.md\n\nOverall L = 4\n"
+    )
+    # Bypass cooldown
+    (tmp_path / "reports" / "runs" / "last_wake.ts").write_text(
+        str(int(time.time() - 600))
+    )
+    # Wake 2: below target → stability file removed
+    r2 = _run_wake(tmp_path, target_l=5)
+    assert r2.returncode == 0
+    assert not stab.exists(), (
+        "stability file should be removed when L drops below target"
+    )
+
+
+def test_five_consecutive_at_target_writes_done(tmp_path):
+    """5 wakes at target → DONE.md written on the 5th wake."""
+    _seed_repo(tmp_path, level_overall=5)
+    for i in range(1, 6):
+        if i > 1:
+            (tmp_path / "reports" / "runs" / "last_wake.ts").write_text(
+                str(int(time.time() - 600))
+            )
+        r = _run_wake(tmp_path, target_l=5)
+        assert r.returncode == 0, f"wake {i} returncode {r.returncode}"
+    done = tmp_path / "reports" / "AUTODEV_DONE.md"
+    assert done.exists(), (
+        "DONE.md should be written on the 5th consecutive at-target wake"
+    )
+
+
+def test_done_md_schema_has_expanded_fields(tmp_path):
+    """DONE.md (Cycle ε schema) must contain: Overall L, per-dim
+    levels, Cycles executed total, Git commits total, C-streak HWM,
+    and an Honest assessment section."""
+    _seed_repo(tmp_path, level_overall=5)
+    # Force trip via skip-gate for speed (the 5-cycle path is exercised
+    # by the test above).
+    r = _run_wake(
+        tmp_path, target_l=5,
+        extra_env={"AUTODEV_SKIP_STABILITY_GATE": "1"},
+    )
+    assert r.returncode == 0
+    body = (tmp_path / "reports" / "AUTODEV_DONE.md").read_text()
+    # Required schema fields
+    assert "Overall L" in body
+    assert "Per-dimension levels" in body
+    assert "Cycles executed" in body
+    assert "Git commits" in body
+    assert "C-dim streak high-water mark" in body
+    assert "Honest assessment" in body
+    assert "To resume work" in body

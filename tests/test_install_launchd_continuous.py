@@ -432,6 +432,45 @@ def test_dry_run_does_not_invoke_launchctl(tmp_path):
     assert "load -w" in r.stdout
 
 
+def test_human_config_interval_used_when_env_unset(tmp_path):
+    """When AUTODEV_INTERVAL_SECONDS is unset, the install script reads
+    `launchd_interval_seconds` from HUMAN_CONFIG.md (Cycle ε)."""
+    (tmp_path / "HUMAN_CONFIG.md").write_text(
+        "## runtime\n```yaml\nruntime:\n  launchd_interval_seconds: 3600\n```\n"
+    )
+    # _run() always sets AUTODEV_REPO_ROOT=tmp_path; need to make sure
+    # AUTODEV_INTERVAL_SECONDS is NOT in env. The base env starts from
+    # os.environ.copy() which doesn't have it set in test runs.
+    env_override = {}
+    # Explicitly clear if a shell happens to export it
+    import os
+    if "AUTODEV_INTERVAL_SECONDS" in os.environ:
+        pytest.skip("test requires AUTODEV_INTERVAL_SECONDS unset in env")
+    r = _run(["--print-plist"], tmp_path=tmp_path, extra_env=env_override)
+    assert r.returncode == 0
+    data = plistlib.loads(r.stdout.encode("utf-8"))
+    assert data["StartInterval"] == 3600, (
+        f"expected StartInterval=3600 from HUMAN_CONFIG; got {data['StartInterval']}"
+    )
+
+
+def test_env_interval_wins_over_human_config(tmp_path):
+    """AUTODEV_INTERVAL_SECONDS env wins over HUMAN_CONFIG.md value
+    (env is the higher-priority test/operator override)."""
+    (tmp_path / "HUMAN_CONFIG.md").write_text(
+        "runtime:\n  launchd_interval_seconds: 3600\n"
+    )
+    r = _run(
+        ["--print-plist"], tmp_path=tmp_path,
+        extra_env={"AUTODEV_INTERVAL_SECONDS": "1200"},
+    )
+    assert r.returncode == 0
+    data = plistlib.loads(r.stdout.encode("utf-8"))
+    assert data["StartInterval"] == 1200, (
+        f"AUTODEV_INTERVAL_SECONDS env should win; got {data['StartInterval']}"
+    )
+
+
 def test_dry_run_idempotent_byte_identical(tmp_path):
     """Two consecutive `--dry-run` invocations with the same env produce
     byte-identical output APART from the timestamp header line. This
