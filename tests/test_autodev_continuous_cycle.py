@@ -24,6 +24,7 @@ def _seed_repo(tmp_path: Path, *,
                with_blocked: bool = False,
                with_stopswitch: bool = False,
                with_done: bool = False,
+               with_pilot_in_progress: bool = False,
                health: int = 100,
                last_wake_age_s: int | None = None,
                rate_limit_until: int | None = None) -> None:
@@ -39,6 +40,10 @@ def _seed_repo(tmp_path: Path, *,
         (tmp_path / "reports" / "AUTODEV_DONE.md").write_text("done\n")
     if with_stopswitch:
         (tmp_path / "reports" / "STOPSWITCH").write_text("halt\n")
+    if with_pilot_in_progress:
+        (tmp_path / "reports" / "PILOT_IN_PROGRESS").write_text(
+            "P5 pilot active\n"
+        )
     if with_blocked:
         (tmp_path / "BLOCKED.md").write_text("blocked\n")
         # Make it 1 minute old (under 24h) — should skip cycle
@@ -122,6 +127,48 @@ def test_autodev_done_present_exits_0_without_running_claude(tmp_path):
 
 def test_stopswitch_present_exits_0_without_running_claude(tmp_path):
     _seed_repo(tmp_path, with_stopswitch=True)
+    r = _run_wake(tmp_path)
+    assert r.returncode == 0
+    assert not (tmp_path / "claude_invocation.log").exists()
+
+
+# --- PILOT_IN_PROGRESS override (P5 retry support) ----------------------
+# Rationale: AUTODEV_DONE.md is a soft "I think I'm done" signal; during
+# a P5 production pilot the launchd worker must keep dispatching cycles
+# so the inner engine can finish the filed issues. The PILOT_IN_PROGRESS
+# sentinel overrides DONE.md and STOPSWITCH but NOT real safety gates
+# (health<50, fresh BLOCKED.md). Operator removes the sentinel when the
+# pilot ends.
+
+
+def test_pilot_in_progress_overrides_autodev_done(tmp_path):
+    _seed_repo(tmp_path, with_done=True, with_pilot_in_progress=True)
+    r = _run_wake(tmp_path)
+    assert r.returncode == 0
+    assert (tmp_path / "claude_invocation.log").exists(), (
+        "claude should have been invoked despite AUTODEV_DONE.md "
+        "because PILOT_IN_PROGRESS is present"
+    )
+
+
+def test_pilot_in_progress_overrides_stopswitch(tmp_path):
+    _seed_repo(tmp_path, with_stopswitch=True, with_pilot_in_progress=True)
+    r = _run_wake(tmp_path)
+    assert r.returncode == 0
+    assert (tmp_path / "claude_invocation.log").exists()
+
+
+def test_pilot_in_progress_does_not_override_health_gate(tmp_path):
+    """PILOT sentinel must NOT bypass health<50 — real safety gate."""
+    _seed_repo(tmp_path, health=42, with_pilot_in_progress=True)
+    r = _run_wake(tmp_path)
+    assert r.returncode == 0
+    assert not (tmp_path / "claude_invocation.log").exists()
+
+
+def test_pilot_in_progress_does_not_override_blocked_gate(tmp_path):
+    """PILOT sentinel must NOT bypass a fresh BLOCKED.md."""
+    _seed_repo(tmp_path, with_blocked=True, with_pilot_in_progress=True)
     r = _run_wake(tmp_path)
     assert r.returncode == 0
     assert not (tmp_path / "claude_invocation.log").exists()

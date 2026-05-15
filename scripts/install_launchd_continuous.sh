@@ -249,6 +249,8 @@ _cmd_status() {
   echo
 
   echo "-- stop conditions --"
+  [[ -f "$REPO/reports/PILOT_IN_PROGRESS" ]] \
+    && echo "  - reports/PILOT_IN_PROGRESS present (overrides DONE/STOPSWITCH)"
   [[ -f "$REPO/reports/AUTODEV_DONE.md" ]] \
     && echo "  - reports/AUTODEV_DONE.md present (mission complete)"
   [[ -f "$REPO/reports/STOPSWITCH" ]] \
