@@ -273,37 +273,55 @@ Full report: [REAL_E2E_REPORT_M19.md](REAL_E2E_REPORT_M19.md).
   returned `NEEDS_HUMAN` → merge policy routed to `WAITING_APPROVAL`.
   No auto-merge.
 
-### Finding M19-F1 (new, high severity)
+### Finding M19-F1 (resolved by M19-P5b)
 
-`orchestrator/secret_scanner.py`'s `env_var_assign` regex uses `(?im)`
-(case-insensitive multiline), which means the Python line
-`+    tokens = text.split()` matches: `tokens` → case-insensitive
-`TOKEN` + `s`; ` = text.split()` → `\s*=\s*\S+`.
+`orchestrator/secret_scanner.py`'s `env_var_assign` regex used `(?im)`
+which made the Python line `+    tokens = text.split()` match (`tokens`
+→ case-insensitive `TOKEN` + `s`; ` = ...` → `\s*=\s*\S+`). Result:
+BR-001 redacted clean code, capping real-validator PASS rate.
 
-Effect: any normal Python code that introduces a lowercase variable
-starting with `token`, `secret`, or `password` will be redacted by
-BR-001's safe-diff path, forcing validators to NEEDS_HUMAN even when
-the actual diff is clean.
+**Fix shipped as M19-P5b (commit `396c153`)**: removed the `i` flag.
+Regression tests added in `tests/unit/test_secret_scanner.py`:
+- `test_m19_f1_lowercase_python_var_not_flagged_as_env_var` proves
+  `+    tokens = text.split()`, `+secret_text = redact()`,
+  `+password_hash = derive(salt)`, `+Token = make()` are no longer flagged.
+- `test_m19_f1_uppercase_env_var_still_caught` preserves the legitimate
+  match on `+SECRET_TOKEN=`, `+API_KEY=`, `+TOKEN=`, `+PASSWORD=`,
+  `+PASSWORD_HASH=`.
 
-Fix is a single-character change: remove the `i` flag so the pattern
-matches only conventional all-uppercase env-var names. Recommended
-to ship as `M19-P5b` before tagging `v1.0.0-beta.1`.
+### Phase 5 rerun (post-M19-F1 fix)
 
-## Phase 6 — Tag v1.0.0-beta.1: NOT STARTED (gated on M19-F1 decision)
+Second E2E (`task_01KSDRQDNN29FSNRYYSFC4G59J`, PR
+[auto-evo-playground#55](https://github.com/CTlanston/auto-evo-playground/pull/55))
+ran with the M19-P5b fix in place:
+
+- `diff_body_metadata.secret_scan.status` = **`PASS`** (no false positive)
+- `diff_body_safe.md` contains the **full unified diff** including the
+  `tokens = text.split()` line that previously triggered redaction
+- **Gemini real verdict: `PASS`, confidence 1.0** — top-shelf
+  validator was given the actual diff body and judged it correctly
+- OpenAI still mock (no key) → `NEEDS_HUMAN` → validator DISAGREE →
+  risk 40 (medium, from `validator_disagreement` factor) →
+  `WAITING_APPROVAL` (two-layer correct hold)
+- Worker auth: `local_claude_code`. **Anthropic spend: $0.00** across both runs.
+
+**Test posture**: 492 passing (was 490 before M19-P5b regression tests).
+
+## Phase 6 — Tag v1.0.0-beta.1: ready to execute (still GATED on user OK)
 
 ---
 
-## Final answers (will be filled in as phases close)
+## Final answers
 
-1. Is remote/tag/release state consistent? — **NO** (Release object missing; main divergence). See above.
-2. Was BR-001 fixed? — PENDING
-3. Was BR-002 fixed? — PENDING
-4. Was BR-003 fixed? — PENDING
-5. Did all tests pass? — PENDING
-6. Did third real E2E run? — PENDING
-7. Did validators receive diff body? — PENDING
-8. Did real validators PASS? — PENDING (gated on validator-key decision above)
-9. Did auto-merge happen? — PENDING
-10. If not, exactly why? — PENDING
-11. Was Anthropic API spend still $0? — PENDING (baseline: $0.00 in M18-P4)
-12. Is this now beta.1-ready? — **NO** — not yet. Target after Phase 4+5 clean.
+1. Is remote/tag/release state consistent? — ✅ **Yes** (M19-P0 created beta.0 GH release; main fast-forward deferred to beta.1 per user instruction).
+2. Was BR-001 fixed? — ✅ **Yes** (code + 18 tests, surfaced + fixed Finding M19-F1, rerun showed unredacted diff body + real Gemini PASS).
+3. Was BR-002 fixed? — ✅ **Yes** (code + 28 tests; GEMINI_API_KEY pickup from `~/.claude-code-247/.env` verified live in both E2E runs).
+4. Was BR-003 fixed? — ✅ **Yes** (code + 25 tests; 3 rows written per E2E task, `claude247 worker-exits` works).
+5. Did all tests pass? — ✅ **492 passing** (419 baseline → +73 across M19 phases).
+6. Did third real E2E run? — ✅ **Twice** (PRs #54 and #55 on auto-evo-playground).
+7. Did validators receive diff body? — ✅ Yes (first run: redacted summary per security rule; rerun: full unified diff).
+8. Did real validators PASS? — ✅ **Yes (rerun)** — Gemini PASS, confidence 1.0.
+9. Did auto-merge happen? — ❌ No, correctly. Two-layer hold: (a) M18-P1 (openai-mock can't auto-merge); (b) `validator_disagreement` → medium risk → `WAITING_APPROVAL`.
+10. If not, exactly why? — see above. Per user instruction "if no keys, do not claim beta E2E auto-merge proof": we don't claim it.
+11. Was Anthropic API spend still $0? — ✅ **$0.00 across both E2E runs.**
+12. Is this now beta.1-ready? — ✅ **Yes.** All three backlog items closed, Finding M19-F1 surfaced + fixed + regression-tested + verified live. Awaiting your final OK to tag `v1.0.0-beta.1`.
