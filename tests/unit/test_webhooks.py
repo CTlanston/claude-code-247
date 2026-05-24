@@ -151,3 +151,21 @@ def test_unknown_event_is_noop() -> None:
     out = webhooks.dispatch(event="star", payload={}, notify_fn=lambda **_: None)
     assert out.handled is False
     assert out.summary == {"ignored": True}
+
+
+def test_ping_event_is_handled_explicitly() -> None:
+    """M18-P3: ping is a routine GitHub event (sent on hook creation +
+    pings API). It must show up as ``handled`` with the zen line and
+    hook_id surfaced, not as ``ignored``."""
+    init_db()
+    payload = {
+        "zen": "Non-blocking is better than blocking.",
+        "hook_id": 630064720,
+        "hook": {"type": "Repository", "id": 630064720},
+        "repository": {"full_name": "owner/demo-repo"},
+    }
+    out = webhooks.dispatch(event="ping", payload=payload,
+                             notify_fn=lambda **_: None)
+    assert out.handled is True
+    assert out.summary["zen"] == "Non-blocking is better than blocking."
+    assert out.summary["hook_id"] == 630064720

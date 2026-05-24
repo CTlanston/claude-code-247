@@ -63,14 +63,40 @@ def test_webhook_accepts_unknown_event_as_noop() -> None:
     body = json.dumps({"action": "x"}).encode()
     sig = _sign(body, "topsecret")
     client = TestClient(create_app())
+    # Use "star" — an event we deliberately don't handle. (M18-P3:
+    # "ping" is now an explicit handler, so it would no longer be a
+    # valid "unknown event" stand-in.)
+    r = client.post("/webhooks/github",
+                     content=body,
+                     headers={"X-GitHub-Event": "star",
+                               "X-Hub-Signature-256": sig})
+    assert r.status_code == 200
+    out = r.json()
+    assert out["handled"] is False
+    assert out["event"] == "star"
+
+
+def test_webhook_ping_event_handled() -> None:
+    """M18-P3: ping is now an explicit handler — confirm a signed ping
+    request returns handled=True with the zen + hook_id surfaced."""
+    init_db()
+    _set_secret("topsecret")
+    body = json.dumps({
+        "zen": "Speak like a human.",
+        "hook_id": 12345,
+        "hook": {"type": "Repository"},
+    }).encode()
+    sig = _sign(body, "topsecret")
+    client = TestClient(create_app())
     r = client.post("/webhooks/github",
                      content=body,
                      headers={"X-GitHub-Event": "ping",
                                "X-Hub-Signature-256": sig})
     assert r.status_code == 200
     out = r.json()
-    assert out["handled"] is False
+    assert out["handled"] is True
     assert out["event"] == "ping"
+    assert out["summary"]["hook_id"] == 12345
 
 
 def test_webhook_pull_request_merged_persists_state() -> None:

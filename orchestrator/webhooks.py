@@ -147,11 +147,23 @@ def handle_status(payload: dict[str, Any], *, notify_fn, db_path) -> dict:
                                 notify_fn=notify_fn, db_path=db_path)
 
 
+def handle_ping(payload: dict[str, Any], *, notify_fn, db_path) -> dict:
+    """GitHub sends ``ping`` once when a webhook is created and again on
+    demand via the ``/pings`` API. The payload includes a ``zen`` line
+    and the ``hook_id``. Accept it explicitly so it shows up as
+    ``handled`` rather than ``ignored`` in the audit log."""
+    return {
+        "zen": payload.get("zen", ""),
+        "hook_id": payload.get("hook_id"),
+    }
+
+
 HANDLERS: dict[str, Callable[..., dict]] = {
     "pull_request": handle_pull_request,
     "check_run": handle_check_run,
     "check_suite": handle_check_suite,
     "status": handle_status,
+    "ping": handle_ping,
 }
 
 
