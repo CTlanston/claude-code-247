@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block body %}
+<table>
+  <tr><th>repo</th><td><code>{{ pr['repo_id'] }}</code></td></tr>
+  <tr><th>PR</th><td>
+    {% if pr['url'] %}<a href="{{ pr['url'] }}">#{{ pr['pr_number'] }}</a>{% else %}#{{ pr['pr_number'] }}{% endif %}
+  </td></tr>
+  <tr><th>title</th><td>{{ pr['title'] }}</td></tr>
+  <tr><th>branch</th><td><code>{{ pr['branch'] }}</code></td></tr>
+  <tr><th>state</th><td>{{ pr['state'] }}</td></tr>
+  <tr><th>approval</th><td><span class="pill warn">{{ pr['approval_state'] }}</span></td></tr>
+  <tr><th>created</th><td>{{ pr['created_at'] }}</td></tr>
+</table>
+
+<h2 style="font-size:14px;margin-top:18px;">Risk</h2>
+{% if risk %}
+<p>Score <strong>{{ risk['score'] }}</strong> ({{ risk['level'] }}) computed at <code>{{ risk['created_at'] }}</code>.</p>
+<table>
+  <thead><tr><th>factor</th><th>weight</th><th>reason</th></tr></thead>
+  <tbody>
+  {% for f in risk_factors %}
+    <tr><td><code>{{ f.name }}</code></td><td>{{ f.weight }}</td><td>{{ f.reason }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}<p>No risk score recorded yet.</p>{% endif %}
+
+<h2 style="font-size:14px;margin-top:18px;">Validators</h2>
+{% if validators %}
+<table>
+  <thead><tr><th>validator</th><th>verdict</th><th>confidence</th><th>summary</th></tr></thead>
+  <tbody>
+  {% for v in validators %}
+    <tr>
+      <td><code>{{ v['validator'] }}</code></td>
+      <td>
+        {% if v['verdict'] == 'PASS' %}<span class="pill on">{{ v['verdict'] }}</span>
+        {% elif v['verdict'] == 'FAIL' %}<span class="pill off">{{ v['verdict'] }}</span>
+        {% else %}<span class="pill warn">{{ v['verdict'] }}</span>{% endif %}
+      </td>
+      <td>{{ "%.2f"|format(v['confidence']) }}</td>
+      <td>{{ v['summary'] }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}<p>No validator results yet.</p>{% endif %}
+
+<h2 style="font-size:14px;margin-top:18px;">CI</h2>
+{% if ci %}
+<table>
+  <thead><tr><th>workflow</th><th>status</th><th>at</th></tr></thead>
+  <tbody>
+  {% for c in ci %}
+    <tr><td>{{ c['workflow_name'] or '' }}</td>
+        <td>{{ c['status'] }}</td>
+        <td>{{ c['created_at'] }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}<p>No CI results yet.</p>{% endif %}
+
+<h2 style="font-size:14px;margin-top:18px;">Decide</h2>
+<form method="post" action="/prs/{{ pr['repo_id'] }}/{{ pr['pr_number'] }}/approve"
+      style="display:inline">
+  <button type="submit">Approve merge</button>
+</form>
+<form method="post" action="/prs/{{ pr['repo_id'] }}/{{ pr['pr_number'] }}/reject"
+      style="display:inline; margin-left: 10px;">
+  <input name="reason" placeholder="reason (optional)">
+  <button type="submit">Reject</button>
+</form>
+{% endblock %}

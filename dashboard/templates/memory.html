@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block body %}
+<p>Memory items by repo + type (vector store details land in M9).</p>
+{% if rows %}
+<table>
+  <thead><tr><th>repo</th><th>type</th><th>count</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr><td>{{ r['repo_id'] }}</td>
+        <td>{{ r['item_type'] }}</td>
+        <td>{{ r['c'] }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>No memory items yet. The memory compiler ships in M9.</p>
+{% endif %}
+{% endblock %}
