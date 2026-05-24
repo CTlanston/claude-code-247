@@ -73,10 +73,29 @@ def invoke(
     *,
     claude_bin: str = DEFAULT_CLAUDE_BIN,
     env: dict[str, str] | None = None,
-    auth_mode: str = "local_claude_code",
+    auth_mode: str | None = None,
 ) -> ClaudeResult:
     """Run one headless ``claude --print`` invocation. Always a fresh
-    process — no conversation continuity across calls."""
+    process — no conversation continuity across calls.
+
+    Argv shape:
+      claude --print --output-format json --append-system-prompt <SYS>
+             --permission-mode <MODE> [--model M] [--allowedTools t1,t2,...]
+             [extra args...]
+
+    The user prompt is sent on **stdin**, not as a positional argument.
+    ``--allowedTools <tools...>`` is variadic in commander.js (the CLI's
+    parser) — passing the prompt positionally after it causes commander
+    to swallow the prompt as another tool name, which crashes with
+    'Input must be provided either through stdin or as a prompt
+    argument'. Stdin sidesteps the ambiguity entirely.
+
+    Auth mode is detected truthfully: when ``ANTHROPIC_API_KEY`` is in
+    the effective env, the CLI uses API billing — we report that as
+    ``anthropic_api`` rather than silently labelling it
+    ``local_claude_code``. This satisfies the spec §8 "no silent
+    fallback" rule by making the mode visible in logs / dashboard.
+    """
     argv: list[str] = [claude_bin, "--print", "--output-format", "json",
                        "--append-system-prompt", inv.system_prompt,
                        "--permission-mode", inv.permission_mode]
@@ -85,16 +104,21 @@ def invoke(
     if inv.allowed_tools:
         argv += ["--allowedTools", ",".join(inv.allowed_tools)]
     argv += list(inv.extra_args)
-    argv.append(inv.user_prompt)
+    # Prompt goes via stdin (see docstring).
 
     full_env = dict(os.environ)
     if env:
         full_env.update(env)
 
+    if auth_mode is None:
+        auth_mode = "anthropic_api" if full_env.get("ANTHROPIC_API_KEY") \
+            else "local_claude_code"
+
     t0 = time.time()
     try:
         proc = subprocess.run(
             argv,
+            input=inv.user_prompt,
             cwd=str(inv.cwd) if inv.cwd else None,
             env=full_env,
             capture_output=True,

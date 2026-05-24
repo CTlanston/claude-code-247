@@ -133,8 +133,13 @@ class SandboxGithub:
             branch=branch, title=title, state="draft", raw={},
         )
 
-    def merge_pr(self, *, repo, number, method="squash", delete_branch=True, body=""):
-        self.merge_calls.append({"repo": repo, "number": number, "method": method})
+    def merge_pr(self, *, repo, number, method="squash", delete_branch=True,
+                  body="", auto=False, admin=False):
+        self.merge_calls.append({"repo": repo, "number": number, "method": method,
+                                  "auto": auto, "admin": admin})
+        return True
+
+    def mark_ready(self, repo, number):
         return True
 
     def pr_checks(self, repo, number):

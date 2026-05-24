@@ -87,9 +87,20 @@ def test_merge_pr_default_squash(monkeypatch: pytest.MonkeyPatch) -> None:
     assert ok is True
     argv = cap["calls"][0]
     assert "--squash" in argv
-    assert "--auto" in argv
     assert "--delete-branch" in argv
     assert "9" in argv
+    # --auto and --admin are opt-in only (default False) — they fail on
+    # repos without auto-merge or for non-admins; let the caller decide.
+    assert "--auto" not in argv
+    assert "--admin" not in argv
+
+
+def test_merge_pr_with_auto_and_admin(monkeypatch: pytest.MonkeyPatch) -> None:
+    cap = _stub_subprocess(monkeypatch, returncode=0, stdout="merged")
+    gh.merge_pr(repo="o/r", number=9, auto=True, admin=True)
+    argv = cap["calls"][0]
+    assert "--auto" in argv
+    assert "--admin" in argv
 
 
 def test_merge_pr_rejects_unknown_method() -> None:

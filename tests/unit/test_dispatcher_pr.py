@@ -127,6 +127,7 @@ class FakeGithub:
     def __init__(self, *, merge_should_fail: bool = False) -> None:
         self.create_calls: list = []
         self.merge_calls: list = []
+        self.mark_ready_calls: list = []
         self.merge_should_fail = merge_should_fail
 
     def create_draft_pr(self, *, repo, branch, title, body, base="main",
@@ -140,10 +141,16 @@ class FakeGithub:
             branch=branch, title=title, state="draft", raw={},
         )
 
-    def merge_pr(self, *, repo, number, method="squash", delete_branch=True, body=""):
-        self.merge_calls.append({"repo": repo, "number": number, "method": method})
+    def merge_pr(self, *, repo, number, method="squash", delete_branch=True,
+                  body="", auto=False, admin=False):
+        self.merge_calls.append({"repo": repo, "number": number, "method": method,
+                                  "auto": auto, "admin": admin})
         if self.merge_should_fail:
             raise GitHubError("simulated merge failure")
+        return True
+
+    def mark_ready(self, repo, number):
+        self.mark_ready_calls.append((repo, number))
         return True
 
 

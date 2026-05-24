@@ -103,13 +103,30 @@ def merge_pr(
     method: str = "squash",
     delete_branch: bool = True,
     body: str = "",
+    auto: bool = False,
+    admin: bool = False,
 ) -> bool:
     """`gh pr merge`. Returns True on success.
-    method ∈ {squash, rebase, merge}. We default to squash."""
+
+    ``method`` ∈ {squash, rebase, merge}. Squash is the default.
+
+    ``auto`` adds ``--auto`` (queue the merge after required checks
+    pass). Default False because most repos don't have auto-merge
+    enabled at the GitHub settings level — passing --auto then fails.
+
+    ``admin`` adds ``--admin`` (bypass branch protection rules).
+    Default False — only operators who own the repo should set this.
+    Required when the repo has a branch-protection policy that would
+    otherwise block direct merges (and --auto isn't enabled). The
+    dispatcher reads this from repo.auto_merge.admin in the registry.
+    """
     if method not in ("squash", "rebase", "merge"):
         raise ValueError(f"unknown merge method {method!r}")
-    argv = ["gh", "pr", "merge", str(number), "--repo", repo,
-             f"--{method}", "--auto"]
+    argv = ["gh", "pr", "merge", str(number), "--repo", repo, f"--{method}"]
+    if auto:
+        argv.append("--auto")
+    if admin:
+        argv.append("--admin")
     if delete_branch:
         argv.append("--delete-branch")
     if body:
@@ -126,6 +143,21 @@ def pr_comment(repo: str, number: int, body: str) -> bool:
                           "--repo", repo, "--body", body])
     if rc != 0:
         raise GitHubError(f"gh pr comment failed (rc={rc}): {err.strip()}")
+    return True
+
+
+def mark_ready(repo: str, number: int) -> bool:
+    """`gh pr ready` — flip a draft PR to ready-for-review.
+
+    Required before merging: GitHub rejects ``gh pr merge`` on draft
+    PRs with 'Pull Request is still a draft (mergePullRequest)'."""
+    rc, out, err = _run(["gh", "pr", "ready", str(number), "--repo", repo])
+    if rc != 0:
+        msg = err.strip() or out.strip()
+        # gh pr ready exits 1 if PR is already ready. Tolerate.
+        if "already" in msg.lower() and "ready" in msg.lower():
+            return True
+        raise GitHubError(f"gh pr ready failed (rc={rc}): {msg}")
     return True
 
 

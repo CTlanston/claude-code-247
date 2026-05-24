@@ -9,14 +9,18 @@ from runner.claude_cli import ClaudeInvocation, invoke
 
 
 def _make_fake_claude(tmp_path: Path, *, stdout: str = "{}", exit_code: int = 0,
-                     args_log: Path | None = None) -> Path:
+                     args_log: Path | None = None,
+                     stdin_log: Path | None = None) -> Path:
     """Generate a fake `claude` binary that writes its argv (one per line)
     to args_log and prints `stdout`. Used to assert what we passed to the
-    CLI without needing the real one."""
+    CLI without needing the real one. Optionally captures stdin to
+    stdin_log so the test can verify prompt was sent that way."""
     fake = tmp_path / "claude"
     log_part = ""
     if args_log:
-        log_part = f"printf '%s\\n' \"$@\" > {args_log}\n"
+        log_part += f"printf '%s\\n' \"$@\" > {args_log}\n"
+    if stdin_log:
+        log_part += f"cat > {stdin_log}\n"
     fake.write_text(
         "#!/bin/sh\n"
         f"{log_part}"
@@ -29,7 +33,11 @@ def _make_fake_claude(tmp_path: Path, *, stdout: str = "{}", exit_code: int = 0,
 
 def test_invoke_passes_correct_argv(tmp_path: Path) -> None:
     log = tmp_path / "argv.log"
-    fake = _make_fake_claude(tmp_path, stdout=json.dumps({"result": "OK"}), args_log=log)
+    stdin_log = tmp_path / "stdin.log"
+    fake = _make_fake_claude(
+        tmp_path, stdout=json.dumps({"result": "OK"}),
+        args_log=log, stdin_log=stdin_log,
+    )
     inv = ClaudeInvocation(
         role="t",
         user_prompt="hello",
@@ -41,7 +49,6 @@ def test_invoke_passes_correct_argv(tmp_path: Path) -> None:
     assert res.ok
     assert res.text == "OK"
     argv = log.read_text().splitlines()
-    # We don't care about argv[0] (bin path); just contents.
     assert "--print" in argv
     assert "--output-format" in argv
     assert "json" in argv
@@ -53,8 +60,11 @@ def test_invoke_passes_correct_argv(tmp_path: Path) -> None:
     assert "claude-sonnet-4-6" in argv
     assert "--permission-mode" in argv
     assert "bypassPermissions" in argv
-    # User prompt is the final positional arg
-    assert argv[-1] == "hello"
+    # User prompt now flows via stdin, NOT as a positional arg (the
+    # commander.js parser treats --allowedTools as variadic and would
+    # otherwise swallow the prompt).
+    assert "hello" not in argv
+    assert stdin_log.read_text() == "hello"
 
 
 def test_invoke_handles_non_json_output(tmp_path: Path) -> None:

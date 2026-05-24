@@ -29,9 +29,11 @@ def isolated_state_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("CLAUDE247_DB_PATH", str(state / "claude247.db"))
     monkeypatch.setenv("CLAUDE247_REPOS_FILE", str(cfg / "repos.yaml"))
     monkeypatch.setenv("CLAUDE247_WORKSPACE_ROOT", str(ws))
-    # Ensure no validator keys are picked up from the host env unless a test
-    # explicitly sets one.
-    for var in ("GEMINI_API_KEY", "OPENAI_API_KEY"):
+    # Ensure no validator/anthropic keys are picked up from the host env
+    # unless a test explicitly sets one. This also keeps the
+    # claude_cli auth-mode detection deterministic (no ANTHROPIC_API_KEY
+    # → reports local_claude_code by default).
+    for var in ("GEMINI_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"):
         monkeypatch.delenv(var, raising=False)
     return tmp_path
 

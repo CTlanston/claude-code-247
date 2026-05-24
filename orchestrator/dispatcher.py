@@ -404,11 +404,20 @@ def handle_start_task(
         merged_ok = False
         if cfg.allow_remote_writes and pr_number is not None:
             try:
-                merge_method = ((repo.raw or {}).get("auto_merge") or {}).get(
-                    "method", "squash"
-                )
+                am_cfg = (repo.raw or {}).get("auto_merge") or {}
+                # GitHub rejects merging draft PRs; mark ready first.
+                try:
+                    gh.mark_ready(repo.github_full_name, pr_number)
+                except _github_client.GitHubError as ready_err:
+                    log_indexer.write(level="warn", component="dispatcher",
+                                       message=f"gh pr ready: {ready_err}",
+                                       repo_id=repo_id, task_id=task.id,
+                                       db_path=db_path)
                 gh.merge_pr(repo=repo.github_full_name, number=pr_number,
-                             method=merge_method, delete_branch=True)
+                             method=am_cfg.get("method", "squash"),
+                             delete_branch=True,
+                             auto=bool(am_cfg.get("auto", False)),
+                             admin=bool(am_cfg.get("admin", False)))
                 merged_ok = True
                 summary["merged"] = True
                 if pr_record_id:
@@ -597,9 +606,19 @@ def handle_approve_merge(cmd: Command, *, db_path=None, notify_fn=None,
     repo = _get_repo(cmd.repo_id)
     if cfg.allow_remote_writes and repo is not None:
         try:
-            method = ((repo.raw or {}).get("auto_merge") or {}).get("method", "squash")
+            am_cfg = (repo.raw or {}).get("auto_merge") or {}
+            try:
+                gh.mark_ready(repo.github_full_name, cmd.pr_number)
+            except _github_client.GitHubError as ready_err:
+                log_indexer.write(level="warn", component="dispatcher",
+                                   message=f"gh pr ready: {ready_err}",
+                                   repo_id=cmd.repo_id, task_id=task_id,
+                                   db_path=db_path)
             gh.merge_pr(repo=repo.github_full_name, number=cmd.pr_number,
-                         method=method, delete_branch=True)
+                         method=am_cfg.get("method", "squash"),
+                         delete_branch=True,
+                         auto=bool(am_cfg.get("auto", False)),
+                         admin=bool(am_cfg.get("admin", False)))
             out["merged"] = True
             _mark_pr_merged(pr_id, db_path=db_path)
             if task_id:
