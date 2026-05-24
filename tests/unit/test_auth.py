@@ -32,22 +32,17 @@ def test_local_mode_fails_when_claude_missing(monkeypatch: pytest.MonkeyPatch) -
 
 def test_api_fallback_requires_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    cfg_dir = Path(os.environ["CLAUDE247_CONFIG_DIR"])
-    (cfg_dir / "config.yaml").write_text(yaml.safe_dump({
-        "auth": {"mode": "anthropic_api_fallback"},
-    }))
-    d = ensure_usable()
+    # Legacy mode-name path remains callable via explicit arg (M18-P0
+    # introduced worker_mode which supersedes auth.mode for default
+    # resolution).
+    d = ensure_usable("anthropic_api_fallback")
     assert d.ok is False
     assert "ANTHROPIC_API_KEY" in d.reason
 
 
 def test_api_fallback_requires_approval_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
-    cfg_dir = Path(os.environ["CLAUDE247_CONFIG_DIR"])
-    (cfg_dir / "config.yaml").write_text(yaml.safe_dump({
-        "auth": {"mode": "anthropic_api_fallback"},
-    }))
-    d = ensure_usable()
+    d = ensure_usable("anthropic_api_fallback")
     assert d.ok is False
     assert "approval" in d.reason.lower()
 

@@ -74,9 +74,9 @@ def invoke(
     claude_bin: str = DEFAULT_CLAUDE_BIN,
     env: dict[str, str] | None = None,
     auth_mode: str | None = None,
+    worker_mode: str | None = None,
 ) -> ClaudeResult:
-    """Run one headless ``claude --print`` invocation. Always a fresh
-    process — no conversation continuity across calls.
+    """Run one headless ``claude --print`` invocation.
 
     Argv shape:
       claude --print --output-format json --append-system-prompt <SYS>
@@ -85,17 +85,25 @@ def invoke(
 
     The user prompt is sent on **stdin**, not as a positional argument.
     ``--allowedTools <tools...>`` is variadic in commander.js (the CLI's
-    parser) — passing the prompt positionally after it causes commander
-    to swallow the prompt as another tool name, which crashes with
-    'Input must be provided either through stdin or as a prompt
-    argument'. Stdin sidesteps the ambiguity entirely.
+    parser); passing the prompt positionally after it causes commander
+    to swallow the prompt as another tool name and crash with 'Input
+    must be provided either through stdin or as a prompt argument'.
 
-    Auth mode is detected truthfully: when ``ANTHROPIC_API_KEY`` is in
-    the effective env, the CLI uses API billing — we report that as
-    ``anthropic_api`` rather than silently labelling it
-    ``local_claude_code``. This satisfies the spec §8 "no silent
-    fallback" rule by making the mode visible in logs / dashboard.
+    M18-P0 auth handling:
+    - If ``worker_mode`` is None, it's resolved from config
+      (``auth.worker_mode``).
+    - When worker_mode = local_claude_code, ANTHROPIC_API_KEY (and
+      ANTHROPIC_BASE_URL) are stripped from the subprocess env via
+      ``runner.auth.effective_env`` so the CLI is forced onto its
+      keychain credential. Eliminates silent API fallback.
+    - When worker_mode = anthropic_api, env is passed through.
+    - ``auth_mode`` (the reported value on the result) is detected
+      from the actual env that was handed to the subprocess, so the
+      label never lies about what just happened.
     """
+    # Lazy import to avoid a cycle (auth → config → load_config).
+    from runner.auth import effective_env, resolve_worker_mode
+
     argv: list[str] = [claude_bin, "--print", "--output-format", "json",
                        "--append-system-prompt", inv.system_prompt,
                        "--permission-mode", inv.permission_mode]
@@ -106,9 +114,18 @@ def invoke(
     argv += list(inv.extra_args)
     # Prompt goes via stdin (see docstring).
 
-    full_env = dict(os.environ)
+    if worker_mode is None:
+        try:
+            worker_mode = resolve_worker_mode()
+        except Exception:  # config unavailable in some unit tests
+            worker_mode = ("anthropic_api"
+                           if os.environ.get("ANTHROPIC_API_KEY")
+                           else "local_claude_code")
+
+    base_env = dict(os.environ)
     if env:
-        full_env.update(env)
+        base_env.update(env)
+    full_env = effective_env(base_env, worker_mode=worker_mode)
 
     if auth_mode is None:
         auth_mode = "anthropic_api" if full_env.get("ANTHROPIC_API_KEY") \

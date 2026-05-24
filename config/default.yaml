@@ -21,12 +21,35 @@ system:
   log_gc_days: 30
 
 auth:
-  # local_claude_code | anthropic_api_fallback | validator_api_only
+  # legacy field kept for backwards compatibility with older configs;
+  # use worker_mode / allow_api_fallback below for new installs.
   mode: local_claude_code
-
-  # If mode is anthropic_api_fallback, we require an explicit operator
-  # approval per task unless this is set to true. Default: require approval.
   api_fallback_requires_approval: true
+
+  # M18-P0 honest-mode controls.
+  #
+  # worker_mode chooses which path planner/coder/reviewer take:
+  #   local_claude_code — invoke `claude --print` and let the CLI pick
+  #                       its credential (keychain OAuth, subscription,
+  #                       or apiKeyHelper). ANTHROPIC_API_KEY is
+  #                       STRIPPED from the subprocess env so the CLI
+  #                       cannot silently use it.
+  #   anthropic_api     — invoke `claude --print` with ANTHROPIC_API_KEY
+  #                       present. Per-call cost is reported and warned.
+  worker_mode: local_claude_code
+
+  # When true, the runner may silently fall back from local_claude_code
+  # to anthropic_api if the local path fails. Default false — fail
+  # loudly so the operator fixes the auth setup intentionally.
+  allow_api_fallback: false
+
+  # When allow_api_fallback is true, the orchestrator still requires an
+  # explicit per-call approval token unless this is also set to false.
+  require_explicit_api_fallback: true
+
+  # Doctor prints a one-line cost warning whenever a real API call is
+  # about to happen (or has happened). Off in fully-quiet operations.
+  show_cost_warnings: true
 
 cost:
   # Per-day caps before the system pauses the offending repo.

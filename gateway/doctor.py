@@ -138,16 +138,58 @@ def check_claude_smoke() -> Check:
     from runner.claude_cli import smoke_check
     res = smoke_check(timeout=45.0)
     if res.ok and "OK" in res.text.upper():
+        cost = res.cost_usd if res.cost_usd is not None else "subscription"
         return Check(
             name="claude smoke",
             status="ok", required=False,
-            message=f"round-trip in {res.duration_s}s",
+            message=f"round-trip in {res.duration_s}s (auth={res.auth_mode}, cost={cost})",
             detail={"duration_s": res.duration_s, "auth_mode": res.auth_mode,
                     "cost_usd": res.cost_usd},
         )
     return Check(name="claude smoke", status="warn", required=False,
                  message=res.error or f"unexpected response: {res.text[:80]!r}",
                  detail={"exit": res.exit_code, "duration_s": res.duration_s})
+
+
+def check_auth_mode() -> Check:
+    """M18-P0: report the configured worker_mode and whether it's usable.
+
+    Always part of the default check set so the operator sees auth state
+    on every `claude247 doctor` invocation."""
+    import os as _os
+    from runner.auth import (
+        allow_api_fallback,
+        ensure_usable,
+        resolve_worker_mode,
+    )
+    mode = resolve_worker_mode()
+    decision = ensure_usable()
+    api_key_present = bool(_os.environ.get("ANTHROPIC_API_KEY"))
+    api_used_for_workers = (mode == "anthropic_api")
+    detail = {
+        "worker_mode": mode,
+        "usable": decision.ok,
+        "reason": decision.reason,
+        "anthropic_api_key_present": api_key_present,
+        "anthropic_api_used_for_workers": api_used_for_workers,
+        "allow_api_fallback": allow_api_fallback(),
+    }
+    if mode == "local_claude_code" and api_key_present:
+        msg = (f"worker_mode={mode}, usable={decision.ok}; "
+                "ANTHROPIC_API_KEY present in env but IGNORED for workers "
+                "(stripped from subprocess env per worker_mode)")
+        status = "ok" if decision.ok else "fail"
+    elif mode == "anthropic_api" and not api_key_present:
+        msg = f"worker_mode={mode} but ANTHROPIC_API_KEY missing — will fail"
+        status = "fail"
+    else:
+        msg = (f"worker_mode={mode}, usable={decision.ok} — {decision.reason}")
+        status = "ok" if decision.ok else "fail"
+    return Check(
+        name="auth mode",
+        status=status, required=True,
+        message=msg, detail=detail,
+    )
 
 
 def check_sqlite() -> Check:
@@ -261,6 +303,7 @@ ALL_CHECKS: list[Callable[[], Check]] = [
     check_docker,
     check_gh,
     check_claude_cli,
+    check_auth_mode,
     check_sqlite,
     check_state_dir,
     check_db_init,
