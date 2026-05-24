@@ -17,6 +17,7 @@ from gateway.commands.control_cmd import (
     stop as stop_cmd,
     stop_all as stop_all_cmd,
 )
+from gateway.commands.dispatcher_cmd import dispatcher as dispatcher_cmd
 from gateway.commands.doctor_cmd import doctor as doctor_cmd
 from gateway.commands.logs_cmd import logs as logs_grp
 from gateway.commands.memory_cmd import memory as memory_grp
@@ -57,6 +58,7 @@ cli.add_command(risk_cmd)
 cli.add_command(logs_grp)
 cli.add_command(memory_grp)
 cli.add_command(replay_cmd)
+cli.add_command(dispatcher_cmd)
 
 
 def main() -> int:

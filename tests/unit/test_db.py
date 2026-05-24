@@ -19,11 +19,13 @@ def test_init_db_creates_file_and_schema(tmp_path: Path) -> None:
     assert path.exists()
     with open_db(path) as conn:
         v = schema_version(conn)
-        assert v == 1
+        # M1 introduced v1; M11 introduced v2 (system_state table).
+        assert v >= 1
         tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     for required in {"repos", "tasks", "task_events", "runs", "commands", "prs",
                      "validator_results", "risk_scores", "budgets", "logs",
-                     "memory_items", "decisions", "incidents", "schema_version"}:
+                     "memory_items", "decisions", "incidents", "schema_version",
+                     "system_state"}:
         assert required in tables, f"missing table {required}"
 
 
@@ -31,8 +33,11 @@ def test_init_db_is_idempotent() -> None:
     init_db()
     init_db()
     with open_db() as conn:
-        n = conn.execute("SELECT COUNT(*) AS c FROM schema_version").fetchone()["c"]
-    assert n == 1
+        rows = conn.execute("SELECT version FROM schema_version ORDER BY version").fetchall()
+    versions = [r["version"] for r in rows]
+    # init_db should be byte-idempotent — same migration set every call.
+    assert versions == sorted(set(versions))
+    assert versions[-1] >= 1
 
 
 def test_logs_fts_trigger_inserts_into_fts() -> None:

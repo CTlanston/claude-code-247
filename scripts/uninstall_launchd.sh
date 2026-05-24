@@ -10,7 +10,7 @@ fi
 
 DEST_DIR="$HOME/Library/LaunchAgents"
 
-for name in com.claude247.dashboard com.claude247.orchestrator; do
+for name in com.claude247.dashboard com.claude247.orchestrator com.claude247.dispatcher; do
   dest="$DEST_DIR/${name}.plist"
   if [[ -f "$dest" ]]; then
     launchctl unload "$dest" 2>/dev/null || true

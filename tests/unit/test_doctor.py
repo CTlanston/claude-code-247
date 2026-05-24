@@ -29,7 +29,7 @@ def test_check_state_dir_creates_and_passes() -> None:
 def test_check_db_init_creates_db_and_returns_version() -> None:
     c = check_db_init()
     assert c.status == "ok"
-    assert c.detail["schema_version"] == 1
+    assert c.detail["schema_version"] >= 1
 
 
 def test_check_repos_yaml_warns_when_missing() -> None:

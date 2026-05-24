@@ -46,16 +46,25 @@ class TaskStatus(str, Enum):
 # Adjacency list. ``TaskStatus.x`` -> set of next states allowed.
 # pause/resume/cancel/stuck/fail are reachable from almost anywhere; we
 # enumerate explicitly to make audits possible.
+# Adjacency for the inner (M2) role-loop view AND the M11 orchestrator
+# view. The role loop walks planning → coding → testing → reviewing →
+# validating internally. The dispatcher in M11 may skip intermediate
+# states when it has already observed them via task_events from the
+# worker — so planning/coding/testing/reviewing all permit a jump to
+# validating, and validating permits a jump to pr_created. Repair loops
+# back to coding from any post-coding state.
 ALLOWED_TRANSITIONS: dict[TaskStatus, set[TaskStatus]] = {
     TaskStatus.queued: {TaskStatus.planning, TaskStatus.paused, TaskStatus.cancelled},
-    TaskStatus.planning: {TaskStatus.coding, TaskStatus.stuck, TaskStatus.failed,
+    TaskStatus.planning: {TaskStatus.coding, TaskStatus.testing, TaskStatus.reviewing,
+                          TaskStatus.validating, TaskStatus.stuck, TaskStatus.failed,
                           TaskStatus.paused, TaskStatus.cancelled},
-    TaskStatus.coding: {TaskStatus.testing, TaskStatus.stuck, TaskStatus.failed,
+    TaskStatus.coding: {TaskStatus.testing, TaskStatus.reviewing, TaskStatus.validating,
+                        TaskStatus.stuck, TaskStatus.failed,
                         TaskStatus.paused, TaskStatus.cancelled},
-    TaskStatus.testing: {TaskStatus.reviewing, TaskStatus.coding,  # repair loop
+    TaskStatus.testing: {TaskStatus.reviewing, TaskStatus.coding, TaskStatus.validating,
                          TaskStatus.stuck, TaskStatus.failed,
                          TaskStatus.paused, TaskStatus.cancelled},
-    TaskStatus.reviewing: {TaskStatus.validating, TaskStatus.coding,  # repair loop
+    TaskStatus.reviewing: {TaskStatus.validating, TaskStatus.coding,
                            TaskStatus.stuck, TaskStatus.failed,
                            TaskStatus.paused, TaskStatus.cancelled},
     TaskStatus.validating: {TaskStatus.pr_created, TaskStatus.coding,

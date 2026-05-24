@@ -281,10 +281,24 @@ CREATE TABLE IF NOT EXISTS incidents (
 );
 
 -- ────────────────────────────────────────────────────────────────────────
--- schema_version: tracks migrations (M1 = 1).
+-- system_state: simple key→value store for runtime flags the dispatcher
+-- reads on each tick. Keys we use:
+--   system.paused            "1" when stop-all / pause --system is active
+--   repo.paused.<repo_id>    "1" when pause --repo is active
+--   repo.dispatch_lock       (reserved) coarse-grained mutex
+CREATE TABLE IF NOT EXISTS system_state (
+  key         TEXT PRIMARY KEY,
+  value       TEXT NOT NULL,
+  updated_at  TEXT NOT NULL
+);
+
+-- ────────────────────────────────────────────────────────────────────────
+-- schema_version: tracks migrations (M1 = 1, M11 added system_state = 2).
 CREATE TABLE IF NOT EXISTS schema_version (
   version         INTEGER PRIMARY KEY,
   applied_at      TEXT NOT NULL
 );
 INSERT OR IGNORE INTO schema_version (version, applied_at)
 VALUES (1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+INSERT OR IGNORE INTO schema_version (version, applied_at)
+VALUES (2, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));

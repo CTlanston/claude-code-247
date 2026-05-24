@@ -5,6 +5,7 @@ import json
 import click
 
 from memory.db import default_db_path, init_db, open_db, schema_version
+from orchestrator import system_state
 from orchestrator.config import load_config
 from orchestrator.repo_registry import load_registry
 
@@ -28,6 +29,12 @@ def _build_status() -> dict[str, object]:
                 "SELECT COUNT(*) AS c FROM commands WHERE status = 'requires_approval'"
             ).fetchone()["c"]
         )
+    flags = system_state.snapshot()
+    paused_repos = sorted(
+        k.removeprefix("repo.paused.")
+        for k, v in flags.items()
+        if k.startswith("repo.paused.") and v == "1"
+    )
     return {
         "system": {
             "auth_mode": cfg.auth_mode,
@@ -35,6 +42,8 @@ def _build_status() -> dict[str, object]:
             "dashboard": f"{cfg.dashboard_host}:{cfg.dashboard_port}",
             "db_path": str(default_db_path()),
             "schema_version": sv,
+            "paused": system_state.is_system_paused(),
+            "paused_repos": paused_repos,
         },
         "repos": {
             "count": len(entries),
@@ -56,8 +65,13 @@ def status(as_json: bool, as_plain: bool) -> None:
     if as_plain:
         sys_s = s["system"]
         repos_s = s["repos"]
-        click.echo(f"System: {sys_s['auth_mode']} | writes={'on' if sys_s['allow_remote_writes'] else 'off'}")
+        paused_part = " PAUSED" if sys_s["paused"] else ""
+        click.echo(
+            f"System: {sys_s['auth_mode']} | writes={'on' if sys_s['allow_remote_writes'] else 'off'}{paused_part}"
+        )
         click.echo(f"Repos: {repos_s['enabled']}/{repos_s['count']} enabled")
+        if sys_s["paused_repos"]:
+            click.echo("Paused repos: " + ", ".join(sys_s["paused_repos"]))
         if s["tasks"]:
             parts = [f"{k}={v}" for k, v in sorted(s["tasks"].items())]
             click.echo("Tasks: " + " ".join(parts))
@@ -72,9 +86,12 @@ def status(as_json: bool, as_plain: bool) -> None:
     click.echo("─ claude-code-247 status ─────────────────────────────")
     click.echo(f"  auth mode         : {sys_s['auth_mode']}")
     click.echo(f"  allow_remote_writes: {sys_s['allow_remote_writes']}")
+    click.echo(f"  system paused     : {sys_s['paused']}")
     click.echo(f"  dashboard         : http://{sys_s['dashboard']}")
     click.echo(f"  db                : {sys_s['db_path']} (schema v{sys_s['schema_version']})")
     click.echo(f"  repos             : {repos_s['enabled']} enabled / {repos_s['count']} total")
+    if sys_s["paused_repos"]:
+        click.echo(f"  paused repos      : {', '.join(sys_s['paused_repos'])}")
     tasks_part = ", ".join(f"{k}={v}" for k, v in sorted(s["tasks"].items())) or "(none)"
     click.echo(f"  tasks by status   : {tasks_part}")
     cmds = s["commands"]
