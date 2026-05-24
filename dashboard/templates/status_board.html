@@ -278,6 +278,35 @@
     border-radius: 3px;
     transition: width .8s cubic-bezier(.2,.7,.3,1);
   }
+
+  /* ── usage card ───────────────────────────────────────────── */
+  .wd-usage { display: flex; flex-direction: column; gap: 18px; }
+  .wd-usage .row { display: flex; gap: 16px; align-items: flex-start;
+                    flex-wrap: wrap; }
+  .wd-usage .row.head { justify-content: space-between; align-items: center; }
+  .wd-usage .metric { flex: 1 1 140px; min-width: 120px; }
+  .wd-usage .metric .num {
+    font-size: 30px; font-weight: 600; letter-spacing: -0.03em;
+    font-variant-numeric: tabular-nums; line-height: 1;
+  }
+  .wd-usage .metric .num .cur { font-size: 16px; color: var(--muted);
+                                 font-weight: 500; margin-right: 2px; }
+  .wd-usage .metric .lbl { font-size: 11px; color: var(--muted);
+                            margin-top: 6px; letter-spacing: 0.06em;
+                            text-transform: uppercase; font-weight: 600; }
+  .wd-usage .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .wd-usage .chip {
+    padding: 4px 10px; border-radius: 999px;
+    background: var(--surface-2); color: var(--text);
+    font-size: 11px; font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+  .wd-usage .chip .k { color: var(--muted); margin-right: 4px; }
+  .wd-usage .note {
+    font-size: 12px; color: var(--muted); line-height: 1.5;
+    padding-top: 10px; border-top: 1px solid var(--border);
+  }
+  .wd-usage .note::before { content: "ⓘ"; margin-right: 6px; color: var(--accent); }
 </style>
 
 <div class="wd-shell">
@@ -478,6 +507,50 @@
 
   </div>
 
+  <!-- ── usage ──────────────────────────────────────────────── -->
+  <div class="wd-card wd-usage" data-card="usage">
+    <div class="row head">
+      <div class="wd-section-label" data-i18n="usage_label">Usage</div>
+      <span class="wd-section-label" style="color: var(--muted);"
+            data-i18n="usage_window">runs · cost · workers</span>
+    </div>
+    <div class="row">
+      <div class="metric">
+        <div class="num"><span data-bind="usage.runs_total">{{ board.usage.runs_total }}</span></div>
+        <div class="lbl" data-i18n="runs_total">runs total</div>
+      </div>
+      <div class="metric">
+        <div class="num"><span data-bind="usage.runs_today">{{ board.usage.runs_today }}</span></div>
+        <div class="lbl" data-i18n="runs_today">runs today</div>
+      </div>
+      <div class="metric">
+        <div class="num"><span data-bind="usage.runs_last_hour">{{ board.usage.runs_last_hour }}</span></div>
+        <div class="lbl" data-i18n="runs_last_hour">last hour</div>
+      </div>
+      <div class="metric">
+        <div class="num"><span data-bind="usage.active_workers">{{ board.usage.active_workers }}</span></div>
+        <div class="lbl" data-i18n="active_workers">active workers</div>
+      </div>
+      <div class="metric">
+        <div class="num"><span class="cur">$</span><span data-bind="usage.estimated_cost_today_usd" data-format="usd4">{{ "%.4f"|format(board.usage.estimated_cost_today_usd) }}</span></div>
+        <div class="lbl" data-i18n="cost_today">est. cost today</div>
+      </div>
+      <div class="metric">
+        <div class="num"><span class="cur">$</span><span data-bind="usage.estimated_cost_total_usd" data-format="usd4">{{ "%.4f"|format(board.usage.estimated_cost_total_usd) }}</span></div>
+        <div class="lbl" data-i18n="cost_total">est. cost total</div>
+      </div>
+    </div>
+    <div class="chips" id="wd-usage-chips">
+      {% for role, count in (board.usage.by_role | dictsort) %}
+        <span class="chip"><span class="k">{{ role }}</span>{{ count }}</span>
+      {% endfor %}
+      {% for mode, count in (board.usage.by_auth_mode | dictsort) %}
+        <span class="chip"><span class="k">{{ mode }}</span>{{ count }}</span>
+      {% endfor %}
+    </div>
+    <div class="note" data-bind="usage.note">{{ board.usage.note }}</div>
+  </div>
+
   <div class="wd-foot">
     <span><span data-i18n="generated">Generated</span>
       <code data-bind="generated_at">{{ board.generated_at }}</code></span>
@@ -511,6 +584,10 @@
       alert_storm: "alert storm", budget: "budget", searchable: "searchable",
       ga_gates: "GA gates", generated: "Generated",
       ago_suffix: "ago", btn_lang: "中文", btn_pause: "pause", btn_resume: "resume",
+      usage_label: "Usage", usage_window: "runs · cost · workers",
+      runs_total: "runs total", runs_today: "runs today",
+      runs_last_hour: "last hour", active_workers: "active workers",
+      cost_today: "est. cost today", cost_total: "est. cost total",
     },
     zh: {
       title: "看板", status_live: "实时", status_paused: "已暂停",
@@ -528,6 +605,10 @@
       alert_storm: "告警风暴", budget: "预算", searchable: "可搜索",
       ga_gates: "GA 闸门", generated: "生成于",
       ago_suffix: "前", btn_lang: "EN", btn_pause: "暂停", btn_resume: "继续",
+      usage_label: "用量", usage_window: "运行 · 成本 · worker",
+      runs_total: "运行总数", runs_today: "今日运行",
+      runs_last_hour: "近 1 小时", active_workers: "活跃 worker",
+      cost_today: "今日成本", cost_total: "累计成本",
     }
   };
 
@@ -599,9 +680,28 @@
       case "yesno":    return val ? "YES" : "NO";
       case "sane":     return val ? "sane" : "EXCEEDED";
       case "created":  return val ? "CREATED" : "NOT CREATED";
+      case "usd4":     return Number(val || 0).toFixed(4);
       case "text":     return String(val);
       default:         return String(val);
     }
+  }
+
+  function paintUsageChips(usage) {
+    const host = document.getElementById("wd-usage-chips");
+    if (!host) return;
+    const esc = (s) => String(s).replace(/[&<>"']/g, c => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    }[c]));
+    const chips = [];
+    const roles = usage.by_role || {};
+    Object.keys(roles).sort().forEach((k) => {
+      chips.push(`<span class="chip"><span class="k">${esc(k)}</span>${roles[k]}</span>`);
+    });
+    const modes = usage.by_auth_mode || {};
+    Object.keys(modes).sort().forEach((k) => {
+      chips.push(`<span class="chip"><span class="k">${esc(k)}</span>${modes[k]}</span>`);
+    });
+    host.innerHTML = chips.join("");
   }
 
   function applyClassMap(el, val, raw) {
@@ -713,6 +813,7 @@
     paintVerdict(payload.release_state || {});
     paintBlocked((payload.ga_gates || {}).blocked);
     paintGateBar(payload.ga_gates || {});
+    paintUsageChips(payload.usage || {});
     paintIndicators(payload);
     flashCards();
   }

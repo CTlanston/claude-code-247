@@ -128,6 +128,32 @@ class GaGates:
 
 
 @dataclass(frozen=True)
+class UsageStats:
+    runs_total: int
+    runs_today: int
+    runs_last_hour: int
+    active_workers: int
+    by_role: dict[str, int] = field(default_factory=dict)
+    by_auth_mode: dict[str, int] = field(default_factory=dict)
+    estimated_cost_today_usd: float = 0.0
+    estimated_cost_total_usd: float = 0.0
+    note: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "runs_total": self.runs_total,
+            "runs_today": self.runs_today,
+            "runs_last_hour": self.runs_last_hour,
+            "active_workers": self.active_workers,
+            "by_role": dict(self.by_role),
+            "by_auth_mode": dict(self.by_auth_mode),
+            "estimated_cost_today_usd": self.estimated_cost_today_usd,
+            "estimated_cost_total_usd": self.estimated_cost_total_usd,
+            "note": self.note,
+        }
+
+
+@dataclass(frozen=True)
 class StatusBoard:
     generated_at: str
     release_state: ReleaseState
@@ -136,6 +162,7 @@ class StatusBoard:
     queue: QueueState
     signals: Signals
     ga_gates: GaGates
+    usage: UsageStats
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -146,6 +173,7 @@ class StatusBoard:
             "queue": self.queue.to_dict(),
             "signals": self.signals.to_dict(),
             "ga_gates": self.ga_gates.to_dict(),
+            "usage": self.usage.to_dict(),
         }
 
 
@@ -499,6 +527,81 @@ def collect_signals() -> Signals:
     )
 
 
+# ── usage stats ──────────────────────────────────────────────────────
+
+
+def _idle_note(runs_total: int, runs_today: int) -> str:
+    """Human-readable annotation for why the numbers look like they look.
+
+    During the 24h soak the system is intentionally idle, so the numbers
+    are zero. After GA, real workloads will populate them. The CLAUDE.md
+    contract says: subscription-mode runs report run-count only, not a
+    USD cost — call that out so the operator doesn't read "$0.00" as a
+    failure to instrument.
+    """
+    if runs_total == 0:
+        return "no worker runs yet — system is idle (soak in progress)"
+    if runs_today == 0:
+        return "no worker runs today — dispatcher queue is empty"
+    return ("local Claude Code subscription mode — token counts captured "
+            "per run in evidence files; aggregate USD cost is only "
+            "populated when auth_mode=anthropic_api")
+
+
+def collect_usage(*, now: datetime | None = None) -> UsageStats:
+    current = now or _now_utc()
+    today = current.strftime("%Y-%m-%d")
+    today_start = _iso(current.replace(hour=0, minute=0, second=0, microsecond=0))
+    hour_ago = _iso(current - timedelta(hours=1))
+    with open_db() as conn:
+        runs_total = _scalar(conn, "SELECT COUNT(*) AS c FROM runs")
+        runs_today = _scalar(
+            conn, "SELECT COUNT(*) AS c FROM runs WHERE started_at >= ?",
+            (today_start,),
+        )
+        runs_last_hour = _scalar(
+            conn, "SELECT COUNT(*) AS c FROM runs WHERE started_at >= ?",
+            (hour_ago,),
+        )
+        active = _scalar(
+            conn,
+            "SELECT COUNT(*) AS c FROM runs "
+            "WHERE started_at IS NOT NULL AND finished_at IS NULL",
+        )
+        by_role: dict[str, int] = {}
+        for row in conn.execute(
+            "SELECT role, COUNT(*) AS c FROM runs GROUP BY role"
+        ):
+            by_role[row["role"]] = int(row["c"])
+        by_auth: dict[str, int] = {}
+        for row in conn.execute(
+            "SELECT auth_mode, COUNT(*) AS c FROM runs "
+            "WHERE auth_mode IS NOT NULL GROUP BY auth_mode"
+        ):
+            by_auth[row["auth_mode"]] = int(row["c"])
+        cost_total = float(conn.execute(
+            "SELECT COALESCE(SUM(cost_estimate), 0) AS c FROM runs"
+        ).fetchone()["c"] or 0.0)
+        # ``budgets.estimated_api_cost`` is per repo per day; sum across
+        # repos for today.
+        cost_today = float(conn.execute(
+            "SELECT COALESCE(SUM(estimated_api_cost), 0) AS c "
+            "FROM budgets WHERE date = ?",
+            (today,),
+        ).fetchone()["c"] or 0.0)
+    return UsageStats(
+        runs_total=runs_total,
+        runs_today=runs_today,
+        runs_last_hour=runs_last_hour,
+        active_workers=active,
+        by_role=by_role,
+        by_auth_mode=by_auth,
+        estimated_cost_today_usd=round(cost_today, 4),
+        estimated_cost_total_usd=round(cost_total, 4),
+        note=_idle_note(runs_total, runs_today),
+    )
+
+
 # ── GA gates ─────────────────────────────────────────────────────────
 
 
@@ -604,6 +707,7 @@ def collect_status_board(
     runtime = collect_runtime_health()
     queue = collect_queue_state()
     signals = collect_signals()
+    usage = collect_usage(now=current)
     soak = collect_soak_progress(
         t0_override=t0_override, now=current, repo_root=root,
         runtime_ok=runtime_is_ok(runtime),
@@ -617,6 +721,7 @@ def collect_status_board(
         queue=queue,
         signals=signals,
         ga_gates=ga_gates,
+        usage=usage,
     )
 
 
@@ -698,6 +803,22 @@ def render_plain(board: StatusBoard) -> str:
         for i, item in enumerate(g.blocked, start=1):
             lines.append(f"  {i}. {item}")
     lines.append(f"- next action: {g.recommendation}")
+    lines.append("")
+    u = board.usage
+    lines.append("Usage")
+    lines.append(f"- runs total: {u.runs_total}")
+    lines.append(f"- runs today: {u.runs_today}  (last hour: {u.runs_last_hour})")
+    lines.append(f"- active workers: {u.active_workers}")
+    lines.append(f"- est. cost today: ${u.estimated_cost_today_usd:.4f}")
+    lines.append(f"- est. cost total: ${u.estimated_cost_total_usd:.4f}")
+    if u.by_role:
+        roles = ", ".join(f"{k}={v}" for k, v in sorted(u.by_role.items()))
+        lines.append(f"- by role: {roles}")
+    if u.by_auth_mode:
+        modes = ", ".join(f"{k}={v}" for k, v in sorted(u.by_auth_mode.items()))
+        lines.append(f"- by auth mode: {modes}")
+    if u.note:
+        lines.append(f"- note: {u.note}")
     return "\n".join(lines) + "\n"
 
 
@@ -708,6 +829,7 @@ def render_markdown(board: StatusBoard) -> str:
     q = board.queue
     s = board.signals
     g = board.ga_gates
+    u = board.usage
 
     soak_status = soak.result
     runtime_status = "HEALTHY" if runtime_is_ok(rh) else "DEGRADED"
@@ -791,6 +913,24 @@ def render_markdown(board: StatusBoard) -> str:
             md.append(f"  - {item}")
     md.append(f"- recommendation: `{g.recommendation}`")
     md.append("")
+    md.append("## Usage")
+    md.append("")
+    md.append("| Metric | Value |")
+    md.append("|---|---|")
+    md.append(f"| runs total | {u.runs_total} |")
+    md.append(f"| runs today | {u.runs_today} |")
+    md.append(f"| runs (last hour) | {u.runs_last_hour} |")
+    md.append(f"| active workers | {u.active_workers} |")
+    md.append(f"| est. cost today | ${u.estimated_cost_today_usd:.4f} |")
+    md.append(f"| est. cost total | ${u.estimated_cost_total_usd:.4f} |")
+    if u.by_role:
+        md.append(f"| by role | {', '.join(f'{k}={v}' for k, v in sorted(u.by_role.items()))} |")
+    if u.by_auth_mode:
+        md.append(f"| by auth mode | {', '.join(f'{k}={v}' for k, v in sorted(u.by_auth_mode.items()))} |")
+    if u.note:
+        md.append("")
+        md.append(f"> {u.note}")
+    md.append("")
     md.append("## Commands to Run Next")
     md.append("")
     md.append("```bash")
@@ -826,6 +966,7 @@ __all__ = [
     "QueueState",
     "Signals",
     "GaGates",
+    "UsageStats",
     "StatusBoard",
     "collect_release_state",
     "collect_soak_progress",
@@ -833,6 +974,7 @@ __all__ = [
     "collect_queue_state",
     "collect_signals",
     "collect_ga_gates",
+    "collect_usage",
     "collect_status_board",
     "discover_soak_t0",
     "parse_soak_t0",
