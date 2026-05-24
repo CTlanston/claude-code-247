@@ -3,10 +3,66 @@
 All notable changes to `claude-code-247` are recorded here.
 Pre-1.0 releases are pre-release on GitHub.
 
-## [Unreleased] — proposed v1.0.0-beta.2
+## [Unreleased] — M21 GA-readiness hardening
 
-Production-proof milestone (M20). Not tagged yet (awaiting operator
-confirmation). See [M20_PRODUCTION_PROOF_REPORT.md](M20_PRODUCTION_PROOF_REPORT.md).
+GA-readiness milestone (M21). Not tagged. See
+[M21_GA_READINESS_REPORT.md](M21_GA_READINESS_REPORT.md).
+
+### Added
+
+- **Phase-lifecycle observability for `worker_exits`** (M21-P2,
+  schema v4). New columns `status`, `started_at`, `finished_at`,
+  `error_type` added via additive ALTER TABLE migration; existing v3
+  rows keep working with NULL on the new columns. New
+  `orchestrator.worker_exits.record_phase(...)` context manager
+  unifies the start / finish / failure / skipped lifecycle in one
+  call.
+
+- **Dispatcher instrumentation for 7 phases** (M21-P2): every run of
+  `dispatcher.handle_start_task` now writes a `worker_exits` row for
+  `prepare_workspace`, `worker`, `validators`, `risk_score`,
+  `merge_policy`, `push`, `open_pr`, `auto_merge`. Each row carries
+  phase-specific metadata (e.g. validators carries
+  `final_verdict` + per-validator labels; merge_policy carries
+  the decision + reasons; risk_score carries score + level).
+
+- **`claude247 task-phases --task <id>`** CLI alias for `worker-exits`,
+  matching the M21 directive's preferred spelling. Same callback,
+  registered under both names so operators can type either.
+
+- **Six failure-mode integration drills** (M21-P3, all PASS):
+  - secret in diff blocks merge
+  - validator disagreement blocks
+  - high-risk path blocks
+  - budget exceeded defers task (deviation: doesn't currently
+    auto-pause the repo; safety preserved via deferral)
+  - `stop-all` emergency kill
+  - gh merge failure records auto_merge phase exit
+
+- **GA gate document** ([GA_GATE.md](GA_GATE.md)) — 19
+  GA_BLOCKERs identified; 17/19 satisfied; POST_GA_BACKLOG
+  explicitly enumerated so no critical safety check gets quietly
+  demoted.
+
+### Testing
+
+- 526 passing (was 502 at beta.2). +24 new tests:
+  - 15 for the schema migration + `record_phase` API + the failure-
+    path integration
+  - 6 for the failure-mode drills
+  - 3 for the M21-P4 simulated happy-path observability proof
+
+### Operational
+
+- 24h launchd soak baseline recorded in
+  [M20_SOAK_RESULT.md](M20_SOAK_RESULT.md). Marked PARTIAL until
+  the full 24h checkpoint runs.
+
+## [v1.0.0-beta.2] — 2026-05-24
+
+Production-proof milestone (M20). See
+[M20_PRODUCTION_PROOF_REPORT.md](M20_PRODUCTION_PROOF_REPORT.md) and
+[RELEASE_NOTES_BETA2.md](RELEASE_NOTES_BETA2.md).
 
 ### Headline
 

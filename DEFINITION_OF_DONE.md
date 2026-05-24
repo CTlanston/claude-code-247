@@ -93,15 +93,34 @@ the code that implements it and the test(s) that prove it.
 | 66 | 24h soak plan + baseline recorded | ✓ | M20-P5: [M20_SOAK_PLAN.md](M20_SOAK_PLAN.md). |
 | 67 | **Pure auto-merge end-to-end with both real validators** | ✓ | M20-P3 final: [auto-evo-playground#59 (MERGED)](https://github.com/CTlanston/auto-evo-playground/pull/59). Gemini PASS conf 1.0 + OpenAI PASS conf 1.0 + risk 0 + ruling AUTO_MERGE + merged in 3s. Anthropic worker spend $0.00. |
 
-## Truly remaining
+## M21 GA-readiness hardening (Unreleased, proposed v1.0.0)
 
-- 24h soak observed (currently only the baseline is recorded — the
-  t+1h / t+6h / t+24h checkpoints in `M20_SOAK_PLAN.md` are pending).
-- Deeper per-phase `worker_exits` instrumentation outside
-  `evidence_collector.run_named_commands` (e.g., `prepare_workspace`,
-  `checkout_repo`, `create_branch`, `push`, `open_pr`, `merge_policy`,
-  `merge`). Infrastructure is in place; each addition is a one-line
-  `record_worker_exit` call.
-- Qdrant backend's `text-embedding-3-small` path is wired but
-  un-tested live (no Qdrant running, no embedding key in test env).
-- Multi-machine HA isn't designed for — single-Mac scope is by design.
+| # | Item | Status | Where it lives |
+|---|---|---|---|
+| 68 | `worker_exits` schema v4 (phase lifecycle fields) | ✓ | M21-P2 (`3f963f7`): `memory/schema.sql` + `memory/db.py::_migrate_v4_worker_exits_phase_columns`. 5 schema tests. |
+| 69 | `record_phase()` context manager | ✓ | M21-P2: `orchestrator/worker_exits.py::record_phase`. 7 recording tests + 3 integration tests. |
+| 70 | Dispatcher instrumented for 7 phases | ✓ | M21-P2: `orchestrator/dispatcher.py::handle_start_task` wraps prepare_workspace, worker, validators, risk_score, merge_policy, push, open_pr, auto_merge. |
+| 71 | `claude247 task-phases --task <id>` CLI alias | ✓ | M21-P2: `gateway/cli.py` registers `worker-exits` under both names. |
+| 72 | Drill A — secret in diff blocks merge | ✓ | M21-P3: tests/integration/test_secret_scanner_blocks_merge.py |
+| 73 | Drill B — validator disagreement blocks | ✓ | M21-P3: tests/integration/test_validator_disagreement_blocks_merge.py |
+| 74 | Drill C — high-risk path blocks | ✓ | M21-P3: tests/integration/test_high_risk_blocks_automerge.py |
+| 75 | Drill D — budget exceeded defers task | ✓ | M21-P3: tests/integration/test_budget_exceeded_pauses_repo.py (note: defers rather than pauses; safety preserved) |
+| 76 | Drill E — `stop-all` emergency kill | ✓ | M21-P3: tests/integration/test_stop_all_emergency_kill.py |
+| 77 | Drill F — gh merge failure recorded | ✓ | M21-P3: tests/integration/test_merge_failure_records_worker_exit.py |
+| 78 | No-regression happy-path observability (simulated) | ✓ | M21-P4: tests/integration/test_m21_happy_path_phase_observability.py |
+| 79 | GA gate document | ✓ | [GA_GATE.md](GA_GATE.md) (19 GA_BLOCKERs; 17/19 satisfied) |
+| 80 | M21 final report (GO/NO-GO) | ✓ | [M21_GA_READINESS_REPORT.md](M21_GA_READINESS_REPORT.md) — current answer is **NO-GO until 24h soak**. |
+
+## Truly remaining (GA blockers)
+
+- **24h soak full PASS** — currently PARTIAL ([M20_SOAK_RESULT.md](M20_SOAK_RESULT.md)).
+  Wallclock-only blocker. No code change needed.
+- **README refresh** for M20/M21 — writing-only blocker.
+
+## Post-GA backlog (NOT blockers)
+
+See the POST_GA_BACKLOG section in [GA_GATE.md](GA_GATE.md). Items
+explicitly include: multi-machine HA, cloud dashboard with team RBAC,
+7-day soak, auto-pause on repeat budget hits, deeper role_loop
+instrumentation, per-validator phase rows, doctor port-busy detection,
+Qdrant live test, BSD-sed compat in `doctor_launchd.sh`.
