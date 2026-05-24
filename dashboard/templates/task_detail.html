@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block body %}
+<table>
+  <tr><th>ID</th><td><code>{{ task.id }}</code></td></tr>
+  <tr><th>Repo</th><td><code>{{ task.repo_id }}</code></td></tr>
+  <tr><th>Goal</th><td>{{ task.goal }}</td></tr>
+  <tr><th>Status</th><td>{{ task.status }}</td></tr>
+  {% if task.branch %}<tr><th>Branch</th><td><code>{{ task.branch }}</code></td></tr>{% endif %}
+  {% if task.pr_number %}<tr><th>PR</th><td>#{{ task.pr_number }}</td></tr>{% endif %}
+  {% if task.risk_score is not none %}<tr><th>Risk</th><td>{{ task.risk_score }}</td></tr>{% endif %}
+  <tr><th>Created</th><td>{{ task.created_at }}</td></tr>
+  <tr><th>Updated</th><td>{{ task.updated_at }}</td></tr>
+  {% if task.finished_at %}<tr><th>Finished</th><td>{{ task.finished_at }}</td></tr>{% endif %}
+</table>
+
+<h2 style="font-size:14px;margin-top:18px;">Timeline</h2>
+{% if events %}
+<table>
+  <thead><tr><th>When</th><th>Event</th><th>Message</th></tr></thead>
+  <tbody>
+    {% for ev in events %}
+    <tr>
+      <td><code>{{ ev.created_at }}</code></td>
+      <td><span class="pill warn">{{ ev.event_type }}</span></td>
+      <td>{{ ev.message }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>No events recorded yet.</p>
+{% endif %}
+{% endblock %}

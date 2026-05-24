@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block body %}
+<p>Register a new repo with the orchestrator. The registry file is
+written to <code>~/.claude-code-247/repos.yaml</code>; the SQLite mirror
+syncs on save.</p>
+
+{% if errors %}
+<div class="pill off" style="display:block; padding:8px;">
+  <strong>Validation failed</strong>
+  <ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+{% if warnings %}
+<div class="pill warn" style="display:block; padding:8px;">
+  <ul>{% for w in warnings %}<li>{{ w }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+<form method="post" action="/onboarding">
+  <table>
+    <tr><th>Repo id (slug)</th>
+        <td><input name="repo_id" value="{{ form.get('id', '') }}" required></td></tr>
+    <tr><th>GitHub owner</th>
+        <td><input name="github_owner" value="{{ form.get('github_owner', '') }}" required></td></tr>
+    <tr><th>GitHub repo</th>
+        <td><input name="github_repo" value="{{ form.get('github_repo', '') }}" required></td></tr>
+    <tr><th>Local path</th>
+        <td><input name="local_path" value="{{ form.get('local_path', '') }}" required></td></tr>
+    <tr><th>Default branch</th>
+        <td><input name="default_branch" value="{{ form.get('default_branch', 'main') }}"></td></tr>
+    <tr><th>forbidden_paths</th>
+        <td><input name="forbidden_paths" size="60"
+               value=".env, .env.*, .github/**, secrets/**, CLAUDE.md, AGENTS.md"></td></tr>
+    <tr><th>Test command</th>
+        <td><input name="test_command" placeholder="pytest -q"></td></tr>
+    <tr><th>Lint command</th>
+        <td><input name="lint_command" placeholder="ruff check ."></td></tr>
+    <tr><th>Auto-merge?</th>
+        <td><input type="checkbox" name="auto_merge" value="on"> low-risk only</td></tr>
+    <tr><th>Probe local repo?</th>
+        <td><input type="checkbox" name="probe_local" value="on" checked> verify git remote + branch</td></tr>
+  </table>
+  <button type="submit">Register</button>
+</form>
+{% endblock %}

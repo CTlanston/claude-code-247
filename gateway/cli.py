@@ -10,9 +10,19 @@ import sys
 
 import click
 
+from gateway.commands.control_cmd import (
+    explain_stuck as explain_stuck_cmd,
+    pause as pause_cmd,
+    resume as resume_cmd,
+    stop as stop_cmd,
+    stop_all as stop_all_cmd,
+)
 from gateway.commands.doctor_cmd import doctor as doctor_cmd
+from gateway.commands.repo_cmd import repo as repo_grp
 from gateway.commands.repos_cmd import repos as repos_cmd
+from gateway.commands.start_cmd import start as start_cmd
 from gateway.commands.status_cmd import status as status_cmd
+from gateway.commands.tasks_cmd import task_show, tasks as tasks_cmd
 
 
 @click.group(help="Local-first, multi-repo, 24/7 autonomous coding coworker.")
@@ -23,7 +33,16 @@ def cli() -> None:
 
 cli.add_command(doctor_cmd)
 cli.add_command(repos_cmd)
+cli.add_command(repo_grp)
 cli.add_command(status_cmd)
+cli.add_command(start_cmd)
+cli.add_command(pause_cmd)
+cli.add_command(resume_cmd)
+cli.add_command(stop_cmd)
+cli.add_command(stop_all_cmd)
+cli.add_command(explain_stuck_cmd)
+cli.add_command(tasks_cmd)
+cli.add_command(task_show)
 
 
 def main() -> int:
