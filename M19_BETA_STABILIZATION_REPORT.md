@@ -249,8 +249,47 @@ Mobile-readable ✓. The "1 failed" / "Need approval: 1" lines refer to historic
 
 Doctor explicitly reports `neither GEMINI_API_KEY nor OPENAI_API_KEY set; validators will use mocks`. Per user instruction earlier: "if no keys, do not claim beta E2E auto-merge proof". Phase 5 will be run with whichever keys the user supplies; if none, Phase 5 will document mock-validator behavior honestly.
 
-## Phase 5 — Third real E2E: NOT STARTED (gated)
-## Phase 6 — Tag v1.0.0-beta.1: NOT STARTED (gated)
+## Phase 5 — Third real E2E: ✅ DONE (with one new finding)
+
+Full report: [REAL_E2E_REPORT_M19.md](REAL_E2E_REPORT_M19.md).
+
+**Summary**:
+- Task `task_01KSDR1DGG4DV8XNGZSR7506QC` queued via `claude247 start`,
+  driven by `claude247 dispatcher --once`, ran the entire pipeline.
+- Worker produced a correct `dedupe_words(text)` implementation + 7
+  tests; workspace pytest 86 passing.
+- **PR**: [auto-evo-playground#54](https://github.com/CTlanston/auto-evo-playground/pull/54) (draft, pending approval).
+- **Worker auth**: `local_claude_code` (subscription). **Anthropic
+  spend: $0.00.** M18-P0 invariant held.
+- **BR-001** fired live: `diff_body_safe.md` + `diff_body_metadata.json`
+  produced. Body was REDACTED because of a secret-scan hit (see
+  Finding M19-F1 below).
+- **BR-002** confirmed live: `GEMINI_API_KEY` was picked up from
+  `~/.claude-code-247/.env` (the new env_loader chain), so the **real**
+  Gemini judge ran. OpenAI ran as `openai-mock` (no key).
+- **BR-003** confirmed live: 3 `worker_exits` rows written (all
+  `tests` phase, `success`); `claude247 worker-exits` lists them.
+- **M18-P1** held: mock validator + redacted body → Gemini honestly
+  returned `NEEDS_HUMAN` → merge policy routed to `WAITING_APPROVAL`.
+  No auto-merge.
+
+### Finding M19-F1 (new, high severity)
+
+`orchestrator/secret_scanner.py`'s `env_var_assign` regex uses `(?im)`
+(case-insensitive multiline), which means the Python line
+`+    tokens = text.split()` matches: `tokens` → case-insensitive
+`TOKEN` + `s`; ` = text.split()` → `\s*=\s*\S+`.
+
+Effect: any normal Python code that introduces a lowercase variable
+starting with `token`, `secret`, or `password` will be redacted by
+BR-001's safe-diff path, forcing validators to NEEDS_HUMAN even when
+the actual diff is clean.
+
+Fix is a single-character change: remove the `i` flag so the pattern
+matches only conventional all-uppercase env-var names. Recommended
+to ship as `M19-P5b` before tagging `v1.0.0-beta.1`.
+
+## Phase 6 — Tag v1.0.0-beta.1: NOT STARTED (gated on M19-F1 decision)
 
 ---
 
