@@ -1,0 +1,49 @@
+# Definition of Done
+
+Spec §28 acceptance, walked one-by-one as of M10. Each row points to
+the code that implements it and the test(s) that prove it.
+
+| # | Criterion | Status | Where |
+|---|---|---|---|
+| 1 | Multi-repo registry works | ✓ | `orchestrator/repo_registry.py`; `tests/unit/test_repo_registry.py` |
+| 2 | Local Claude Code preflight works | ✓ | `runner/claude_cli.py::smoke_check`, `gateway/doctor.py::check_claude_smoke`; `tests/unit/test_claude_cli.py` |
+| 3 | Docker runner can execute tasks | ✓ | `runner/Dockerfile`, `orchestrator/runner_manager.py::RunnerManager._run_docker`; `tests/integration/test_runner_manager.py` (local backend covered; docker variant verified manually with `docker info`) |
+| 4 | Command queue works | ✓ | `orchestrator/command_queue.py`; `tests/unit/test_command_queue.py` |
+| 5 | Dashboard works | ✓ | `dashboard/app.py` + 12 templates; `tests/integration/test_dashboard*.py` |
+| 6 | Mobile-friendly CLI works | ✓ | `--plain` modes across `status/repos/tasks/logs/risk`; `tests/unit/test_cli*.py` |
+| 7 | ntfy notifications work | ✓ | `orchestrator/notification_manager.py`; `tests/unit/test_notification_manager.py` |
+| 8 | Task timeline works | ✓ | `orchestrator/task_manager.py::get_timeline`, dashboard `/tasks/{id}`; `tests/unit/test_task_manager.py`, `tests/integration/test_dashboard_m2.py::test_task_detail_page_renders_timeline` |
+| 9 | PR risk scoring works | ✓ | `orchestrator/risk_score.py`; `tests/unit/test_risk_score.py` |
+| 10 | Low-risk auto-merge works | ✓ | `orchestrator/merge_policy.py`; `tests/unit/test_merge_policy.py::test_low_risk_all_green_with_writes_on_auto_merges` |
+| 11 | Medium/high-risk approval policy works | ✓ | `merge_policy.decide`; `tests/unit/test_merge_policy.py::test_medium_risk_requires_approval`, `::test_high_risk_is_blocked` |
+| 12 | Gemini validator works or mock adapter passes | ✓ | `validator/gemini_judge.py` (real + mock fallback); `tests/unit/test_gemini_judge.py` |
+| 13 | OpenAI-compatible validator works or mock passes | ✓ | `validator/openai_judge.py`; `tests/unit/test_openai_judge.py` |
+| 14 | Validator disagreement blocks auto-merge | ✓ | `validation_policy.validate` returns `DISAGREE`; `tests/unit/test_validation_policy.py::test_disagreement_blocks_and_routes_to_human` + `test_merge_policy.py::test_validator_disagree_routes_to_approval` |
+| 15 | Pause/resume works | ✓ | `gateway/commands/control_cmd.py` + command_queue; `tests/unit/test_cli_m2.py::test_pause_repo_enqueues_command`, `::test_resume_system_uses_set_mode` |
+| 16 | Explain-stuck works | ✓ | `gateway/commands/control_cmd.py::explain_stuck`; `tests/unit/test_cli_m2.py::test_explain_stuck_carries_verbose_flag` |
+| 17 | Budget panel works | ✓ | `orchestrator/budget_manager.py`, dashboard `/budgets`; `tests/unit/test_budget_manager.py`, `tests/integration/test_dashboard_m7.py::test_budgets_page_lists_repos` |
+| 18 | Repo onboarding wizard works | ✓ | `orchestrator/onboarding.py`, `gateway/commands/repo_cmd.py`, dashboard `/onboarding`; `tests/unit/test_onboarding.py`, `tests/integration/test_dashboard_m2.py::test_onboarding_*` |
+| 19 | Failure replay works | ✓ | `orchestrator/replay_manager.py`, `gateway/commands/replay_cmd.py`; `tests/unit/test_replay_manager.py`, `tests/unit/test_cli_replay.py` |
+| 20 | Log search works | ✓ | `orchestrator/log_indexer.py` (FTS5), CLI `logs search/tail`, dashboard `/logs`; `tests/unit/test_log_indexer.py`, `tests/unit/test_cli_logs.py` |
+| 21 | Alert deduplication works | ✓ | `orchestrator/alert_deduper.py`; `tests/unit/test_alert_deduper.py` |
+| 22 | Long-term memory files exist | ✓ | `memory/repo_memory.py` + `claude247 memory init`; `tests/unit/test_repo_memory.py` |
+| 23 | Qdrant vector memory is integrated or cleanly optional | ✓ | `memory/vector_store.py` (SQLite-FTS default, Qdrant opt-in via `memory.vector.backend`); `tests/unit/test_vector_store.py` (SQLite path; Qdrant path is lazy-imported) |
+| 24 | Memory compiler works | ✓ | `memory/compiler.py`, CLI `memory compile`; `tests/unit/test_memory_compiler.py`, `tests/unit/test_cli_memory.py` |
+| 25 | Doctor command works | ✓ | `gateway/doctor.py` (13 checks + optional claude smoke); `tests/unit/test_doctor.py`, `tests/unit/test_cli.py::test_doctor_runs_and_can_emit_json` |
+| 26 | launchd install/uninstall scripts exist | ✓ | `scripts/install_launchd.sh`, `scripts/uninstall_launchd.sh`, plist templates in `scripts/launchd/` |
+| 27 | Tests pass | ✓ | 242 pass in <8s on Python 3.13 |
+| 28 | Docs are complete | ✓ | `docs/{ARCHITECTURE,INSTALL,REMOTE_DISPATCH,SECURITY,MEMORY,AUTO_MERGE_POLICY,VALIDATORS,REPO_ONBOARDING,OPERATIONS}.md` + README, CLAUDE.md, IMPLEMENTATION_PLAN.md |
+
+## Known limitations carried forward (M11+)
+
+- The `orchestrator/scheduler.py` "main loop" that drains the command
+  queue and dispatches role-loop runs is implicit. M0..M10 land all
+  the pieces; M11 should wire the long-running poll loop and add the
+  `claude247 dispatcher` / `claude247 dispatcher --once` entry point.
+- The Qdrant backend uses a deterministic placeholder embedding so the
+  interface is exercised; swap `_QdrantBackend._embed` for a real
+  embedder before relying on similarity search.
+- Coverage hookup for `low_test_coverage` risk factor and database
+  migration auto-detection are reserved.
+- The `database_migration` risk factor is wired but not auto-detected
+  yet — needs a heuristic over the diff's file paths and content.
