@@ -85,7 +85,35 @@ The system already had this situation in M18-P4 (Gemini real, OpenAI mock → NE
 
 ---
 
-## Phase 1 — BR-001 status: NOT STARTED
+## Phase 1 — BR-001 status: ✅ DONE
+
+Safe diff body now produced and wired into validator input.
+
+**Code**:
+- `runner/evidence_collector.py`: new `snapshot_diff_body_safe()` method
+  - `DEFAULT_FORBIDDEN_PATTERNS` floor (`.env`, `secrets/**`, `.github/**`,
+    `CLAUDE.md`, `AGENTS.md`, PEM/key files) merged with `task_spec.forbidden_paths`
+  - Per-file `git diff` filtered through `orchestrator.secret_scanner.scan`
+  - If any secret hits → body redacted to summary-only + `secret_scan.status = BLOCKED`
+  - Per-file + total byte caps with `TRUNCATED` marker
+  - `diff_body_metadata.json` records `files_changed`, `included_in_diff_body`,
+    `omitted_reason`, `secret_scan.{status,hits}`, `diff_body_truncated`
+- `validator/judge_contract.py`: `JudgeInput.diff_body_safe` + `.diff_body_metadata`;
+  `evidence_prompt()` adds `## DIFF_BODY` section + directive-mandated instruction
+  ("may inspect", NEEDS_HUMAN-on-missing, no-hidden-conversation)
+- `runner/worker.py`: calls `snapshot_diff_body_safe()` at both diff-snapshot sites,
+  forwarding `task_spec.forbidden_paths`
+
+**Tests** (18 new):
+- `tests/unit/test_evidence_diff_body_safe.py` (7 tests)
+- `tests/unit/test_validator_receives_diff_body.py` (7 tests)
+- `tests/unit/test_secret_hit_blocks_diff_body_validator.py` (4 tests)
+- 1-line tweak to `tests/unit/test_judge_contract.py` to allow the
+  "do not ask for hidden conversation" meta-instruction (the original
+  guard against literal "conversation" substring was too broad)
+
+**Test posture**: 437 passing (up from 419 baseline).
+
 ## Phase 2 — BR-002 status: NOT STARTED
 ## Phase 3 — BR-003 status: NOT STARTED
 ## Phase 4 — Full tests: NOT STARTED

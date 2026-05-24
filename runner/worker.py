@@ -58,6 +58,7 @@ def main(argv: list[str] | None = None) -> int:
 
     initial = _run_repo_commands()
     collector.snapshot_diff()
+    collector.snapshot_diff_body_safe(forbidden_paths=spec.get("forbidden_paths"))
     collector.snapshot_manifest()
 
     if not args.allow_roles:
@@ -96,6 +97,7 @@ def main(argv: list[str] | None = None) -> int:
         rerun_tests=_rerun,
     )
     collector.snapshot_diff()
+    collector.snapshot_diff_body_safe(forbidden_paths=spec.get("forbidden_paths"))
     collector.snapshot_manifest()
     final_tests = collector.run_named_commands("test", commands.get("test") or [])
     summary = {

@@ -58,8 +58,13 @@ def test_evidence_prompt_contains_required_sections(tmp_path: Path) -> None:
                    "TEST_RESULTS", "LINT_RESULTS", "BUILD_RESULTS", "RISK_SCORE",
                    "REVIEWER_REPORT"):
         assert f"## {header}" in prompt
-    # No conversation context leak.
-    assert "conversation" not in prompt.lower()
+    # No conversation transcript leak. The word "conversation" may
+    # legitimately appear in meta-instructions (e.g., "do not ask for
+    # hidden conversation context" — the M19/BR-001 validator briefing);
+    # what we guard against is actual chat content showing up.
+    assert "conversation history" not in prompt.lower()
+    assert "user said" not in prompt.lower()
+    assert "assistant said" not in prompt.lower()
 
 
 def test_normalize_response_accepts_valid_payload() -> None:

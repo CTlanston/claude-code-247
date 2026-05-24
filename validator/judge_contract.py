@@ -44,6 +44,8 @@ class JudgeInput:
     risk_score: dict[str, Any] | None
     reviewer_report: str | None
     ci_summary: str | None
+    diff_body_safe: str | None = None
+    diff_body_metadata: dict[str, Any] | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -76,6 +78,8 @@ class JudgeInput:
             risk_score=_j("risk_score.json", None),
             reviewer_report=_r("review.md"),
             ci_summary=_r("ci_summary.md"),
+            diff_body_safe=_r("diff_body_safe.md"),
+            diff_body_metadata=_j("diff_body_metadata.json", None),
         )
 
 
@@ -142,17 +146,34 @@ def evidence_prompt(inp: JudgeInput) -> str:
     """Compose the evidence prompt the validator sees. This is the ONLY
     thing the validator gets from the task — never any conversation
     history. Stays text-only so identical prompts go to all judges."""
+    # BR-001: render the safe diff body and an explicit instruction for
+    # using it. When the body is absent we still emit the section so the
+    # validator knows it was supposed to be there (and can route to
+    # NEEDS_HUMAN) rather than silently judging on the --stat summary.
+    diff_body_block = _render_diff_body_block(inp)
+
+    diff_body_instruction = (
+        "You may inspect the safe diff body (## DIFF_BODY) as implementation\n"
+        "evidence. If the diff body is missing or insufficient for\n"
+        "behavioral judgment, return NEEDS_HUMAN with an evidence gap\n"
+        "naming what you need. Do not ask for hidden conversation context.\n"
+        "Do not require full repository source if tests and the diff body\n"
+        "are sufficient.\n\n"
+    )
+
     return (
         "You are reviewing a software-engineering change. Judge ONLY from\n"
         "the evidence below. If something is missing, return NEEDS_HUMAN\n"
         "and list the gap. Do not speculate about what the implementer\n"
         "thought.\n\n"
-        f"TASK_ID: {inp.task_id}\nREPO_ID: {inp.repo_id}\n\n"
+        + diff_body_instruction
+        + f"TASK_ID: {inp.task_id}\nREPO_ID: {inp.repo_id}\n\n"
         f"## CONTRACT\n{inp.contract.strip() or '(none)'}\n\n"
         f"## PLAN\n{(inp.plan or '(none)').strip()}\n\n"
         f"## WORKER_DONE\n{(inp.worker_done or '(none)').strip()}\n\n"
         f"## DIFF\n{inp.diff_summary.strip() or '(none)'}\n\n"
-        f"## FILE_MANIFEST\n{json.dumps(inp.file_manifest)}\n\n"
+        + diff_body_block
+        + f"## FILE_MANIFEST\n{json.dumps(inp.file_manifest)}\n\n"
         f"## TEST_RESULTS\n{json.dumps(inp.test_results, indent=2)}\n\n"
         f"## LINT_RESULTS\n{json.dumps(inp.lint_results, indent=2)}\n\n"
         f"## BUILD_RESULTS\n{json.dumps(inp.build_results, indent=2)}\n\n"
@@ -169,3 +190,33 @@ def evidence_prompt(inp: JudgeInput) -> str:
         '  "recommended_next_action": "..."\n'
         "}\n"
     )
+
+
+def _render_diff_body_block(inp: JudgeInput) -> str:
+    body = inp.diff_body_safe
+    meta = inp.diff_body_metadata or {}
+    secret_status = (meta.get("secret_scan") or {}).get("status")
+
+    if secret_status == "BLOCKED":
+        # Surface the redacted state up-front so the validator doesn't
+        # treat the (intentionally) thin body as if it were the full diff.
+        return (
+            "## DIFF_BODY\n"
+            "STATE: BLOCKED — secret-like content detected; full body was\n"
+            "REDACTED by the evidence collector. The merge policy will\n"
+            "block this change regardless of your verdict. Treat the\n"
+            "redacted summary below as the only implementation evidence\n"
+            "available and respond accordingly.\n\n"
+            f"{(body or '(redacted summary missing)').strip()}\n\n"
+        )
+
+    if body is None:
+        return (
+            "## DIFF_BODY\n"
+            "(missing) — diff_body_safe.md was not produced for this\n"
+            "evidence package. If you cannot judge behavioral correctness\n"
+            "from the summary + tests alone, return NEEDS_HUMAN with an\n"
+            "evidence_gap of 'diff_body_safe.md'.\n\n"
+        )
+
+    return f"## DIFF_BODY\n{body.strip()}\n\n"
