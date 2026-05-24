@@ -19,6 +19,7 @@ from gateway.commands.control_cmd import (
 )
 from gateway.commands.doctor_cmd import doctor as doctor_cmd
 from gateway.commands.logs_cmd import logs as logs_grp
+from gateway.commands.memory_cmd import memory as memory_grp
 from gateway.commands.merge_cmd import (
     approve_merge as approve_merge_cmd,
     reject_merge as reject_merge_cmd,
@@ -53,6 +54,7 @@ cli.add_command(approve_merge_cmd)
 cli.add_command(reject_merge_cmd)
 cli.add_command(risk_cmd)
 cli.add_command(logs_grp)
+cli.add_command(memory_grp)
 
 
 def main() -> int:
