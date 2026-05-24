@@ -26,7 +26,12 @@ from validator.judge_contract import (
     normalize_response,
 )
 
-DEFAULT_MODEL = "gpt-5"
+# M20-P3d: default reduced from `gpt-5` (org-gated) to `gpt-4o` which is
+# widely available for org-verified-or-not accounts and supports the
+# Chat Completions + response_format json_object shape we rely on. The
+# model is overridable via config.validators.openai.model — operators
+# with access to newer models can opt up explicitly.
+DEFAULT_MODEL = "gpt-4o"
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
 
 

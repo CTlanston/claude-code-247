@@ -66,7 +66,9 @@ validators:
     require_real_for_auto_merge: true
   openai:
     enabled: true
-    model: gpt-5
+    # M20-P3d: reduced from `gpt-5` (org-gated) to `gpt-4o` which is
+    # widely available. Overridable per operator config.
+    model: gpt-4o
     require_real_for_auto_merge: true
 
   # When both are enabled, both must PASS for auto-merge. Disagreement

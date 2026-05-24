@@ -158,9 +158,15 @@ class EvidenceCollector:
     # ── git snapshots ────────────────────────────────────────────────
 
     def snapshot_diff(self) -> Path:
+        # M20-P3g: when the worker (or its sub-agent) committed during
+        # the role loop, `git diff HEAD` returns empty because HEAD
+        # already includes the changes. Diff against the task's base
+        # branch (typically `main`) instead, so committed-on-agent-branch
+        # AND uncommitted-in-working-tree changes are both shown.
+        base = self._resolve_base_ref()
         try:
             diff = subprocess.run(
-                ["git", "diff", "--stat", "HEAD"],
+                ["git", "diff", "--stat", base],
                 cwd=str(self.workspace),
                 capture_output=True, text=True, timeout=30,
             )
@@ -168,6 +174,28 @@ class EvidenceCollector:
         except (OSError, subprocess.SubprocessError) as e:
             body = f"# Diff summary\n\nFailed to capture: {e}\n"
         return self._write_text("diff_summary.md", body)
+
+    def _resolve_base_ref(self) -> str:
+        """Return the git ref to diff against.
+
+        Preference: task_spec.default_branch if it resolves locally, then
+        origin/<default_branch>, finally HEAD as last-resort fallback.
+        HEAD is correct only when the worker hasn't committed yet —
+        a brittle assumption that the M20-P3 live E2E exposed.
+        """
+        default_branch = self.task_spec.get("default_branch") or "main"
+        for candidate in (default_branch, f"origin/{default_branch}"):
+            try:
+                r = subprocess.run(
+                    ["git", "rev-parse", "--verify", "--quiet", candidate],
+                    cwd=str(self.workspace),
+                    capture_output=True, text=True, timeout=10,
+                )
+                if r.returncode == 0 and r.stdout.strip():
+                    return candidate
+            except (OSError, subprocess.SubprocessError):
+                continue
+        return "HEAD"
 
     def snapshot_manifest(self) -> Path:
         manifest: list[str] = []
@@ -186,7 +214,7 @@ class EvidenceCollector:
         forbidden_paths: list[str] | None = None,
         max_total_bytes: int = 256_000,
         max_per_file_bytes: int = 64_000,
-        base_ref: str = "HEAD",
+        base_ref: str | None = None,
     ) -> tuple[Path, Path]:
         """Produce a redacted, size-limited diff body for validator input.
 
@@ -209,6 +237,11 @@ class EvidenceCollector:
         Returns:
             (diff_body_safe_path, diff_body_metadata_path)
         """
+        # M20-P3g: when caller doesn't pin base_ref, resolve it from
+        # task_spec.default_branch so committed work on the agent
+        # branch is still visible to validators.
+        if base_ref is None:
+            base_ref = self._resolve_base_ref()
         forbidden = list(DEFAULT_FORBIDDEN_PATTERNS)
         if forbidden_paths:
             forbidden.extend(forbidden_paths)

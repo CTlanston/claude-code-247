@@ -174,6 +174,74 @@ def test_metadata_has_required_fields(tmp_path: Path) -> None:
     assert meta["diff_body_safe_path"].endswith("diff_body_safe.md")
 
 
+def test_m20_p3g_committed_on_agent_branch_still_visible(tmp_path: Path) -> None:
+    """M20-P3g regression: the worker (Claude CLI) may commit its work
+    on the agent branch. Before this fix snapshot_diff used `HEAD` as
+    base, which then returned empty because HEAD already includes the
+    new commit. The validator therefore saw an empty diff and refused
+    to PASS. With task_spec.default_branch wired in, the base
+    auto-resolves to the branch the agent branched off, so committed
+    work is visible.
+    """
+    _init_repo(tmp_path)
+    _commit_initial(tmp_path, {"src/foo.py": "x = 1\n"})
+    # Create the agent branch from main, commit a change there.
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "checkout", "-b", "agent/x"],
+        check=True,
+    )
+    _modify(tmp_path, "src/foo.py", "x = 1\nfrom_agent = True\n")
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "agent", "GIT_AUTHOR_EMAIL": "a@a",
+        "GIT_COMMITTER_NAME": "agent", "GIT_COMMITTER_EMAIL": "a@a",
+    }
+    subprocess.run(["git", "-C", str(tmp_path), "add", "-A"], check=True)
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "commit", "-q", "-m", "agent-side commit"],
+        check=True, env=env,
+    )
+
+    ec = EvidenceCollector(
+        workspace=tmp_path,
+        task_spec={"task_id": "t1", "repo_id": "r1", "default_branch": "main"},
+    )
+    diff_path, meta_path = ec.snapshot_diff_body_safe()
+    body = diff_path.read_text()
+    meta = json.loads(meta_path.read_text())
+
+    # The committed change must still be visible to validators.
+    assert "from_agent = True" in body
+    assert meta["base_ref"] == "main"
+    foo = next(f for f in meta["files_changed"] if f["path"] == "src/foo.py")
+    assert foo["additions"] >= 1
+
+
+def test_m20_p3g_falls_back_when_default_branch_unknown(tmp_path: Path) -> None:
+    """If task_spec doesn't specify default_branch, _resolve_base_ref
+    tries `main`, then `origin/main`, then falls back to HEAD. That last
+    fallback preserves the pre-M20-P3g behavior for the working-tree-
+    not-yet-committed case (which still works because `git diff HEAD`
+    shows uncommitted edits)."""
+    _init_repo(tmp_path)
+    _commit_initial(tmp_path, {"src/foo.py": "x = 1\n"})
+    _modify(tmp_path, "src/foo.py", "x = 2\n")  # uncommitted
+
+    ec = EvidenceCollector(
+        workspace=tmp_path,
+        task_spec={"task_id": "t1", "repo_id": "r1"},  # no default_branch
+    )
+    # main exists (we're ON it), so it'll resolve to "main"
+    diff_path, meta_path = ec.snapshot_diff_body_safe()
+    body = diff_path.read_text()
+    meta = json.loads(meta_path.read_text())
+
+    # When base = main and we're on main with uncommitted changes,
+    # `git diff main` from working tree still shows them.
+    assert "x = 2" in body
+    assert meta["base_ref"] == "main"
+
+
 def test_no_changes_writes_empty_body(tmp_path: Path) -> None:
     _init_repo(tmp_path)
     _commit_initial(tmp_path, {"src/foo.py": "x = 1\n"})

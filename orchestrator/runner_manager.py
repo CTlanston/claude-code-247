@@ -165,6 +165,7 @@ class RunnerManager:
             "repo_id": repo.id,
             "goal": goal,
             "branch": branch,
+            "default_branch": repo.default_branch,  # M20-P3g: base for diff
             "allowed_paths": raw.get("allowed_paths") or ["**"],
             "forbidden_paths": raw.get("forbidden_paths") or [],
             "commands": commands,
