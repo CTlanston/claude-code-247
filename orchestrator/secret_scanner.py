@@ -22,7 +22,12 @@ SECRET_PATTERNS: dict[str, str] = {
     "slack_token": r"xox[abprs]-[A-Za-z0-9-]{10,}",
     "private_key": r"-----BEGIN ([A-Z ]+ )?PRIVATE KEY-----",
     "pem_header": r"-----BEGIN CERTIFICATE-----",
-    "env_var_assign": r"(?im)^[+\s]*(SECRET|API_KEY|TOKEN|PASSWORD)[A-Z0-9_]*\s*=\s*\S+",
+    # M19-F1: previously this pattern used (?im), which made it match
+    # ordinary lowercase Python variable names (e.g. `tokens = ...`).
+    # Env vars are uppercase by convention; matching only uppercase
+    # keeps real env-var-style identifiers in scope while removing the
+    # noisy false-positive class on regular code.
+    "env_var_assign": r"(?m)^[+\s]*(SECRET|API_KEY|TOKEN|PASSWORD)[A-Z0-9_]*\s*=\s*\S+",
 }
 
 
