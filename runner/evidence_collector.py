@@ -361,6 +361,94 @@ class EvidenceCollector:
             running_bytes += file_bytes
             files_changed.append(entry)
 
+        # M20-P3i: also include untracked files. The Claude CLI worker
+        # often writes new files without staging or committing them, so
+        # they're invisible to `git diff` (which only sees tracked
+        # changes). Without this branch, validators end up looking at
+        # an empty diff body and refuse to PASS, blocking auto-merge on
+        # any task that adds a new file.
+        try:
+            untracked = subprocess.run(
+                ["git", "ls-files", "--others", "--exclude-standard"],
+                cwd=str(self.workspace),
+                capture_output=True, text=True, timeout=30,
+            )
+            untracked_paths = [p for p in (untracked.stdout or "").splitlines() if p]
+        except (OSError, subprocess.SubprocessError):
+            untracked_paths = []
+
+        for path in untracked_paths:
+            # Don't list .evidence/ files (the worker's own output)
+            if path.startswith(".evidence/"):
+                continue
+            already_in = next((f for f in files_changed if f["path"] == path), None)
+            if already_in is not None:
+                continue
+
+            omitted_reason: str | None = None
+            if any(rx.match(path) for rx in compiled):
+                omitted_reason = "forbidden_path_match"
+            included = omitted_reason is None
+
+            try:
+                content = (self.workspace / path).read_text(encoding="utf-8", errors="replace")
+            except (OSError, UnicodeDecodeError):
+                content = ""
+            lines = content.splitlines()
+            additions = len(lines)
+
+            entry = {
+                "path": path,
+                "status": "added",
+                "additions": additions,
+                "deletions": 0,
+                "included_in_diff_body": included,
+                "omitted_reason": omitted_reason,
+            }
+
+            if not included:
+                files_changed.append(entry)
+                continue
+
+            # Synthesize git-style new-file diff
+            header = (
+                f"diff --git a/{path} b/{path}\n"
+                "new file mode 100644\n"
+                "--- /dev/null\n"
+                f"+++ b/{path}\n"
+                f"@@ -0,0 +1,{additions} @@\n"
+            )
+            body_lines = "\n".join("+" + line for line in lines)
+            file_diff = header + body_lines + ("\n" if lines else "")
+
+            hits = _scan_secrets(file_diff)
+            if hits:
+                all_hits.extend(
+                    {"path": path, "pattern": h.pattern, "line_no": h.line_no}
+                    for h in hits
+                )
+
+            file_bytes = len(file_diff.encode("utf-8"))
+            if file_bytes > max_per_file_bytes:
+                file_diff = (
+                    file_diff[:max_per_file_bytes]
+                    + f"\n[TRUNCATED: per-file cap {max_per_file_bytes} bytes]\n"
+                )
+                truncated = True
+                entry["truncated"] = True
+
+            file_bytes = len(file_diff.encode("utf-8"))
+            if running_bytes + file_bytes > max_total_bytes:
+                truncated = True
+                entry["included_in_diff_body"] = False
+                entry["omitted_reason"] = "total_size_cap"
+                files_changed.append(entry)
+                continue
+
+            per_file_bodies.append((path, file_diff))
+            running_bytes += file_bytes
+            files_changed.append(entry)
+
         # Compose body.
         if all_hits:
             patterns = sorted({h["pattern"] for h in all_hits})

@@ -217,6 +217,85 @@ def test_m20_p3g_committed_on_agent_branch_still_visible(tmp_path: Path) -> None
     assert foo["additions"] >= 1
 
 
+def test_m20_p3i_untracked_new_file_visible_in_diff_body(tmp_path: Path) -> None:
+    """M20-P3i regression: the Claude CLI worker often writes new files
+    without staging them, so plain `git diff main` doesn't see them at
+    all. Validators then saw an empty diff and refused to PASS — the
+    PR #56/#57 series. snapshot_diff_body_safe must surface untracked
+    files as new-file diffs."""
+    _init_repo(tmp_path)
+    _commit_initial(tmp_path, {"src/foo.py": "x = 1\n"})
+    # Brand-new file, never staged or committed — simulates Claude CLI's behavior
+    (tmp_path / "src" / "number_utils.py").write_text(
+        "def clamp(value, min_value, max_value):\n"
+        "    if min_value > max_value:\n"
+        "        raise ValueError(\"min > max\")\n"
+        "    return max(min_value, min(value, max_value))\n"
+    )
+
+    ec = EvidenceCollector(
+        workspace=tmp_path,
+        task_spec={"task_id": "t", "repo_id": "r", "default_branch": "main"},
+    )
+    diff_path, meta_path = ec.snapshot_diff_body_safe()
+    body = diff_path.read_text()
+    meta = json.loads(meta_path.read_text())
+
+    # The new file must appear in metadata as added with non-zero additions
+    new_file = next((f for f in meta["files_changed"]
+                     if f["path"] == "src/number_utils.py"), None)
+    assert new_file is not None, "untracked new file not in files_changed"
+    assert new_file["status"] == "added"
+    assert new_file["additions"] == 4
+    assert new_file["deletions"] == 0
+    assert new_file["included_in_diff_body"] is True
+
+    # The body must contain the implementation
+    assert "def clamp" in body
+    assert "min_value > max_value" in body
+    assert "/dev/null" in body  # new-file header marker
+
+
+def test_m20_p3i_untracked_forbidden_paths_omitted(tmp_path: Path) -> None:
+    """Forbidden patterns apply equally to untracked new files."""
+    _init_repo(tmp_path)
+    _commit_initial(tmp_path, {"src/foo.py": "x = 1\n"})
+    # Untracked .env file — must NOT leak into validator-visible body
+    (tmp_path / ".env").write_text("SECRET_TOKEN=plaintext\n")
+
+    ec = EvidenceCollector(
+        workspace=tmp_path,
+        task_spec={"task_id": "t", "repo_id": "r", "default_branch": "main"},
+    )
+    diff_path, meta_path = ec.snapshot_diff_body_safe()
+    body = diff_path.read_text()
+    meta = json.loads(meta_path.read_text())
+
+    env_entry = next(f for f in meta["files_changed"] if f["path"] == ".env")
+    assert env_entry["included_in_diff_body"] is False
+    assert env_entry["omitted_reason"] == "forbidden_path_match"
+    assert "SECRET_TOKEN=plaintext" not in body
+    assert "plaintext" not in body
+
+
+def test_m20_p3i_evidence_dir_not_listed_as_untracked(tmp_path: Path) -> None:
+    """The .evidence/ directory IS untracked but it's the collector's
+    own output — listing it would be circular noise."""
+    _init_repo(tmp_path)
+    _commit_initial(tmp_path, {"src/foo.py": "x = 1\n"})
+
+    ec = EvidenceCollector(
+        workspace=tmp_path,
+        task_spec={"task_id": "t", "repo_id": "r", "default_branch": "main"},
+    )
+    # First snapshot creates .evidence/ files
+    ec.snapshot_diff_body_safe()
+    # Second snapshot must not include .evidence/* in files_changed
+    diff_path, meta_path = ec.snapshot_diff_body_safe()
+    meta = json.loads(meta_path.read_text())
+    assert not any(f["path"].startswith(".evidence/") for f in meta["files_changed"])
+
+
 def test_m20_p3g_falls_back_when_default_branch_unknown(tmp_path: Path) -> None:
     """If task_spec doesn't specify default_branch, _resolve_base_ref
     tries `main`, then `origin/main`, then falls back to HEAD. That last
