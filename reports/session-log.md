@@ -432,3 +432,9 @@ Outcome: ready for Phase 1.
 - 2026-05-13T14:11:45Z  cli.execution  classify=permission_needed  exit=0  duration=0.0s  cost~$0.0000  summary=permission denied
 - 2026-05-13T14:11:45Z  cli.execution  classify=success  exit=0  duration=0.0s  cost~$0.0000  summary=all good
 - 2026-05-13T14:11:45Z  cli.timeout  classify=timeout  exit=None  duration=0.0s  cost~$0.0000  summary=CLI timed out
+## 2026-05-15T23:48:46Z — P5 retry window opened
+
+- created reports/PILOT_IN_PROGRESS (overrides DONE/STOPSWITCH)
+- removed state/PAUSED (resumes launchd dispatch)
+- grading target: +24h
+- commit: fc3c0d8 fix(p5): PILOT_IN_PROGRESS sentinel

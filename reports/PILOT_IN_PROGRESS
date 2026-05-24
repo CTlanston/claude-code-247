@@ -1,0 +1,26 @@
+P5 pilot retry window — opened 2026-05-15T22:50:00Z
+
+Purpose: override AUTODEV_DONE.md and STOPSWITCH gates while the launchd
+worker drains pilot issues 19, 20, 21, 22, 23, 24, 25, 26, 27, 29 on
+CTlanston/auto-evo-playground.
+
+Open issues at window open:
+- queued (no branch): 26, 27, 29
+- queued (post-review-1, credit 65): 20, 21, 22, 23
+- queued (credit 70): 25
+- ci_running: 19
+- human_review (PR #30 OPEN): 24
+
+Health gates remain in force (health<50 still skips; fresh BLOCKED.md
+still skips). This sentinel only overrides DONE/STOPSWITCH.
+
+When grading completes (target: +24h, ≈ 2026-05-16T22:50Z), operator
+runs `bash scripts/p5_grade.sh` then removes this file:
+
+    rm reports/PILOT_IN_PROGRESS
+
+After removal, DONE/STOPSWITCH gates re-engage.
+
+Known limit: orchestrator select_new_task does not re-pick credit-65
+issues; expected ceiling this window is ~6/10 completion unless that
+inner-engine bug is fixed first (see reports/p5-pilot-verdict.md).
