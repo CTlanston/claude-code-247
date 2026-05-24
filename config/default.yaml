@@ -1,0 +1,96 @@
+# claude-code-247 system config. Lives at ~/.claude-code-247/config.yaml.
+# This file is the documented default and ships with the package; the loader
+# merges user overrides on top. Anything not overridden falls back to here.
+
+system:
+  # The safety gate. When false, the orchestrator will never push branches,
+  # create PRs, comment on PRs, or merge anything. All other code paths
+  # (planning, coding, validating, scoring, evidence) still run so the user
+  # can review locally.
+  allow_remote_writes: false
+
+  # Where to bind the dashboard. Listen on loopback by default for safety.
+  dashboard_host: 127.0.0.1
+  dashboard_port: 8423
+
+  # The orchestrator polls the command queue + task scheduler at this rate.
+  poll_interval_seconds: 30
+
+  # How many days of operational data to keep online before GC.
+  workspace_gc_days: 14
+  log_gc_days: 30
+
+auth:
+  # local_claude_code | anthropic_api_fallback | validator_api_only
+  mode: local_claude_code
+
+  # If mode is anthropic_api_fallback, we require an explicit operator
+  # approval per task unless this is set to true. Default: require approval.
+  api_fallback_requires_approval: true
+
+cost:
+  # Per-day caps before the system pauses the offending repo.
+  default_daily_api_usd_cap: 0.0           # 0 = no API budget by default
+  premium_guardian_allowed: false
+
+validators:
+  gemini:
+    enabled: true
+    model: gemini-2.5-pro
+  openai:
+    enabled: true
+    model: gpt-5
+  # When both are enabled, both must PASS for auto-merge. Disagreement
+  # forces approval. When fewer than 2 are enabled, auto-merge is blocked.
+  require_two_validators: true
+
+notifications:
+  ntfy:
+    # If set, all notifications also push here. Empty = local-log only.
+    topic: ""
+    server: https://ntfy.sh
+  # Dedup window: a fingerprint repeats within this many minutes -> coalesce.
+  dedup_window_minutes: 30
+
+# Per-repo defaults. Each repo in repos.yaml inherits these unless overridden.
+repo_defaults:
+  default_branch: main
+  enabled: true
+  risk_level: low
+
+  test_commands: []
+  lint_commands: []
+  build_commands: []
+
+  allowed_paths:
+    - "**"
+  forbidden_paths:
+    - ".env"
+    - ".env.*"
+    - ".github/**"
+    - "secrets/**"
+    - "CLAUDE.md"
+    - "AGENTS.md"
+
+  auto_merge:
+    enabled: false                         # opt-in per repo
+    max_risk_score: 30
+    max_changed_lines: 300
+    require_tests: true
+    require_two_validators: true
+
+  budget:
+    max_tasks_per_day: 5
+    max_worker_runs_per_day: 20
+    max_validator_runs_per_day: 20
+    max_repair_attempts_per_task: 3
+
+  notifications:
+    ntfy_topic: ""
+    notify_on:
+      - task_started
+      - task_stuck
+      - pr_created
+      - validation_failed
+      - auto_merge_completed
+      - human_approval_required

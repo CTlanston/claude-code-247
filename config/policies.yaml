@@ -1,0 +1,60 @@
+# Risk + merge policy. Loaded alongside default.yaml; overridable per repo.
+
+risk_score:
+  # Each factor is (score weight, plain-English reason). The total is clamped
+  # at 100. The interpretation is intentionally coarse — risk scoring is a
+  # heuristic, not arithmetic.
+  factors:
+    changed_lines_per_50:        { weight: 4,  ceiling: 40 }
+    files_touched_per_3:         { weight: 3,  ceiling: 30 }
+    forbidden_path_touch:        { weight: 100 }       # always blocks
+    sensitive_path_touch:        { weight: 30 }
+    workflow_change:             { weight: 40 }
+    dependency_change:           { weight: 25 }
+    test_change_without_code:    { weight: 10 }
+    code_change_without_test:    { weight: 20 }
+    auth_security_files:         { weight: 40 }
+    network_code_change:         { weight: 15 }
+    database_migration:          { weight: 30 }
+    orchestrator_core_change:    { weight: 60 }
+    runner_sandbox_change:       { weight: 60 }
+    validator_change:            { weight: 60 }
+    ci_failure:                  { weight: 50 }
+    validator_disagreement:      { weight: 40 }
+    large_deletion:              { weight: 20 }
+    low_test_coverage:           { weight: 15 }
+
+risk_levels:
+  low_max: 30
+  medium_max: 70
+  # > 70 is high
+
+merge:
+  # If a PR meets all of these, it is eligible for auto-merge.
+  auto_merge_requires:
+    - risk_score_below_max
+    - changed_lines_below_max
+    - only_allowed_paths
+    - no_forbidden_paths
+    - ci_passed
+    - lint_passed
+    - tests_passed
+    - validator_gemini_passed
+    - validator_openai_passed
+    - reviewer_passed
+    - no_validator_disagreement
+    - no_unapproved_dependency
+    - no_secret_like_diff
+    - system_allow_remote_writes
+    - repo_auto_merge_enabled
+
+approval_required_for:
+  - medium_risk_merge
+  - high_risk_merge
+  - api_fallback
+  - budget_override
+  - forbidden_path_exception
+  - dependency_addition
+  - workflow_changes
+  - security_auth_changes
+  - system_config_changes
