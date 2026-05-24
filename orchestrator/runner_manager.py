@@ -159,6 +159,7 @@ class RunnerManager:
             "lint": raw.get("lint_commands") or [],
             "build": raw.get("build_commands") or [],
         }
+        budget = raw.get("budget") or {}
         return {
             "task_id": task_id,
             "repo_id": repo.id,
@@ -167,6 +168,7 @@ class RunnerManager:
             "allowed_paths": raw.get("allowed_paths") or ["**"],
             "forbidden_paths": raw.get("forbidden_paths") or [],
             "commands": commands,
+            "max_repair_attempts": int(budget.get("max_repair_attempts_per_task", 3)),
             "spec_built_at": utc_now_iso(),
         }
 

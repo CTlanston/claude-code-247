@@ -78,13 +78,21 @@ def main(argv: list[str] | None = None) -> int:
     def _rerun() -> list:
         return collector.run_named_commands("test", commands.get("test") or [])
 
+    # Per-task cap from the spec (set by runner_manager.build_task_spec
+    # from repo.budget.max_repair_attempts_per_task) wins over the CLI
+    # default; --max-repair is an override for ops/tests.
+    spec_cap = spec.get("max_repair_attempts")
+    if isinstance(spec_cap, int) and spec_cap > 0 and args.max_repair == 3:
+        max_repair = spec_cap
+    else:
+        max_repair = args.max_repair
     outcome = run_role_loop(
         spec=spec,
         workspace=workspace,
         collector=collector,
         claude_bin=args.claude_bin,
         model=args.model,
-        max_repair_attempts=args.max_repair,
+        max_repair_attempts=max_repair,
         rerun_tests=_rerun,
     )
     collector.snapshot_diff()

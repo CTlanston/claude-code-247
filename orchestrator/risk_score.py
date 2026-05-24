@@ -42,6 +42,18 @@ DEPENDENCY_PATTERNS = (
     "pyproject.toml", "requirements*.txt", "package.json", "Cargo.toml",
     "go.mod", "Gemfile", "**/poetry.lock", "**/package-lock.json",
 )
+MIGRATION_PATH_PATTERNS = (
+    "**/migrations/**", "**/alembic/versions/**", "**/db/migrate/**",
+    "**/*migration*.sql", "**/*migrate*.sql",
+)
+# SQL keywords whose presence in *added* lines suggests a real migration.
+# Matched case-insensitively against the diff's content for files NOT
+# otherwise classified.
+MIGRATION_SQL_KEYWORDS = re.compile(
+    r"\b(CREATE\s+TABLE|ALTER\s+TABLE|DROP\s+TABLE|RENAME\s+COLUMN|"
+    r"ADD\s+COLUMN|DROP\s+COLUMN|CREATE\s+INDEX|DROP\s+INDEX)\b",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -139,6 +151,8 @@ def compute_risk(
     ci_passed: bool | None = None,
     test_results: list[dict] | None = None,
     lint_results: list[dict] | None = None,
+    coverage_pct: float | None = None,
+    diff_content: str | None = None,
     policies: dict | None = None,
 ) -> RiskAssessment:
     cfg = load_config()
@@ -222,6 +236,26 @@ def compute_risk(
     # ── large deletion ─────────────────────────────────────────────
     add("large_deletion", diff.deletions > 200,
         f"large deletion: {diff.deletions} lines removed" if diff.deletions > 200 else "")
+
+    # ── database migration ─────────────────────────────────────────
+    migration_path_hits = [f for f in diff.files
+                           if _matches_any(f, MIGRATION_PATH_PATTERNS)]
+    migration_sql_hit = bool(
+        diff_content and MIGRATION_SQL_KEYWORDS.search(diff_content)
+    )
+    add("database_migration", bool(migration_path_hits) or migration_sql_hit,
+        ("migration files: " + ", ".join(migration_path_hits[:3])) if migration_path_hits
+        else ("SQL DDL detected in diff" if migration_sql_hit else ""))
+
+    # ── low test coverage ──────────────────────────────────────────
+    threshold = float((factor_defs.get("low_test_coverage") or {})
+                      .get("min_coverage_pct", 80.0))
+    if coverage_pct is not None:
+        triggered_cov = coverage_pct < threshold
+        add("low_test_coverage", triggered_cov,
+            f"coverage {coverage_pct:.1f}% < {threshold:.1f}%" if triggered_cov else "")
+    else:
+        add("low_test_coverage", False, "")
 
     # ── CI / validator ─────────────────────────────────────────────
     add("ci_failure", ci_passed is False, "CI failed" if ci_passed is False else "")

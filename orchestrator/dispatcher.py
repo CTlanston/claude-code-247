@@ -32,6 +32,8 @@ from typing import Any, Callable
 from memory.db import open_db
 from orchestrator import (
     budget_manager,
+    ci_poller,
+    coverage_parser,
     github_client as _github_client,
     log_indexer,
     notification_manager,
@@ -87,11 +89,20 @@ def run_once(
     validator_fn: Callable[[JudgeInput], Any] | None = None,
     notify_fn: Callable[..., Any] | None = None,
     github=None,
+    poll_ci: bool = True,
     db_path: Path | str | None = None,
 ) -> DispatchResult:
     """Process at most one queued command."""
     if system_state.is_system_paused(db_path=db_path):
         return DispatchResult(handled=False, reason="system paused")
+
+    if poll_ci:
+        try:
+            ci_poller.poll_open_prs(github=github, db_path=db_path)
+        except Exception as e:  # never let CI poll break the dispatcher
+            log_indexer.write(level="warn", component="dispatcher",
+                               message=f"ci_poller error: {e}",
+                               db_path=db_path)
 
     cmd = claim_next(types=list(HANDLED_COMMAND_TYPES), db_path=db_path)
     if cmd is None:
@@ -251,8 +262,9 @@ def handle_start_task(
         budget_manager.increment(repo_id, counter="validator_runs_count",
                                   db_path=db_path)
 
-    # Phase 3 — diff + risk score
-    diff = _diff_against_base(prep.workspace, repo.default_branch)
+    # Phase 3 — diff + coverage + risk score
+    diff, diff_content = _diff_against_base(prep.workspace, repo.default_branch)
+    coverage_pct = coverage_parser.extract_coverage_pct(prep.workspace)
     risk = compute_risk(
         diff,
         allowed_paths=(repo.raw or {}).get("allowed_paths") or ["**"],
@@ -261,6 +273,8 @@ def handle_start_task(
         ci_passed=None,
         test_results=_evidence_json(evidence_dir, "test_results.json", []),
         lint_results=_evidence_json(evidence_dir, "lint_results.json", []),
+        coverage_pct=coverage_pct,
+        diff_content=diff_content,
     )
     _record_risk_score(task.id, risk, db_path=db_path)
 
@@ -700,17 +714,24 @@ def _get_repo(repo_id: str) -> RepoEntry | None:
     return None
 
 
-def _diff_against_base(workspace: Path, base_branch: str) -> DiffStats:
-    """``git diff --numstat <base>..HEAD`` parsed into DiffStats."""
+def _diff_against_base(workspace: Path, base_branch: str) -> tuple[DiffStats, str]:
+    """Returns (DiffStats, diff_text). The text body is what the
+    secret_scanner and the database_migration heuristic look at."""
     try:
-        out = subprocess.check_output(
+        out_numstat = subprocess.check_output(
             ["git", "-C", str(workspace), "diff", "--numstat", f"{base_branch}..HEAD"],
             text=True,
         )
     except (subprocess.CalledProcessError, FileNotFoundError, OSError):
-        # Common case in tests: no commits beyond base, or base missing.
-        return DiffStats(files=[], insertions=0, deletions=0)
-    return DiffStats.from_git_numstat(out)
+        return DiffStats(files=[], insertions=0, deletions=0), ""
+    try:
+        out_diff = subprocess.check_output(
+            ["git", "-C", str(workspace), "diff", "-U0", f"{base_branch}..HEAD"],
+            text=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        out_diff = ""
+    return DiffStats.from_git_numstat(out_numstat), out_diff
 
 
 def _evidence_json(evidence_dir: Path, name: str, default):

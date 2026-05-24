@@ -6,6 +6,7 @@ import sys
 import click
 
 from memory.db import init_db
+from orchestrator import env_loader
 from orchestrator.dispatcher import run_loop, run_once
 
 
@@ -21,6 +22,10 @@ from orchestrator.dispatcher import run_loop, run_once
 @click.option("--json", "as_json", is_flag=True)
 def dispatcher(once: bool, interval_s: float | None,
                 max_iter: int | None, as_json: bool) -> None:
+    # Pick up GEMINI_API_KEY / OPENAI_API_KEY / NTFY_TOPIC from
+    # ~/.claude-code-247/.env before any validator / notification call.
+    # launchd's EnvironmentVariables doesn't reach validator subprocesses.
+    env_loader.load()
     init_db()
     if once:
         res = run_once()

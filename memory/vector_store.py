@@ -18,6 +18,7 @@ Both backends expose the same shape:
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
@@ -164,9 +165,40 @@ class _QdrantBackend:
 
     @staticmethod
     def _embed(text: str, dim: int) -> list[float]:
-        # Placeholder: deterministic, no learned signal. We slice a sha256
-        # into ``dim`` floats in [-1, 1]. Good enough for "exists" tests;
-        # swap in a real embedder before relying on similarity.
+        """Embed ``text`` into ``dim`` floats.
+
+        Strategy (best available wins):
+          1. OpenAI ``text-embedding-3-small`` when ``OPENAI_API_KEY`` is
+             set — semantic, cheap, no extra deps (uses ``httpx`` which
+             is already a dependency). Native dim is 1536; sliced or
+             zero-padded to ``dim``.
+          2. Deterministic SHA256 fallback — keeps the interface usable
+             with zero external services. NOT a real semantic embedder;
+             cosine similarity over these vectors is meaningless. Tests
+             and dev environments without an OpenAI key fall here.
+        """
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if api_key:
+            try:
+                import httpx
+                base = (os.environ.get("OPENAI_BASE_URL")
+                         or "https://api.openai.com/v1").rstrip("/")
+                with httpx.Client(timeout=30.0) as client:
+                    r = client.post(
+                        f"{base}/embeddings",
+                        headers={"Authorization": f"Bearer {api_key}",
+                                  "Content-Type": "application/json"},
+                        json={"model": "text-embedding-3-small",
+                               "input": text[:8000]},
+                    )
+                    if r.status_code == 200:
+                        body = r.json()
+                        vec = list(map(float, body["data"][0]["embedding"]))
+                        if len(vec) >= dim:
+                            return vec[:dim]
+                        return vec + [0.0] * (dim - len(vec))
+            except Exception:
+                pass  # fall through to sha256
         import hashlib
         h = hashlib.sha256(text.encode("utf-8")).digest()
         vec = []

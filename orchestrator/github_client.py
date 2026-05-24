@@ -129,6 +129,22 @@ def pr_comment(repo: str, number: int, body: str) -> bool:
     return True
 
 
+def pr_checks(repo: str, number: int) -> list[dict[str, Any]]:
+    """Return the latest CI check rows for a PR via `gh pr checks --json`.
+
+    Each row carries at least ``name``, ``state``, ``bucket``, ``link``;
+    we forward whatever gh emits verbatim. Used by ci_poller."""
+    rc, out, err = _run(["gh", "pr", "checks", str(number), "--repo", repo,
+                          "--json", "name,state,bucket,link,workflow,startedAt,completedAt"])
+    if rc != 0:
+        raise GitHubError(f"gh pr checks failed (rc={rc}): {err.strip() or out.strip()}")
+    try:
+        data = json.loads(out) if out.strip() else []
+    except json.JSONDecodeError as e:
+        raise GitHubError(f"gh pr checks returned non-JSON: {out[:200]}") from e
+    return [dict(d) for d in (data or [])]
+
+
 # ── helpers ─────────────────────────────────────────────────────────
 
 
