@@ -1,178 +1,490 @@
 {% extends "base.html" %}
 {% block body %}
 <style>
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-  @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
-  .card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px;
-           transition: background 0.4s ease; }
-  .card.updated { background: #eef7ff; }
-  .card h2 { margin: 0 0 8px; font-size: 14px; text-transform: uppercase;
-              letter-spacing: 0.05em; color: #555; }
-  .big { font-size: 22px; font-weight: 600; }
-  .bar { background: #eee; border-radius: 4px; height: 10px; overflow: hidden;
-          margin: 8px 0 4px; }
-  .bar-fill { background: #06c; height: 100%; transition: width 0.4s ease; }
-  .ok    { color: #2c7a2c; }
-  .warn  { color: #b27600; }
-  .err   { color: #b22; }
-  ul.tight { margin: 4px 0; padding-left: 18px; }
-  pre { white-space: pre-wrap; background: #f7f7f7; padding: 8px;
-         border-radius: 4px; font-size: 12px; }
-  .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
-              padding: 10px 14px; background: #f5f7fa; border: 1px solid #e0e4e9;
-              border-radius: 6px; margin-bottom: 16px; }
-  .toolbar .dot { width: 10px; height: 10px; border-radius: 50%;
-                   background: #2c7a2c; box-shadow: 0 0 6px rgba(44,122,44,0.5);
-                   animation: pulse 1.2s ease-in-out infinite; }
-  .toolbar.paused .dot { background: #b27600; animation: none; }
-  .toolbar.errored .dot { background: #b22; animation: none; }
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.35; }
+  /* ── design tokens ────────────────────────────────────────── */
+  :root {
+    --bg:        #fbfbfd;
+    --surface:   #ffffff;
+    --surface-2: #f5f5f7;
+    --border:    rgba(0,0,0,0.07);
+    --text:      #1d1d1f;
+    --muted:     #6e6e73;
+    --accent:    #007aff;   /* iOS systemBlue   */
+    --ok:        #34c759;   /* iOS systemGreen  */
+    --warn:      #ff9500;   /* iOS systemOrange */
+    --err:       #ff3b30;   /* iOS systemRed    */
+    --ring-bg:   rgba(0,0,0,0.06);
+    --shadow:    0 1px 2px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.05);
+    --font: -apple-system, BlinkMacSystemFont, "SF Pro Display",
+             "Helvetica Neue", "Helvetica", sans-serif;
+    --mono: "SF Mono", "Menlo", ui-monospace, monospace;
   }
-  .toolbar button, .toolbar select {
-    font: inherit; padding: 4px 10px; border: 1px solid #c8ced4;
-    border-radius: 4px; background: white; cursor: pointer;
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:        #000;
+      --surface:   #1c1c1e;
+      --surface-2: #2c2c2e;
+      --border:    rgba(255,255,255,0.08);
+      --text:      #f5f5f7;
+      --muted:     #98989d;
+      --ring-bg:   rgba(255,255,255,0.08);
+      --shadow:    0 1px 2px rgba(0,0,0,0.6), 0 8px 24px rgba(0,0,0,0.3);
+    }
   }
-  .toolbar button:hover { background: #eef2f6; }
-  .toolbar .spacer { flex: 1; }
-  .toolbar .meta { color: #555; font-size: 12px; }
+
+  /* ── reset our slice (base.html supplies <body>) ──────────── */
+  body { background: var(--bg) !important; color: var(--text) !important;
+          font-family: var(--font) !important;
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
+          padding: 0 !important; max-width: none !important;
+          font-feature-settings: "ss01", "cv11"; }
+  body > nav, body > h1, body > footer { display: none !important; }
+  code { font-family: var(--mono); }
+
+  /* ── layout ───────────────────────────────────────────────── */
+  .wd-shell { max-width: 1080px; margin: 0 auto; padding: 32px 24px 96px; }
+
+  .wd-topbar { display: flex; align-items: center; gap: 16px;
+                margin-bottom: 32px; }
+  .wd-topbar .logo {
+    width: 36px; height: 36px; border-radius: 9px;
+    background: linear-gradient(135deg, #007aff, #5856d6);
+    box-shadow: 0 4px 12px rgba(0,122,255,0.35);
+    display: grid; place-items: center; color: white;
+    font-weight: 700; font-size: 16px; letter-spacing: -0.5px;
+  }
+  .wd-topbar .title {
+    display: flex; flex-direction: column; line-height: 1.15;
+  }
+  .wd-topbar .title strong { font-size: 17px; font-weight: 600;
+                              letter-spacing: -0.01em; }
+  .wd-topbar .title span { font-size: 12px; color: var(--muted); }
+  .wd-topbar .spacer { flex: 1; }
+
+  .wd-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px; border-radius: 999px;
+    background: var(--surface); border: 1px solid var(--border);
+    box-shadow: var(--shadow); font-size: 12px; color: var(--muted);
+    font-weight: 500;
+  }
+  .wd-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--ok); box-shadow: 0 0 0 0 rgba(52,199,89,0.6);
+    animation: wd-pulse 1.6s ease-out infinite;
+  }
+  .wd-pill.paused .wd-dot { background: var(--warn); animation: none; }
+  .wd-pill.errored .wd-dot { background: var(--err); animation: none; }
+  @keyframes wd-pulse {
+    0%   { box-shadow: 0 0 0 0   rgba(52,199,89,0.55); }
+    70%  { box-shadow: 0 0 0 10px rgba(52,199,89,0);    }
+    100% { box-shadow: 0 0 0 0   rgba(52,199,89,0);    }
+  }
+
+  .wd-iconbtn {
+    width: 36px; height: 36px; border-radius: 10px;
+    background: var(--surface); border: 1px solid var(--border);
+    box-shadow: var(--shadow); color: var(--text);
+    display: grid; place-items: center; cursor: pointer;
+    transition: transform .15s ease, background .15s ease;
+    font-family: var(--font); font-size: 13px; font-weight: 600;
+  }
+  .wd-iconbtn:hover { transform: translateY(-1px); background: var(--surface-2); }
+  .wd-iconbtn:active { transform: translateY(0); }
+  .wd-iconbtn svg { width: 16px; height: 16px; }
+  .wd-iconbtn.lang { width: auto; padding: 0 12px; min-width: 52px; }
+
+  .wd-select {
+    appearance: none; -webkit-appearance: none;
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: var(--shadow);
+    padding: 8px 30px 8px 12px; font: 600 12px var(--font);
+    cursor: pointer;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 5' fill='currentColor'><path d='M0 0l4 5 4-5z'/></svg>");
+    background-repeat: no-repeat; background-position: right 10px center;
+    background-size: 8px;
+  }
+
+  /* ── hero (ring + GA card) ────────────────────────────────── */
+  .wd-hero {
+    display: grid; grid-template-columns: 320px 1fr; gap: 24px;
+    margin-bottom: 24px;
+  }
+  @media (max-width: 760px) {
+    .wd-hero { grid-template-columns: 1fr; }
+  }
+
+  .wd-ringcard, .wd-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 20px; box-shadow: var(--shadow); padding: 24px;
+    transition: transform .25s cubic-bezier(.2,.7,.3,1),
+                background .35s ease;
+  }
+  .wd-card:hover, .wd-ringcard:hover { transform: translateY(-2px); }
+  .wd-card.updated, .wd-ringcard.updated {
+    background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+  }
+
+  .wd-ringcard {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center;
+  }
+  .wd-ring { position: relative; width: 220px; height: 220px; }
+  .wd-ring svg { transform: rotate(-90deg); }
+  .wd-ring .track { stroke: var(--ring-bg); }
+  .wd-ring .progress {
+    stroke: var(--accent);
+    transition: stroke-dashoffset 0.8s cubic-bezier(.2,.7,.3,1),
+                stroke .35s ease;
+    filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 45%, transparent));
+  }
+  .wd-ring.is-pass    .progress { stroke: var(--ok);   filter: drop-shadow(0 0 6px color-mix(in srgb, var(--ok) 45%, transparent)); }
+  .wd-ring.is-fail    .progress { stroke: var(--err);  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--err) 45%, transparent)); }
+  .wd-ring.is-unknown .progress { stroke: var(--muted); filter: none; }
+  .wd-ring .center {
+    position: absolute; inset: 0; display: flex;
+    flex-direction: column; align-items: center; justify-content: center;
+    text-align: center;
+  }
+  .wd-ring .pct {
+    font-size: 56px; font-weight: 600; letter-spacing: -0.04em;
+    line-height: 1; font-variant-numeric: tabular-nums;
+  }
+  .wd-ring .pct .unit { font-size: 22px; color: var(--muted);
+                         margin-left: 2px; font-weight: 500; }
+  .wd-ring .lbl { font-size: 12px; color: var(--muted);
+                   margin-top: 6px; letter-spacing: 0.04em;
+                   text-transform: uppercase; font-weight: 600; }
+  .wd-ringcard .ringmeta {
+    margin-top: 18px; text-align: center;
+    font: 500 13px/1.4 var(--font); color: var(--muted);
+  }
+  .wd-ringcard .ringmeta strong { color: var(--text); font-weight: 600;
+                                    font-variant-numeric: tabular-nums; }
+  .wd-ringcard .badge {
+    display: inline-block; padding: 4px 10px; border-radius: 999px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+    text-transform: uppercase; margin-top: 12px;
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: var(--accent);
+  }
+  .wd-ringcard .badge.is-pass { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
+  .wd-ringcard .badge.is-fail { background: color-mix(in srgb, var(--err) 14%, transparent); color: var(--err); }
+  .wd-ringcard .badge.is-unknown { background: var(--surface-2); color: var(--muted); }
+
+  /* ── GA status card (hero right) ──────────────────────────── */
+  .wd-gacard { display: flex; flex-direction: column; gap: 14px;
+                justify-content: space-between; }
+  .wd-section-label {
+    font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .wd-gacard .verdict {
+    font-size: 64px; font-weight: 700; letter-spacing: -0.04em;
+    line-height: 1; margin: 4px 0;
+  }
+  .wd-gacard .verdict.is-shipped { color: var(--ok); }
+  .wd-gacard .verdict.is-nogo    { color: var(--err); }
+  .wd-gacard .verdict.is-ready   { color: var(--warn); }
+  .wd-gacard .sub { font-size: 13px; color: var(--muted);
+                     line-height: 1.5; }
+  .wd-gacard .sub code { background: var(--surface-2); padding: 1px 6px;
+                          border-radius: 5px; color: var(--text); }
+  .wd-gacard .ga-action {
+    margin-top: 4px; padding: 10px 14px;
+    background: var(--surface-2); border-radius: 12px;
+    font-size: 12px; color: var(--muted); display: flex; gap: 8px;
+    align-items: center;
+  }
+  .wd-gacard .ga-action code { font-size: 12px; color: var(--text); }
+
+  /* ── grid of small cards ──────────────────────────────────── */
+  .wd-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
+    margin-bottom: 24px;
+  }
+  @media (max-width: 980px) { .wd-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 520px) { .wd-grid { grid-template-columns: 1fr; } }
+
+  .wd-stat { display: flex; flex-direction: column; gap: 10px; }
+  .wd-stat .head { display: flex; justify-content: space-between;
+                    align-items: center; }
+  .wd-stat .head .ind {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--ok);
+  }
+  .wd-stat .head .ind.warn { background: var(--warn); }
+  .wd-stat .head .ind.err  { background: var(--err); }
+  .wd-stat .head .ind.muted{ background: var(--muted); }
+  .wd-stat .big {
+    font-size: 36px; font-weight: 600; letter-spacing: -0.03em;
+    line-height: 1; font-variant-numeric: tabular-nums;
+  }
+  .wd-stat .big .sep { color: var(--muted); font-weight: 500; }
+  .wd-stat ul {
+    list-style: none; padding: 0; margin: 0;
+    display: flex; flex-direction: column; gap: 6px;
+    font-size: 12.5px;
+  }
+  .wd-stat ul li {
+    display: flex; justify-content: space-between; align-items: center;
+    color: var(--muted);
+  }
+  .wd-stat ul li strong {
+    color: var(--text); font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .wd-stat ul li strong.ok   { color: var(--ok); }
+  .wd-stat ul li strong.warn { color: var(--warn); }
+  .wd-stat ul li strong.err  { color: var(--err); }
+
+  /* ── footer strip ─────────────────────────────────────────── */
+  .wd-foot {
+    margin-top: 24px; padding: 14px 20px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; box-shadow: var(--shadow);
+    font-size: 12px; color: var(--muted);
+    display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
+  }
+  .wd-foot a { color: var(--accent); text-decoration: none; font-weight: 500; }
+  .wd-foot a:hover { text-decoration: underline; }
+  .wd-foot .spacer { flex: 1; }
+
+  /* ── number-roll animation when JSON updates ──────────────── */
+  .wd-roll { display: inline-block; transition: transform .35s
+              cubic-bezier(.2,.7,.3,1), opacity .25s ease; }
+  .wd-roll.flipping { transform: translateY(-6px); opacity: 0; }
+
+  /* ── blocked list ─────────────────────────────────────────── */
+  .wd-blocked { display: flex; flex-direction: column; gap: 4px;
+                 margin-top: 8px; }
+  .wd-blocked .row {
+    display: flex; gap: 8px; align-items: flex-start;
+    font-size: 12px; color: var(--text);
+  }
+  .wd-blocked .row .num {
+    flex: 0 0 18px; height: 18px; border-radius: 50%;
+    background: color-mix(in srgb, var(--warn) 18%, transparent);
+    color: var(--warn); font-size: 10px; font-weight: 700;
+    display: grid; place-items: center;
+  }
+
+  /* GA gates progress mini-bar */
+  .wd-gatebar { position: relative; height: 6px; border-radius: 3px;
+                 background: var(--ring-bg); overflow: hidden; margin-top: 4px; }
+  .wd-gatebar .fill {
+    position: absolute; inset: 0; right: auto; background: var(--accent);
+    border-radius: 3px;
+    transition: width .8s cubic-bezier(.2,.7,.3,1);
+  }
 </style>
 
-<div class="toolbar" id="wd-toolbar">
-  <span class="dot" title="live"></span>
-  <strong id="wd-status">live</strong>
-  <span class="meta">·</span>
-  <span class="meta">updated <span id="wd-age">just now</span></span>
-  <span class="meta">·</span>
-  <span class="meta">next in <span id="wd-countdown">15</span>s</span>
-  <span class="spacer"></span>
-  <label class="meta" for="wd-interval">refresh</label>
-  <select id="wd-interval">
-    <option value="5">5s</option>
-    <option value="15" selected>15s</option>
-    <option value="30">30s</option>
-    <option value="60">60s</option>
-    <option value="0">off</option>
-  </select>
-  <button id="wd-now" type="button">refresh now</button>
-  <button id="wd-toggle" type="button">pause</button>
-  <a href="/status-board.json" class="meta">JSON</a>
-</div>
+<div class="wd-shell">
 
-<p style="margin-top:0; color:#666;">
-  Generated <code data-bind="generated_at">{{ board.generated_at }}</code> ·
-  read-only · {{ board.runtime_health.launchd_loaded }}/{{ board.runtime_health.launchd_expected }} launchd loaded
-</p>
-
-<div class="grid">
-
-  <div class="card" data-card="release">
-    <h2>GA status</h2>
-    <p class="big" data-bind="release_state.ga_status"
-       data-class-map='{"SHIPPED":"ok","NO-GO":"err","READY":"warn"}'>
-      {{ board.release_state.ga_status }}
-    </p>
-    <ul class="tight">
-      <li><code>main</code>: <span data-bind="release_state.main_sha" data-format="sha7">{{ board.release_state.main_sha[:7] if board.release_state.main_sha else 'unknown' }}</span>
-        (<span data-bind="release_state.latest_release">{{ board.release_state.latest_release or 'no tag' }}</span>)</li>
-      <li><code>claude247/v1</code>: <span data-bind="release_state.implementation_branch_sha" data-format="sha7">{{ board.release_state.implementation_branch_sha[:7] if board.release_state.implementation_branch_sha else 'unknown' }}</span></li>
-      <li><code>v1.0.0</code> tag:
-        <span data-bind="release_state.ga_tag_exists" data-format="created">
-          {% if board.release_state.ga_tag_exists %}CREATED{% else %}NOT CREATED{% endif %}
-        </span>
-      </li>
-    </ul>
-  </div>
-
-  <div class="card" data-card="soak">
-    <h2>Soak progress</h2>
-    <p class="big">
-      <span data-bind="soak.result"
-            data-class-map='{"PASS":"ok","FAIL":"err","PARTIAL":"warn","UNKNOWN":"warn"}'>
-        {{ board.soak.result }}
-      </span>
-      · <span data-bind="soak.progress_percent" data-format="percent">{{ board.soak.progress_percent }}</span>%
-    </p>
-    <div class="bar"><div class="bar-fill" data-bind="soak.progress_percent"
-         data-format="width"
-         style="width: {{ board.soak.progress_percent }}%"></div></div>
-    <ul class="tight">
-      <li>T0: <code data-bind="soak.t0">{{ board.soak.t0 or 'unknown' }}</code></li>
-      <li>elapsed: <span data-bind="soak.elapsed_seconds" data-format="duration">{{ board.soak.elapsed_seconds // 3600 }}h {{ (board.soak.elapsed_seconds % 3600) // 60 }}m</span>
-        of <span data-bind="soak.required_seconds" data-format="duration">24h 0m</span></li>
-      <li>earliest full check:
-        <code data-bind="soak.earliest_full_check">{{ board.soak.earliest_full_check or 'unknown' }}</code></li>
-    </ul>
-  </div>
-
-  <div class="card" data-card="runtime">
-    <h2>Runtime health</h2>
-    <p class="big" data-runtime-summary
-       class="{% if runtime_ok %}ok{% else %}warn{% endif %}">
-      {% if runtime_ok %}HEALTHY{% else %}DEGRADED{% endif %}
-    </p>
-    <ul class="tight">
-      <li>launchd: <span data-bind="runtime_health.launchd_loaded">{{ board.runtime_health.launchd_loaded }}</span> /
-        <span data-bind="runtime_health.launchd_expected">{{ board.runtime_health.launchd_expected }}</span> loaded</li>
-      <li>dispatcher: <code data-bind="runtime_health.dispatcher"
-            data-class-map='{"healthy":"ok","stale":"warn","down":"err","unknown":"warn"}'>{{ board.runtime_health.dispatcher }}</code></li>
-      <li>dashboard: <code data-bind="runtime_health.dashboard"
-            data-class-map='{"healthy":"ok","unreachable":"err","unknown":"warn"}'>{{ board.runtime_health.dashboard }}</code></li>
-      <li>notifier: <code data-bind="runtime_health.notifier"
-            data-class-map='{"healthy":"ok","not_configured":"warn","unknown":"warn"}'>{{ board.runtime_health.notifier }}</code></li>
-      <li>doctor: <code data-bind="runtime_health.doctor"
-            data-class-map='{"ok":"ok","fail":"err","unknown":"warn"}'>{{ board.runtime_health.doctor }}</code></li>
-    </ul>
-  </div>
-
-  <div class="card" data-card="queue">
-    <h2>Queue &amp; tasks</h2>
-    <ul class="tight">
-      <li>repos enabled: <span data-bind="queue.repos_enabled">{{ board.queue.repos_enabled }}</span></li>
-      <li>active tasks: <span data-bind="queue.active_tasks">{{ board.queue.active_tasks }}</span></li>
-      <li>stuck tasks: <span data-bind="queue.stuck_tasks"
-            data-class-zero-ok>{{ board.queue.stuck_tasks }}</span></li>
-      <li>need approval: <span data-bind="queue.need_approval">{{ board.queue.need_approval }}</span></li>
-      <li>orphan commands: <span data-bind="queue.orphan_commands"
-            data-class-zero-ok>{{ board.queue.orphan_commands }}</span></li>
-      <li>pending commands: <span data-bind="queue.pending_commands">{{ board.queue.pending_commands }}</span></li>
-    </ul>
-  </div>
-
-  <div class="card" data-card="signals">
-    <h2>Recent signals</h2>
-    <ul class="tight">
-      <li>new critical errors (1h): <span data-bind="signals.new_critical_errors"
-            data-class-zero-ok>{{ board.signals.new_critical_errors }}</span></li>
-      <li>known historical errors: <span data-bind="signals.known_historical_errors">{{ board.signals.known_historical_errors }}</span></li>
-      <li>alert storm: <span data-bind="signals.alert_storm" data-format="yesno"
-            data-class-bool-bad>{% if board.signals.alert_storm %}YES{% else %}NO{% endif %}</span></li>
-      <li>budget: <span data-bind="signals.budget_sane" data-format="sane"
-            data-class-bool-good>{% if board.signals.budget_sane %}sane{% else %}EXCEEDED{% endif %}</span></li>
-      <li>logs searchable: <span data-bind="signals.logs_searchable" data-format="yesno"
-            data-class-bool-good>{% if board.signals.logs_searchable %}YES{% else %}NO{% endif %}</span></li>
-    </ul>
-  </div>
-
-  <div class="card" data-card="gates">
-    <h2>GA gates</h2>
-    <p class="big">
-      <span data-bind="ga_gates.passed">{{ board.ga_gates.passed }}</span> /
-      <span data-bind="ga_gates.total">{{ board.ga_gates.total }}</span> passed
-    </p>
-    <div data-blocked-container>
-      {% if board.ga_gates.blocked %}
-      <p>blocked:</p>
-      <ul class="tight">
-        {% for item in board.ga_gates.blocked %}
-          <li>{{ item }}</li>
-        {% endfor %}
-      </ul>
-      {% endif %}
+  <div class="wd-topbar">
+    <div class="logo">247</div>
+    <div class="title">
+      <strong data-i18n="title">Watchdog</strong>
+      <span>claude-code-247 · local-first</span>
     </div>
-    <p>next action:
-      <code data-bind="ga_gates.recommendation">{{ board.ga_gates.recommendation }}</code></p>
+    <div class="spacer"></div>
+
+    <div id="wd-pill" class="wd-pill">
+      <span class="wd-dot"></span>
+      <span data-i18n="status_live" id="wd-status">live</span>
+      <span>·</span>
+      <span data-i18n="updated_prefix">updated</span>
+      <span id="wd-age">just now</span>
+    </div>
+
+    <select id="wd-interval" class="wd-select" title="refresh interval">
+      <option value="5">5s</option>
+      <option value="15" selected>15s</option>
+      <option value="30">30s</option>
+      <option value="60">60s</option>
+      <option value="0" data-i18n="interval_off">off</option>
+    </select>
+
+    <button id="wd-now" class="wd-iconbtn" title="refresh now" aria-label="refresh">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="23 4 23 10 17 10"></polyline>
+        <path d="M20.49 15A9 9 0 1 1 19 5.51L23 10"></path>
+      </svg>
+    </button>
+
+    <button id="wd-toggle" class="wd-iconbtn" title="pause / resume" aria-label="pause">
+      <svg viewBox="0 0 24 24" fill="currentColor">
+        <rect x="6"  y="5" width="4" height="14" rx="1"/>
+        <rect x="14" y="5" width="4" height="14" rx="1"/>
+      </svg>
+    </button>
+
+    <button id="wd-lang" class="wd-iconbtn lang" title="language">中文</button>
+  </div>
+
+  <!-- ── hero ───────────────────────────────────────────────── -->
+  <div class="wd-hero">
+
+    <div class="wd-ringcard" data-card="soak">
+      <div id="wd-ring" class="wd-ring">
+        <svg width="220" height="220" viewBox="0 0 220 220">
+          <circle class="track" cx="110" cy="110" r="96"
+                  fill="none" stroke-width="14"></circle>
+          <circle id="wd-ring-progress" class="progress" cx="110" cy="110" r="96"
+                  fill="none" stroke-width="14" stroke-linecap="round"
+                  stroke-dasharray="603.18"
+                  stroke-dashoffset="{{ ((100 - board.soak.progress_percent) * 603.18 / 100) | round(2) }}"></circle>
+        </svg>
+        <div class="center">
+          <div class="pct">
+            <span class="wd-roll" data-bind="soak.progress_percent">{{ board.soak.progress_percent }}</span><span class="unit">%</span>
+          </div>
+          <div class="lbl" data-i18n="soak_progress">Soak progress</div>
+        </div>
+      </div>
+      <div class="ringmeta">
+        <span data-i18n="elapsed">elapsed</span>
+        <strong data-bind="soak.elapsed_seconds" data-format="duration">{{ board.soak.elapsed_seconds // 3600 }}h {{ (board.soak.elapsed_seconds % 3600) // 60 }}m</strong>
+        / <strong data-bind="soak.required_seconds" data-format="duration">24h 0m</strong>
+      </div>
+      <div class="ringmeta">
+        T0 <code data-bind="soak.t0">{{ board.soak.t0 or 'unknown' }}</code>
+      </div>
+      <span class="badge" id="wd-soak-badge"
+            data-bind="soak.result" data-format="text">{{ board.soak.result }}</span>
+    </div>
+
+    <div class="wd-card wd-gacard" data-card="release">
+      <div>
+        <div class="wd-section-label" data-i18n="ga_status">GA status</div>
+        <div id="wd-verdict" class="verdict {% if board.release_state.ga_status == 'NO-GO' %}is-nogo{% elif board.release_state.ga_status == 'SHIPPED' %}is-shipped{% else %}is-ready{% endif %}"
+             data-bind="release_state.ga_status">{{ board.release_state.ga_status }}</div>
+        <div class="sub">
+          <div>
+            <span data-i18n="main_branch">main</span>:
+            <code data-bind="release_state.main_sha" data-format="sha7">{{ board.release_state.main_sha[:7] if board.release_state.main_sha else 'unknown' }}</code>
+            <span data-i18n="at">·</span>
+            <span data-bind="release_state.latest_release">{{ board.release_state.latest_release or 'no tag' }}</span>
+          </div>
+          <div style="margin-top:6px;">
+            <code>claude247/v1</code>:
+            <code data-bind="release_state.implementation_branch_sha" data-format="sha7">{{ board.release_state.implementation_branch_sha[:7] if board.release_state.implementation_branch_sha else 'unknown' }}</code>
+          </div>
+          <div style="margin-top:6px;">
+            <span data-i18n="ga_tag">v1.0.0 tag</span>:
+            <strong id="wd-tagstate" data-bind="release_state.ga_tag_exists" data-format="created">
+              {% if board.release_state.ga_tag_exists %}CREATED{% else %}NOT CREATED{% endif %}
+            </strong>
+          </div>
+        </div>
+      </div>
+      <div class="ga-action">
+        <span data-i18n="next_action">next action</span>:
+        <code data-bind="ga_gates.recommendation">{{ board.ga_gates.recommendation }}</code>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── stats grid ─────────────────────────────────────────── -->
+  <div class="wd-grid">
+
+    <div class="wd-card wd-stat" data-card="runtime">
+      <div class="head">
+        <div class="wd-section-label" data-i18n="runtime_health">Runtime health</div>
+        <div id="wd-runtime-ind" class="ind {% if not runtime_ok %}warn{% endif %}"></div>
+      </div>
+      <div class="big">
+        <span data-bind="runtime_health.launchd_loaded">{{ board.runtime_health.launchd_loaded }}</span><span class="sep">/</span><span data-bind="runtime_health.launchd_expected">{{ board.runtime_health.launchd_expected }}</span>
+      </div>
+      <ul>
+        <li><span data-i18n="dispatcher">dispatcher</span>
+          <strong data-bind="runtime_health.dispatcher"
+                  data-class-map='{"healthy":"ok","stale":"warn","down":"err","unknown":"warn"}'>{{ board.runtime_health.dispatcher }}</strong></li>
+        <li><span data-i18n="dashboard">dashboard</span>
+          <strong data-bind="runtime_health.dashboard"
+                  data-class-map='{"healthy":"ok","unreachable":"err","unknown":"warn"}'>{{ board.runtime_health.dashboard }}</strong></li>
+        <li><span data-i18n="notifier">notifier</span>
+          <strong data-bind="runtime_health.notifier"
+                  data-class-map='{"healthy":"ok","not_configured":"warn","unknown":"warn"}'>{{ board.runtime_health.notifier }}</strong></li>
+        <li><span data-i18n="doctor">doctor</span>
+          <strong data-bind="runtime_health.doctor"
+                  data-class-map='{"ok":"ok","fail":"err","unknown":"warn"}'>{{ board.runtime_health.doctor }}</strong></li>
+      </ul>
+    </div>
+
+    <div class="wd-card wd-stat" data-card="queue">
+      <div class="head">
+        <div class="wd-section-label" data-i18n="queue_label">Queue</div>
+        <div id="wd-queue-ind" class="ind"></div>
+      </div>
+      <div class="big">
+        <span data-bind="queue.active_tasks">{{ board.queue.active_tasks }}</span>
+      </div>
+      <ul>
+        <li><span data-i18n="stuck">stuck</span>
+          <strong data-bind="queue.stuck_tasks" data-class-zero-ok>{{ board.queue.stuck_tasks }}</strong></li>
+        <li><span data-i18n="approval">need approval</span>
+          <strong data-bind="queue.need_approval">{{ board.queue.need_approval }}</strong></li>
+        <li><span data-i18n="orphan">orphan</span>
+          <strong data-bind="queue.orphan_commands" data-class-zero-ok>{{ board.queue.orphan_commands }}</strong></li>
+        <li><span data-i18n="pending">pending</span>
+          <strong data-bind="queue.pending_commands">{{ board.queue.pending_commands }}</strong></li>
+      </ul>
+    </div>
+
+    <div class="wd-card wd-stat" data-card="signals">
+      <div class="head">
+        <div class="wd-section-label" data-i18n="signals_label">Recent signals</div>
+        <div id="wd-signals-ind" class="ind"></div>
+      </div>
+      <div class="big">
+        <span data-bind="signals.new_critical_errors" data-class-zero-ok>{{ board.signals.new_critical_errors }}</span>
+      </div>
+      <ul>
+        <li><span data-i18n="historical_errors">historical</span>
+          <strong data-bind="signals.known_historical_errors">{{ board.signals.known_historical_errors }}</strong></li>
+        <li><span data-i18n="alert_storm">alert storm</span>
+          <strong data-bind="signals.alert_storm" data-format="yesno"
+                  data-class-bool-bad>{% if board.signals.alert_storm %}YES{% else %}NO{% endif %}</strong></li>
+        <li><span data-i18n="budget">budget</span>
+          <strong data-bind="signals.budget_sane" data-format="sane"
+                  data-class-bool-good>{% if board.signals.budget_sane %}sane{% else %}EXCEEDED{% endif %}</strong></li>
+        <li><span data-i18n="searchable">searchable</span>
+          <strong data-bind="signals.logs_searchable" data-format="yesno"
+                  data-class-bool-good>{% if board.signals.logs_searchable %}YES{% else %}NO{% endif %}</strong></li>
+      </ul>
+    </div>
+
+    <div class="wd-card wd-stat" data-card="gates">
+      <div class="head">
+        <div class="wd-section-label" data-i18n="ga_gates">GA gates</div>
+        <div id="wd-gates-ind" class="ind"></div>
+      </div>
+      <div class="big">
+        <span data-bind="ga_gates.passed">{{ board.ga_gates.passed }}</span><span class="sep">/</span><span data-bind="ga_gates.total">{{ board.ga_gates.total }}</span>
+      </div>
+      <div class="wd-gatebar">
+        <div id="wd-gatebar-fill" class="fill" style="width: {{ ((board.ga_gates.passed / board.ga_gates.total * 100) if board.ga_gates.total else 0) | round(0) }}%"></div>
+      </div>
+      <div id="wd-blocked" class="wd-blocked">
+        {% for item in board.ga_gates.blocked %}
+        <div class="row"><span class="num">{{ loop.index }}</span><span>{{ item }}</span></div>
+        {% endfor %}
+      </div>
+    </div>
+
+  </div>
+
+  <div class="wd-foot">
+    <span><span data-i18n="generated">Generated</span>
+      <code data-bind="generated_at">{{ board.generated_at }}</code></span>
+    <span class="spacer"></span>
+    <a href="/status-board.json">JSON</a>
+    <a href="/">overview</a>
+    <a href="/logs">logs</a>
   </div>
 
 </div>
@@ -181,16 +493,79 @@
 (function () {
   "use strict";
 
+  /* ── i18n dictionary ──────────────────────────────────────── */
+  const I18N = {
+    en: {
+      title: "Watchdog", status_live: "live", status_paused: "paused",
+      status_fetching: "fetching", status_error: "error",
+      updated_prefix: "updated", just_now: "just now",
+      interval_off: "off", soak_progress: "Soak progress",
+      ga_status: "GA status", elapsed: "elapsed",
+      main_branch: "main", at: "·", ga_tag: "v1.0.0 tag",
+      next_action: "next action", runtime_health: "Runtime health",
+      dispatcher: "dispatcher", dashboard: "dashboard",
+      notifier: "notifier", doctor: "doctor",
+      queue_label: "Queue", stuck: "stuck",
+      approval: "need approval", orphan: "orphan", pending: "pending",
+      signals_label: "Recent signals", historical_errors: "historical",
+      alert_storm: "alert storm", budget: "budget", searchable: "searchable",
+      ga_gates: "GA gates", generated: "Generated",
+      ago_suffix: "ago", btn_lang: "中文", btn_pause: "pause", btn_resume: "resume",
+    },
+    zh: {
+      title: "看板", status_live: "实时", status_paused: "已暂停",
+      status_fetching: "请求中", status_error: "出错",
+      updated_prefix: "上次", just_now: "刚刚",
+      interval_off: "关闭", soak_progress: "Soak 进度",
+      ga_status: "GA 状态", elapsed: "已用",
+      main_branch: "主分支", at: "·", ga_tag: "v1.0.0 标签",
+      next_action: "下一步", runtime_health: "运行健康",
+      dispatcher: "调度器", dashboard: "面板",
+      notifier: "通知", doctor: "doctor",
+      queue_label: "任务队列", stuck: "卡住",
+      approval: "待审批", orphan: "孤儿", pending: "排队中",
+      signals_label: "近期信号", historical_errors: "历史错误",
+      alert_storm: "告警风暴", budget: "预算", searchable: "可搜索",
+      ga_gates: "GA 闸门", generated: "生成于",
+      ago_suffix: "前", btn_lang: "EN", btn_pause: "暂停", btn_resume: "继续",
+    }
+  };
+
   const DEFAULT_INTERVAL = 15;
   const JSON_URL = "/status-board.json";
 
-  const toolbar = document.getElementById("wd-toolbar");
-  const statusEl = document.getElementById("wd-status");
-  const ageEl = document.getElementById("wd-age");
-  const countdownEl = document.getElementById("wd-countdown");
-  const intervalEl = document.getElementById("wd-interval");
-  const nowBtn = document.getElementById("wd-now");
-  const toggleBtn = document.getElementById("wd-toggle");
+  /* ── language state ───────────────────────────────────────── */
+  let lang = localStorage.getItem("wd_lang") || "en";
+
+  function t(key) { return (I18N[lang] && I18N[lang][key]) || I18N.en[key] || key; }
+
+  function applyI18n() {
+    document.querySelectorAll("[data-i18n]").forEach((el) => {
+      el.textContent = t(el.getAttribute("data-i18n"));
+    });
+    document.getElementById("wd-lang").textContent = t("btn_lang");
+    document.getElementById("wd-toggle").title = paused ? t("btn_resume") : t("btn_pause");
+    document.documentElement.lang = (lang === "zh") ? "zh-CN" : "en";
+  }
+
+  /* ── live state ───────────────────────────────────────────── */
+  const toolbarPill = document.getElementById("wd-pill");
+  const statusEl    = document.getElementById("wd-status");
+  const ageEl       = document.getElementById("wd-age");
+  const intervalEl  = document.getElementById("wd-interval");
+  const nowBtn      = document.getElementById("wd-now");
+  const toggleBtn   = document.getElementById("wd-toggle");
+  const langBtn     = document.getElementById("wd-lang");
+  const ringEl      = document.getElementById("wd-ring");
+  const ringPath    = document.getElementById("wd-ring-progress");
+  const soakBadge   = document.getElementById("wd-soak-badge");
+  const verdictEl   = document.getElementById("wd-verdict");
+  const blockedEl   = document.getElementById("wd-blocked");
+  const gateFill    = document.getElementById("wd-gatebar-fill");
+  const runtimeInd  = document.getElementById("wd-runtime-ind");
+  const queueInd    = document.getElementById("wd-queue-ind");
+  const signalsInd  = document.getElementById("wd-signals-ind");
+  const gatesInd    = document.getElementById("wd-gates-ind");
 
   let intervalSeconds = DEFAULT_INTERVAL;
   let paused = false;
@@ -198,33 +573,33 @@
   let nextFetchAt = Date.now() + intervalSeconds * 1000;
   let inFlight = false;
 
-  function setStatus(text, modeClass) {
-    statusEl.textContent = text;
-    toolbar.classList.remove("paused", "errored");
-    if (modeClass) toolbar.classList.add(modeClass);
+  const RING_CIRCUMFERENCE = 2 * Math.PI * 96;  /* r=96 */
+
+  function setStatus(textKey, modeClass) {
+    statusEl.textContent = t(textKey);
+    toolbarPill.classList.remove("paused", "errored");
+    if (modeClass) toolbarPill.classList.add(modeClass);
   }
 
   function dig(obj, path) {
-    return path.split(".").reduce((acc, k) => (acc == null ? acc : acc[k]), obj);
+    return path.split(".").reduce((a, k) => (a == null ? a : a[k]), obj);
   }
 
-  function fmtDuration(seconds) {
-    const s = Math.max(0, parseInt(seconds, 10) || 0);
-    const h = Math.floor(s / 3600);
-    const m = Math.floor((s % 3600) / 60);
-    return `${h}h ${m}m`;
+  function fmtDuration(s) {
+    const x = Math.max(0, parseInt(s, 10) || 0);
+    const h = Math.floor(x / 3600), m = Math.floor((x % 3600) / 60);
+    return h + "h " + m + "m";
   }
 
   function fmtValue(val, format) {
     if (val == null) return "";
     switch (format) {
       case "sha7":     return String(val).slice(0, 7);
-      case "percent":  return String(val);
       case "duration": return fmtDuration(val);
       case "yesno":    return val ? "YES" : "NO";
       case "sane":     return val ? "sane" : "EXCEEDED";
       case "created":  return val ? "CREATED" : "NOT CREATED";
-      case "width":    return null;
+      case "text":     return String(val);
       default:         return String(val);
     }
   }
@@ -253,69 +628,106 @@
     }
   }
 
-  function paintBlocked(list) {
-    const container = document.querySelector("[data-blocked-container]");
-    if (!container) return;
-    if (!list || !list.length) {
-      container.innerHTML = "";
-      return;
-    }
-    const items = list.map((s) => `<li>${escapeHtml(s)}</li>`).join("");
-    container.innerHTML = `<p>blocked:</p><ul class="tight">${items}</ul>`;
+  function rollText(el, newText) {
+    if (el.textContent === newText) return;
+    el.classList.add("flipping");
+    setTimeout(() => {
+      el.textContent = newText;
+      el.classList.remove("flipping");
+    }, 160);
   }
 
-  function escapeHtml(s) {
-    return String(s)
-      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  function paintRing(soak) {
+    const pct = Math.max(0, Math.min(100, soak.progress_percent || 0));
+    const offset = RING_CIRCUMFERENCE * (1 - pct / 100);
+    ringPath.setAttribute("stroke-dashoffset", offset.toFixed(2));
+    ringEl.classList.remove("is-pass", "is-fail", "is-unknown");
+    soakBadge.classList.remove("is-pass", "is-fail", "is-unknown");
+    if (soak.result === "PASS")    { ringEl.classList.add("is-pass");    soakBadge.classList.add("is-pass"); }
+    if (soak.result === "FAIL")    { ringEl.classList.add("is-fail");    soakBadge.classList.add("is-fail"); }
+    if (soak.result === "UNKNOWN") { ringEl.classList.add("is-unknown"); soakBadge.classList.add("is-unknown"); }
   }
 
-  function runtimeOk(rh) {
-    return rh
-      && rh.launchd_loaded === rh.launchd_expected
-      && rh.dispatcher === "healthy"
-      && rh.dashboard === "healthy"
+  function paintVerdict(rs) {
+    verdictEl.classList.remove("is-shipped", "is-nogo", "is-ready");
+    if (rs.ga_status === "SHIPPED") verdictEl.classList.add("is-shipped");
+    else if (rs.ga_status === "NO-GO") verdictEl.classList.add("is-nogo");
+    else verdictEl.classList.add("is-ready");
+  }
+
+  function paintIndicators(payload) {
+    const rh = payload.runtime_health || {};
+    const runtimeOk = rh.launchd_loaded === rh.launchd_expected
+      && rh.dispatcher === "healthy" && rh.dashboard === "healthy"
       && rh.doctor === "ok";
+    runtimeInd.className = "ind " + (runtimeOk ? "" : "warn");
+
+    const q = payload.queue || {};
+    const queueDirty = (q.stuck_tasks||0) > 0 || (q.orphan_commands||0) > 0;
+    queueInd.className = "ind " + (queueDirty ? "err" : "");
+
+    const s = payload.signals || {};
+    let signalsClass = "";
+    if (s.new_critical_errors > 0 || s.alert_storm) signalsClass = "err";
+    else if (!s.budget_sane || !s.logs_searchable) signalsClass = "warn";
+    signalsInd.className = "ind " + signalsClass;
+
+    const g = payload.ga_gates || {};
+    let gatesClass = "";
+    if (g.total && g.passed === g.total) gatesClass = "";
+    else if (g.total) gatesClass = "warn";
+    else gatesClass = "muted";
+    gatesInd.className = "ind " + gatesClass;
   }
 
-  function paintRuntimeSummary(rh) {
-    const el = document.querySelector("[data-runtime-summary]");
-    if (!el) return;
-    const ok = runtimeOk(rh);
-    el.textContent = ok ? "HEALTHY" : "DEGRADED";
-    el.classList.remove("ok", "warn", "err");
-    el.classList.add(ok ? "ok" : "warn");
+  function paintBlocked(list) {
+    if (!blockedEl) return;
+    if (!list || !list.length) { blockedEl.innerHTML = ""; return; }
+    const esc = (s) => String(s).replace(/[&<>"']/g, c => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    }[c]));
+    blockedEl.innerHTML = list.map((item, i) =>
+      `<div class="row"><span class="num">${i+1}</span><span>${esc(item)}</span></div>`
+    ).join("");
+  }
+
+  function paintGateBar(g) {
+    if (!gateFill || !g.total) return;
+    const pct = Math.round((g.passed / g.total) * 100);
+    gateFill.style.width = pct + "%";
   }
 
   function paint(payload) {
     document.querySelectorAll("[data-bind]").forEach((el) => {
       const path = el.getAttribute("data-bind");
-      const raw = dig(payload, path);
-      const fmt = el.getAttribute("data-format");
-      if (fmt === "width") {
-        el.style.width = String(raw) + "%";
-      } else {
-        const text = fmtValue(raw, fmt);
-        if (text !== null) el.textContent = text;
+      const raw  = dig(payload, path);
+      const fmt  = el.getAttribute("data-format");
+      const text = fmtValue(raw, fmt);
+      if (text !== null && text !== undefined) {
+        if (el.classList.contains("wd-roll")) rollText(el, text);
+        else el.textContent = text;
       }
       applyClassMap(el, raw, raw);
     });
-    paintRuntimeSummary(payload.runtime_health);
-    paintBlocked(payload.ga_gates && payload.ga_gates.blocked);
+    paintRing(payload.soak || {});
+    paintVerdict(payload.release_state || {});
+    paintBlocked((payload.ga_gates || {}).blocked);
+    paintGateBar(payload.ga_gates || {});
+    paintIndicators(payload);
     flashCards();
   }
 
   function flashCards() {
-    document.querySelectorAll(".card").forEach((c) => {
+    document.querySelectorAll(".wd-card, .wd-ringcard").forEach((c) => {
       c.classList.add("updated");
-      setTimeout(() => c.classList.remove("updated"), 400);
+      setTimeout(() => c.classList.remove("updated"), 450);
     });
   }
 
   async function fetchNow() {
     if (inFlight || paused) return;
     inFlight = true;
-    setStatus("fetching", null);
+    setStatus("status_fetching", null);
     try {
       const r = await fetch(JSON_URL, { cache: "no-store" });
       if (!r.ok) throw new Error("HTTP " + r.status);
@@ -323,9 +735,9 @@
       paint(payload);
       lastFetchAt = Date.now();
       nextFetchAt = lastFetchAt + intervalSeconds * 1000;
-      setStatus("live", null);
+      setStatus("status_live", null);
     } catch (e) {
-      setStatus("error: " + e.message, "errored");
+      setStatus("status_error", "errored");
       nextFetchAt = Date.now() + Math.max(5, intervalSeconds) * 1000;
     } finally {
       inFlight = false;
@@ -335,44 +747,45 @@
   function tick() {
     const now = Date.now();
     const ageS = Math.floor((now - lastFetchAt) / 1000);
-    ageEl.textContent = ageS < 1 ? "just now" : (ageS + "s ago");
-    if (paused) {
-      countdownEl.textContent = "—";
-      return;
-    }
-    if (intervalSeconds === 0) {
-      countdownEl.textContent = "off";
-      return;
-    }
-    const remainS = Math.max(0, Math.ceil((nextFetchAt - now) / 1000));
-    countdownEl.textContent = String(remainS);
-    if (remainS === 0 && !inFlight) fetchNow();
+    if (ageS < 1) ageEl.textContent = t("just_now");
+    else ageEl.textContent = ageS + "s " + t("ago_suffix");
+    if (paused || intervalSeconds === 0) return;
+    if (now >= nextFetchAt && !inFlight) fetchNow();
   }
 
   intervalEl.addEventListener("change", () => {
     intervalSeconds = parseInt(intervalEl.value, 10) || 0;
-    nextFetchAt = Date.now() + (intervalSeconds || 1) * 1000;
-    if (intervalSeconds === 0) setStatus("manual", null);
-    else if (!paused) setStatus("live", null);
+    if (intervalSeconds === 0) {
+      setStatus("status_paused", "paused");
+    } else if (!paused) {
+      nextFetchAt = Date.now() + intervalSeconds * 1000;
+      setStatus("status_live", null);
+    }
   });
 
   toggleBtn.addEventListener("click", () => {
     paused = !paused;
-    toggleBtn.textContent = paused ? "resume" : "pause";
-    if (paused) setStatus("paused", "paused");
-    else {
-      setStatus("live", null);
-      nextFetchAt = Date.now();
-    }
+    toggleBtn.title = paused ? t("btn_resume") : t("btn_pause");
+    toggleBtn.innerHTML = paused
+      ? '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 4l14 8-14 8z"/></svg>'
+      : '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
+    if (paused) setStatus("status_paused", "paused");
+    else { setStatus("status_live", null); nextFetchAt = Date.now(); }
   });
 
-  nowBtn.addEventListener("click", () => {
-    nextFetchAt = Date.now();
-    fetchNow();
+  nowBtn.addEventListener("click", () => { nextFetchAt = Date.now(); fetchNow(); });
+
+  langBtn.addEventListener("click", () => {
+    lang = (lang === "en") ? "zh" : "en";
+    localStorage.setItem("wd_lang", lang);
+    applyI18n();
   });
 
-  setStatus("live", null);
-  setInterval(tick, 250);
+  // initial paint
+  applyI18n();
+  // first render is already SSR; ring already has correct dashoffset.
+  // schedule fetches.
+  setInterval(tick, 500);
   fetchNow();
 })();
 </script>
