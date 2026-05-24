@@ -70,16 +70,26 @@ the code that implements it and the test(s) that prove it.
 | 53 | Live GitHub webhook through ngrok | ✓ | M18-P3: `WEBHOOK_LIVE_REPORT.md`. Explicit `handle_ping` added in `orchestrator/webhooks.py`. Real deliveries: 1 ping + 1 pull_request + 7 check_run, all 200 OK + DB persisted. |
 | 54 | Second real E2E on local-first auth path | ✓ | M18-P4: `REAL_E2E_REPORT_M18_P4.md`. $0.00 Anthropic spend, real Gemini judge, PR #53 cycled through full pipeline, auto-merge gate held on NEEDS_HUMAN verdict. |
 
-## Truly remaining (beta-readiness backlog → BR-001/002/003)
+## M19 beta-stabilization (v1.0.0-beta.1)
 
-- BR-001 (medium): `JudgeInput` includes diff *summary*, not diff
-  *body*. Real validators (correctly) refuse to verify byte-identical
-  preservation without the body. Surfaced by P4.
-- BR-002 (low): `env_loader.load()` only reads
-  `~/.claude-code-247/.env`; project-local `.env` is ignored.
-  `OPENAI_API_KEY` in CWD/.env runs as mock in P4.
-- BR-003 (low): dispatcher summary reports `worker_exit: 3` even when
-  role artifacts are complete and PR is clean. Observability nit.
+| # | Item | Status | Where it lives |
+|---|---|---|---|
+| 55 | BR-001 — safe diff body to validators | ✓ | M19-P1 (`c6d6aeb`): `EvidenceCollector.snapshot_diff_body_safe()` emits `.evidence/diff_body_safe.md` + `diff_body_metadata.json`; default forbidden-path floor + per-file `secret_scanner.scan`; `JudgeInput` gains `diff_body_safe` + `diff_body_metadata`; `evidence_prompt()` adds `## DIFF_BODY` + directive instruction. 18 tests. |
+| 56 | BR-002 — deterministic env + config resolution | ✓ | M19-P2 (`b65e7f6`): `orchestrator/env_loader.py::{discover_env_paths, load_chain, RuntimeConfig, load_runtime_config}`; `orchestrator/config.py::resolve_config_path`; `gateway/doctor.py::check_config_source`; `scripts/launchd/*.plist.tpl` set `CLAUDE247_CONFIG`. 28 tests. |
+| 57 | BR-003 — per-phase worker_exits observability | ✓ | M19-P3 (`687144c`): new `worker_exits` SQLite table (schema v3) + `orchestrator/worker_exits.py::{CLASSIFICATIONS, record_worker_exit, list_worker_exits, classify_failure}`; instrumented `evidence_collector.run_named_commands`; `handle_explain_stuck` surfaces rows; new `claude247 worker-exits` CLI. 25 tests. |
+| 58 | M19-F1 — secret_scanner FP on `tokens` | ✓ | M19-P5b (`396c153`): `(?im)` → `(?m)` in `env_var_assign` regex. 2 regression tests. Surfaced by Phase 5 first E2E run; verified fixed by Phase 5 rerun (Gemini real PASS conf 1.0 on the same diff that was previously redacted). |
+
+## Truly remaining
+
+- Real-validator auto-merge demo with BOTH Gemini + OpenAI returning
+  real `PASS` on a non-trivial diff — gated on the operator setting
+  `OPENAI_API_KEY`. System is ready (M19-P5 rerun proved the path
+  end-to-end except for the missing OpenAI key).
+- Deeper per-phase `worker_exits` instrumentation outside
+  `evidence_collector.run_named_commands` (e.g., `prepare_workspace`,
+  `checkout_repo`, `create_branch`, `push`, `open_pr`, `merge_policy`,
+  `merge`). Infrastructure is in place; each addition is a one-line
+  `record_worker_exit` call.
 - Qdrant backend's `text-embedding-3-small` path is wired but
   un-tested live (no Qdrant running, no embedding key in test env).
 - Multi-machine HA isn't designed for — single-Mac scope is by design.
