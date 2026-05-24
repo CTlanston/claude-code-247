@@ -12,6 +12,7 @@
 | Elapsed (dispatcher) | ~15 min |
 | Elapsed (dashboard) | ~2 h |
 | Designation | **T+15m / T+2h — clearly < T+1h checkpoint for dispatcher; clearly < T+24h** |
+| Second checkpoint (M22-P1 invocation) | 2026-05-24 22:33 UTC = T+47m dispatcher / T+2h36m dashboard. Still PARTIAL. Health unchanged — 4/4 launchd loaded, dashboard `/healthz` OK, dispatcher idle queue empty, dispatcher.err.log holds only 2 historical M20-P3 entries (root-caused before beta.2), 0 orphans, 0 active tasks. See [M22_GA_DECISION_REPORT.md](M22_GA_DECISION_REPORT.md) for full Phase 0/1 snapshot. |
 
 ## What's verified right now
 
