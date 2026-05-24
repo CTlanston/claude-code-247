@@ -30,6 +30,7 @@ from gateway.commands.merge_cmd import (
 from gateway.commands.repo_cmd import repo as repo_grp
 from gateway.commands.repos_cmd import repos as repos_cmd
 from gateway.commands.start_cmd import start as start_cmd
+from gateway.commands.status_board_cmd import status_board as status_board_cmd
 from gateway.commands.status_cmd import status as status_cmd
 from gateway.commands.tasks_cmd import task_show, tasks as tasks_cmd
 from gateway.commands.worker_exits_cmd import worker_exits as worker_exits_cmd
@@ -45,6 +46,10 @@ cli.add_command(doctor_cmd)
 cli.add_command(repos_cmd)
 cli.add_command(repo_grp)
 cli.add_command(status_cmd)
+cli.add_command(status_board_cmd)
+# `watchdog` is an alias for the same command — same handler, friendlier
+# name when checking from a phone during a long soak.
+cli.add_command(status_board_cmd, name="watchdog")
 cli.add_command(start_cmd)
 cli.add_command(pause_cmd)
 cli.add_command(resume_cmd)

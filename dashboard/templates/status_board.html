@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block body %}
+<style>
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+  .card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; }
+  .card h2 { margin: 0 0 8px; font-size: 14px; text-transform: uppercase;
+              letter-spacing: 0.05em; color: #555; }
+  .big { font-size: 22px; font-weight: 600; }
+  .bar { background: #eee; border-radius: 4px; height: 10px; overflow: hidden;
+          margin: 8px 0 4px; }
+  .bar-fill { background: #06c; height: 100%; }
+  .ok    { color: #2c7a2c; }
+  .warn  { color: #b27600; }
+  .err   { color: #b22; }
+  ul.tight { margin: 4px 0; padding-left: 18px; }
+  pre { white-space: pre-wrap; background: #f7f7f7; padding: 8px;
+         border-radius: 4px; font-size: 12px; }
+</style>
+
+<p style="margin-top:0; color:#666;">
+  Generated <code>{{ board.generated_at }}</code> · read-only ·
+  <a href="/status-board.json">JSON</a> ·
+  refresh: <a href="">manual</a>
+</p>
+
+<div class="grid">
+
+  <div class="card">
+    <h2>GA status</h2>
+    <p class="big {% if board.release_state.ga_status == 'SHIPPED' %}ok
+                   {% elif board.release_state.ga_status == 'NO-GO' %}err
+                   {% else %}warn{% endif %}">
+      {{ board.release_state.ga_status }}
+    </p>
+    <ul class="tight">
+      <li><code>main</code>: {{ board.release_state.main_sha[:7] if board.release_state.main_sha else 'unknown' }}
+        ({{ board.release_state.latest_release or 'no tag' }})</li>
+      <li><code>claude247/v1</code>: {{ board.release_state.implementation_branch_sha[:7] if board.release_state.implementation_branch_sha else 'unknown' }}</li>
+      <li><code>v1.0.0</code> tag:
+        {% if board.release_state.ga_tag_exists %}<span class="ok">CREATED</span>
+        {% else %}<span class="warn">NOT CREATED</span>{% endif %}</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Soak progress</h2>
+    <p class="big {% if board.soak.result == 'PASS' %}ok
+                   {% elif board.soak.result == 'FAIL' %}err
+                   {% else %}warn{% endif %}">
+      {{ board.soak.result }} · {{ board.soak.progress_percent }}%
+    </p>
+    <div class="bar"><div class="bar-fill"
+         style="width: {{ board.soak.progress_percent }}%"></div></div>
+    <ul class="tight">
+      <li>T0: <code>{{ board.soak.t0 or 'unknown' }}</code></li>
+      <li>elapsed: {{ board.soak.elapsed_seconds // 3600 }}h
+        {{ (board.soak.elapsed_seconds % 3600) // 60 }}m
+        of {{ board.soak.required_seconds // 3600 }}h</li>
+      <li>earliest full check:
+        <code>{{ board.soak.earliest_full_check or 'unknown' }}</code></li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Runtime health</h2>
+    <p class="big {% if runtime_ok %}ok{% else %}warn{% endif %}">
+      {% if runtime_ok %}HEALTHY{% else %}DEGRADED{% endif %}
+    </p>
+    <ul class="tight">
+      <li>launchd: {{ board.runtime_health.launchd_loaded }} /
+        {{ board.runtime_health.launchd_expected }} loaded</li>
+      <li>dispatcher: <code>{{ board.runtime_health.dispatcher }}</code></li>
+      <li>dashboard: <code>{{ board.runtime_health.dashboard }}</code></li>
+      <li>notifier: <code>{{ board.runtime_health.notifier }}</code></li>
+      <li>doctor: <code>{{ board.runtime_health.doctor }}</code></li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Queue &amp; tasks</h2>
+    <ul class="tight">
+      <li>repos enabled: {{ board.queue.repos_enabled }}</li>
+      <li>active tasks: {{ board.queue.active_tasks }}</li>
+      <li>stuck tasks: {{ board.queue.stuck_tasks }}</li>
+      <li>need approval: {{ board.queue.need_approval }}</li>
+      <li>orphan commands: {{ board.queue.orphan_commands }}</li>
+      <li>pending commands: {{ board.queue.pending_commands }}</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Recent signals</h2>
+    <ul class="tight">
+      <li>new critical errors (1h):
+        {% if board.signals.new_critical_errors %}<span class="err">{{ board.signals.new_critical_errors }}</span>
+        {% else %}0{% endif %}</li>
+      <li>known historical errors: {{ board.signals.known_historical_errors }}</li>
+      <li>alert storm:
+        {% if board.signals.alert_storm %}<span class="err">YES</span>
+        {% else %}NO{% endif %}</li>
+      <li>budget:
+        {% if board.signals.budget_sane %}sane
+        {% else %}<span class="err">EXCEEDED</span>{% endif %}</li>
+      <li>logs searchable:
+        {% if board.signals.logs_searchable %}YES{% else %}<span class="err">NO</span>{% endif %}</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>GA gates</h2>
+    <p class="big">
+      {{ board.ga_gates.passed }} / {{ board.ga_gates.total }} passed
+    </p>
+    {% if board.ga_gates.blocked %}
+    <p>blocked:</p>
+    <ul class="tight">
+      {% for item in board.ga_gates.blocked %}
+        <li>{{ item }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    <p>next action:
+      <code>{{ board.ga_gates.recommendation }}</code></p>
+  </div>
+
+</div>
+
+<h2 style="margin-top:24px;">Plain dump (for CLI parity)</h2>
+<pre>{{ plain_dump }}</pre>
+{% endblock %}

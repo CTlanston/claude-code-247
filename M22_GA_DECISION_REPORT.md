@@ -127,3 +127,71 @@ When that window arrives:
    `M22_SOAK_BLOCKERS.md` and stay NO-GO until fixed.
 
 **Until then, `main` stays at `v1.0.0-beta.2` and no v1.0.0 tag exists.**
+
+---
+
+## M22b — Watchdog dashboard added (2026-05-24)
+
+A read-only watchdog dashboard was added so the operator can see live
+soak progress and GA-readiness state at any moment during the wait
+without re-reading log files.
+
+| Field | Value |
+|---|---|
+| M22b watchdog dashboard added | YES |
+| Entry point | `claude247 status-board` (alias: `claude247 watchdog`) |
+| Outputs | `--plain`, `--json`, `--write-md PATH` |
+| FastAPI route | `/status-board` (HTML) + `/status-board.json` |
+| Generated markdown snapshot | [M22_WATCHDOG_DASHBOARD.md](M22_WATCHDOG_DASHBOARD.md) |
+| Read-only contract | Enforced by `tests/unit/test_status_board.py::test_read_only_does_not_mutate_db` |
+| Tests added | 34 (3 unit files + 1 integration file) |
+| Tests result | 560 passing total (was 526; +34 new) |
+
+### Snapshot at M22b implementation time
+
+| Section | Value |
+|---|---|
+| Generated | `2026-05-24T23:08Z` |
+| Current GA status | **NO-GO** |
+| Current soak progress | **PARTIAL** — 01h 22m / 24h, 5% |
+| Current runtime health | **HEALTHY** — 4/4 launchd loaded; dispatcher / dashboard / notifier / doctor all green |
+| Queue | clean — 0 active, 0 stuck, 0 orphan, 6 historical approvals |
+| Recent signals | 0 new critical errors, 5 historical; no alert storm; budget sane; logs searchable |
+| GA gates | **17 / 19 passed**; blockers = (1) 24h soak PASS, (2) Docs current |
+| Next action recommendation | `wait_for_24h_soak` |
+
+### Next exact command (when re-running M22 → M22c)
+
+After the dispatcher T0 (`2026-05-24T21:46Z`) plus 24 hours has elapsed,
+i.e. on or after `2026-05-25T21:46Z`:
+
+```bash
+# 1. live watchdog snapshot
+claude247 status-board --plain
+
+# 2. write a checkpoint markdown
+claude247 status-board --write-md M22_WATCHDOG_DASHBOARD.md
+
+# 3. classic full M22-P0 / M22-P1 checks
+.venv/bin/pytest -q
+scripts/doctor_launchd.sh || true
+claude247 doctor --plain
+```
+
+If the watchdog reports `soak.result == "PASS"` AND `ga_gates.recommendation
+== "request_ga_approval"`, only then proceed to the (still operator-gated)
+GA tag sequence. Until then, **do not** tag `v1.0.0`, **do not** merge
+into `main`, **do not** cut a GitHub release.
+
+### Why this is safe to add now (during the soak)
+
+* All data access is SELECT-only against the SQLite state DB.
+* `launchctl list` is invoked read-only; no service is loaded / unloaded.
+* Dashboard `/healthz` is a 2-second-timeout GET.
+* No changes to dispatcher, runner, validator, merge policy, or budget.
+* New module + CLI command + FastAPI route only — no edits to
+  `orchestrator/dispatcher.py`, `orchestrator/task_manager.py`, or
+  any launchd plist.
+* The running dashboard daemon will pick up the new `/status-board`
+  routes on its next restart; until then the CLI works regardless.
+

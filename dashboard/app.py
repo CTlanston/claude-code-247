@@ -14,6 +14,11 @@ from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from gateway.status_board import (
+    collect_status_board,
+    render_plain,
+    runtime_is_ok,
+)
 from memory.db import default_db_path, init_db, open_db
 from orchestrator import alert_deduper, budget_manager, log_indexer, metrics, webhooks
 from orchestrator.command_queue import enqueue, list_commands
@@ -50,6 +55,26 @@ def create_app() -> FastAPI:
         init_db()
         return PlainTextResponse(metrics.render(),
                                   media_type="text/plain; version=0.0.4")
+
+    # ── status board (M22b watchdog) ───────────────────────────────
+
+    @app.get("/status-board", response_class=HTMLResponse)
+    async def status_board_page(request: Request) -> HTMLResponse:
+        init_db()
+        board = collect_status_board()
+        ctx = {
+            "request": request,
+            "title": "Watchdog — claude-code-247",
+            "board": board,
+            "runtime_ok": runtime_is_ok(board.runtime_health),
+            "plain_dump": render_plain(board),
+        }
+        return templates.TemplateResponse(request, "status_board.html", ctx)
+
+    @app.get("/status-board.json")
+    async def status_board_json() -> JSONResponse:
+        init_db()
+        return JSONResponse(collect_status_board().to_dict())
 
     # ── overview ────────────────────────────────────────────────────
 
