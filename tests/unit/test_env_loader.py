@@ -59,3 +59,21 @@ def test_default_env_path_uses_env_override(monkeypatch: pytest.MonkeyPatch,
     target = tmp_path / "custom.env"
     monkeypatch.setenv("CLAUDE247_ENV_FILE", str(target))
     assert env_loader.default_env_path() == target
+
+
+def test_m20_p1b_bash_export_prefix_is_stripped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """secrets.env files are often written `export VAR=value` because
+    they're sourced from a shell. Before this fix, the loader would
+    set ``os.environ['export VAR'] = value`` (the literal "export "
+    prefix kept as part of the key name — a useless garbage env var).
+    Now the prefix is stripped so the result is a real env var."""
+    monkeypatch.delenv("M20_BASH_EXPORT_PROBE", raising=False)
+    monkeypatch.delenv("export M20_BASH_EXPORT_PROBE", raising=False)
+    p = tmp_path / "secrets.env"
+    p.write_text("export M20_BASH_EXPORT_PROBE=sk-test\n")
+    applied = env_loader.load(p)
+    assert "M20_BASH_EXPORT_PROBE" in applied
+    assert os.environ["M20_BASH_EXPORT_PROBE"] == "sk-test"
+    assert "export M20_BASH_EXPORT_PROBE" not in os.environ

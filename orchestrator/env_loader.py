@@ -67,6 +67,11 @@ def load(path: Path | str | None = None, *,
             continue
         key, _, value = line.partition("=")
         key = key.strip()
+        # M20-P1b: bash-style `export VAR=value` is common in secrets.env
+        # files because they're often sourced from a shell. Strip the
+        # `export` prefix so the resulting key is a real env var name.
+        if key.startswith("export "):
+            key = key[len("export "):].strip()
         value = value.strip().strip('"').strip("'")
         if not key:
             continue
@@ -82,13 +87,20 @@ def discover_env_paths(
     cwd: Path | None = None,
     project_root: Path | None = None,
 ) -> list[Path]:
-    """Return the ordered list of ``.env`` paths to apply.
+    """Return the ordered list of env files to apply.
 
-    Order = first wins among .env files (highest priority first):
+    Order = first wins among files (highest priority first):
 
       1. ``<project_root>/.env`` if project_root is known
       2. ``<cwd>/.env`` if different from project_root
       3. ``<user_config_dir>/.env`` (``~/.claude-code-247/.env`` by default)
+      4. ``<user_config_dir>/secrets.env``  — M20-P1b
+
+    The ``secrets.env`` slot exists because the operator may keep a
+    dedicated secret store separate from their general .env (commonly
+    `chmod 600`, never shared). Before this slot existed, launchd-
+    spawned daemons couldn't see those keys because there's no shell
+    wrapper between launchd and the dispatcher process.
 
     Missing files are still returned in the list; ``load_chain`` skips
     them gracefully. Returning every candidate (existing or not) makes
@@ -103,7 +115,9 @@ def discover_env_paths(
         cwd_env = Path(cwd).expanduser() / ".env"
         if cwd_env not in out:
             out.append(cwd_env)
-    out.append(default_config_dir() / ".env")
+    user_dir = default_config_dir()
+    out.append(user_dir / ".env")
+    out.append(user_dir / "secrets.env")
     return out
 
 
