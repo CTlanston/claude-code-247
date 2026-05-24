@@ -18,6 +18,7 @@ from gateway.commands.control_cmd import (
     stop_all as stop_all_cmd,
 )
 from gateway.commands.doctor_cmd import doctor as doctor_cmd
+from gateway.commands.logs_cmd import logs as logs_grp
 from gateway.commands.merge_cmd import (
     approve_merge as approve_merge_cmd,
     reject_merge as reject_merge_cmd,
@@ -51,6 +52,7 @@ cli.add_command(task_show)
 cli.add_command(approve_merge_cmd)
 cli.add_command(reject_merge_cmd)
 cli.add_command(risk_cmd)
+cli.add_command(logs_grp)
 
 
 def main() -> int:
