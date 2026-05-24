@@ -34,6 +34,7 @@ state/
 workspaces/
 worktrees/
 logs/
+.evidence/
 
 # Operator backups & sentinels created in archive/auto-evo/state/ at runtime
 archive/auto-evo/state/*.db
