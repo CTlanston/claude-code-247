@@ -60,12 +60,24 @@ validators:
   gemini:
     enabled: true
     model: gemini-2.5-pro
+    # When true, a real Gemini PASS is REQUIRED for auto-merge — a
+    # mock pass cannot silently substitute. The mock adapter is still
+    # safe for dev/test; production should keep this true.
+    require_real_for_auto_merge: true
   openai:
     enabled: true
     model: gpt-5
+    require_real_for_auto_merge: true
+
   # When both are enabled, both must PASS for auto-merge. Disagreement
   # forces approval. When fewer than 2 are enabled, auto-merge is blocked.
   require_two_validators: true
+
+  # M18-P1 mock gate. When false (default), validation_policy.validate
+  # refuses ok_for_auto_merge=True if ANY result's validator name ends
+  # with "-mock". Set to true ONLY in dev/test scripts that need to
+  # exercise the auto-merge path without spending on real APIs.
+  allow_mock_validators_for_auto_merge: false
 
 notifications:
   ntfy:

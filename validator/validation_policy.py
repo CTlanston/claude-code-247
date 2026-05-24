@@ -111,7 +111,30 @@ def validate(
             gaps = sum((r.evidence_gaps for r in results), [])
             reasons.append(f"PASS but with evidence gaps flagged: {gaps}")
             return ValidationOutcome(False, True, "NEEDS_HUMAN", results, reasons)
-        reasons.append("all validators PASS, no disagreement")
+        # M18-P1: mock validators cannot silently satisfy auto-merge.
+        mock_names = [r.validator for r in results
+                       if r.validator.endswith("-mock")]
+        allow_mock = bool(cfg.get(
+            "validators.allow_mock_validators_for_auto_merge", False))
+        if mock_names and not allow_mock:
+            reasons.append(
+                f"PASS but mock validators present: {mock_names}; "
+                "validators.allow_mock_validators_for_auto_merge=false "
+                "→ routing to approval"
+            )
+            return ValidationOutcome(False, True, "NEEDS_HUMAN", results, reasons)
+        # Per-validator require_real_for_auto_merge: if a validator is
+        # configured to require real mode but its result was mock, block.
+        for r in results:
+            kind = r.validator.removesuffix("-mock")
+            if (r.validator.endswith("-mock")
+                and bool(cfg.get(f"validators.{kind}.require_real_for_auto_merge", False))):
+                reasons.append(
+                    f"validators.{kind}.require_real_for_auto_merge=true "
+                    f"but {r.validator} ran → routing to approval"
+                )
+                return ValidationOutcome(False, True, "NEEDS_HUMAN", results, reasons)
+        reasons.append("all validators PASS, no disagreement, no mock")
         return ValidationOutcome(True, False, "PASS", results, reasons)
     if only == "FAIL":
         reasons.append("all validators FAIL")
