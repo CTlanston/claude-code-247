@@ -32,6 +32,7 @@ from gateway.commands.repos_cmd import repos as repos_cmd
 from gateway.commands.start_cmd import start as start_cmd
 from gateway.commands.status_cmd import status as status_cmd
 from gateway.commands.tasks_cmd import task_show, tasks as tasks_cmd
+from gateway.commands.worker_exits_cmd import worker_exits as worker_exits_cmd
 
 
 @click.group(help="Local-first, multi-repo, 24/7 autonomous coding coworker.")
@@ -59,6 +60,7 @@ cli.add_command(logs_grp)
 cli.add_command(memory_grp)
 cli.add_command(replay_cmd)
 cli.add_command(dispatcher_cmd)
+cli.add_command(worker_exits_cmd)
 
 
 def main() -> int:

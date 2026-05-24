@@ -146,7 +146,52 @@ Deterministic env + config resolution.
 - `tests/unit/test_launchd_plist_sets_config_env.py` (9 — 4×2 parametrized + 1)
 
 **Test posture**: 465 passing (up from 437 after Phase 1).
-## Phase 3 — BR-003 status: NOT STARTED
+## Phase 3 — BR-003 status: ✅ DONE
+
+Per-phase worker exit observability.
+
+**Code**:
+- `memory/schema.sql`: new `worker_exits` table (per directive schema)
+  + indexes on `(task_id, created_at)` and `(classification, created_at)`.
+  Bumped `schema_version` to 3 (additive — idempotent re-init on existing DBs).
+- `orchestrator/worker_exits.py` (new module):
+  - `CLASSIFICATIONS` frozenset of canonical labels (success, test_failure,
+    lint_failure, build_failure, claude_cli_failure, auth_failure,
+    docker_failure, git_failure, github_failure, validator_failure,
+    merge_policy_block, timeout, policy_block, unknown_failure)
+  - `WorkerExit` dataclass + `record_worker_exit(...)` writer (raises
+    ValueError on unknown classification to surface typos)
+  - `list_worker_exits(task_id, limit)` chronological reader
+  - `classify_failure(phase, exit_code, command, stderr_tail, verdict)`
+    heuristic — order: merge_policy_block → timeout → success → auth
+    markers → command-head (claude/gh/git/docker) → phase fallback
+    (tests/lint/build/validate) → unknown_failure
+- `runner/evidence_collector.py`: `run_named_commands` now writes a
+  worker_exits row per command when task_spec carries task_id + repo_id.
+  Best-effort — DB errors never propagate to the worker.
+- `orchestrator/dispatcher.py::handle_explain_stuck`: surfaces
+  `worker_exits` in the returned summary so the operator sees phase,
+  classification, stderr_tail, next_action without spelunking logs.
+  Adds `claude247 worker-exits --task <id>` to the suggested safe commands.
+- `gateway/commands/worker_exits_cmd.py` (new): `claude247 worker-exits
+  --task <id>` with `--plain` and `--json` output modes.
+- `gateway/cli.py`: registered the new command.
+
+**Tests** (25 new):
+- `tests/unit/test_worker_exit_record.py` (7)
+- `tests/unit/test_worker_exit_classification.py` (13)
+- `tests/unit/test_explain_stuck_uses_worker_exit.py` (3)
+- `tests/integration/test_failed_worker_writes_exit_record.py` (2)
+
+**Test posture**: 490 passing (up from 465 after Phase 2).
+
+**Scope note**: this PR instruments the highest-leverage call site
+(`evidence_collector.run_named_commands` — tests/lint/build phases) and
+ships the table + recorder + classifier + CLI + explain-stuck wiring.
+Deeper per-phase instrumentation (workspace prepare, branch, push,
+open_pr, merge gate calls) is left for incremental follow-ups; the
+infrastructure is in place so each addition is a one-line `record_worker_exit`
+call.
 ## Phase 4 — Full tests: NOT STARTED
 ## Phase 5 — Third real E2E: NOT STARTED (gated)
 ## Phase 6 — Tag v1.0.0-beta.1: NOT STARTED (gated)

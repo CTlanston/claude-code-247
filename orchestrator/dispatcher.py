@@ -553,6 +553,13 @@ def handle_explain_stuck(cmd: Command, *, db_path=None, **_) -> dict:
         return {"error": f"unknown task {cmd.task_id}"}
     events = get_timeline(cmd.task_id, db_path=db_path)
     last = events[-1] if events else None
+    # M19/BR-003 — include latest worker_exits so the operator can see
+    # which phase actually stopped the task instead of having to spelunk
+    # through logs.
+    from orchestrator.worker_exits import list_worker_exits
+    worker_exits = [we.to_dict() for we in list_worker_exits(
+        task_id=cmd.task_id, db_path=db_path,
+    )]
     summary = {
         "task_id": t.id, "repo_id": t.repo_id, "goal": t.goal,
         "status": t.status, "branch": t.branch,
@@ -560,10 +567,12 @@ def handle_explain_stuck(cmd: Command, *, db_path=None, **_) -> dict:
             "at": last["created_at"], "type": last["event_type"],
             "message": last["message"],
         } if last else None,
+        "worker_exits": worker_exits,
         "recommended_next": _recommended_next(t.status),
         "safe_commands": [
             f"claude247 replay --task {t.id} --explain-only",
             f"claude247 logs tail --task {t.id} --limit 50",
+            f"claude247 worker-exits --task {t.id}",
             f"claude247 task {t.id}",
         ],
     }

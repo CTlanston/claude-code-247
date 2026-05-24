@@ -293,7 +293,39 @@ CREATE TABLE IF NOT EXISTS system_state (
 );
 
 -- ────────────────────────────────────────────────────────────────────────
--- schema_version: tracks migrations (M1 = 1, M11 added system_state = 2).
+-- worker_exits (M19/BR-003): structured per-phase exit records.
+--
+-- Before this table, dispatcher summaries said "worker_exit: 3" with no
+-- way to tell whether claude CLI / docker / git / pytest / validator /
+-- merge gate was the actual blocker. This table classifies each phase
+-- end so explain-stuck + dashboard can answer "what stopped you".
+CREATE TABLE IF NOT EXISTS worker_exits (
+  id              TEXT PRIMARY KEY,
+  created_at      TEXT NOT NULL,
+  task_id         TEXT NOT NULL,
+  repo_id         TEXT NOT NULL,
+  run_id          TEXT,
+  worker_role     TEXT NOT NULL,                -- runner|planner|coder|reviewer|repair|...
+  phase           TEXT NOT NULL,                -- prepare_workspace|tests|lint|...|merge
+  command         TEXT,
+  exit_code       INTEGER,
+  duration_ms     INTEGER,
+  classification  TEXT NOT NULL,                -- success|test_failure|claude_cli_failure|...
+  stdout_tail     TEXT,
+  stderr_tail     TEXT,
+  error_message   TEXT,
+  retryable       INTEGER NOT NULL DEFAULT 0,
+  next_action     TEXT,
+  payload_json    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_worker_exits_task ON worker_exits(task_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_worker_exits_classification ON worker_exits(classification, created_at);
+
+-- ────────────────────────────────────────────────────────────────────────
+-- schema_version: tracks migrations.
+--   v1  initial M1 schema
+--   v2  M11 added system_state
+--   v3  M19/BR-003 added worker_exits
 CREATE TABLE IF NOT EXISTS schema_version (
   version         INTEGER PRIMARY KEY,
   applied_at      TEXT NOT NULL
@@ -302,3 +334,5 @@ INSERT OR IGNORE INTO schema_version (version, applied_at)
 VALUES (1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
 INSERT OR IGNORE INTO schema_version (version, applied_at)
 VALUES (2, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+INSERT OR IGNORE INTO schema_version (version, applied_at)
+VALUES (3, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));

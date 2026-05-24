@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Any
 
 from orchestrator.secret_scanner import scan as _scan_secrets
+from orchestrator.worker_exits import classify_failure, record_worker_exit
 
 # Default forbidden glob patterns. The task spec may extend this list,
 # never replace it — these are the floor enforced by the system itself
@@ -103,8 +104,16 @@ class EvidenceCollector:
 
     def run_named_commands(self, kind: str, commands: list[str]) -> list[dict[str, Any]]:
         """Run a list of shell commands inside the workspace and emit
-        <kind>_results.json. Returns the same payload."""
+        <kind>_results.json. Returns the same payload.
+
+        M19/BR-003: each command's outcome also writes a row to the
+        ``worker_exits`` table when the task spec carries task_id +
+        repo_id. The recording is best-effort — observability is never
+        allowed to break the worker."""
         results: list[dict[str, Any]] = []
+        phase = _PHASE_FOR_KIND.get(kind, kind)
+        task_id = self.task_spec.get("task_id")
+        repo_id = self.task_spec.get("repo_id")
         for cmd in commands:
             t0 = time.time()
             try:
@@ -138,6 +147,11 @@ class EvidenceCollector:
                     "stderr_tail": f"{type(e).__name__}: {e}",
                     "duration_s": round(time.time() - t0, 3),
                 })
+            if task_id and repo_id:
+                _record_phase_exit(
+                    task_id=task_id, repo_id=repo_id, phase=phase,
+                    result=results[-1], duration_s=time.time() - t0,
+                )
         self._write_text(f"{kind}_results.json", json.dumps(results, indent=2))
         return results
 
@@ -374,6 +388,52 @@ class EvidenceCollector:
 
 def _tail(s: str, n: int) -> str:
     return s[-n:] if len(s) > n else s
+
+
+_PHASE_FOR_KIND: dict[str, str] = {
+    "test": "tests",
+    "lint": "lint",
+    "build": "build",
+}
+
+
+def _record_phase_exit(
+    *,
+    task_id: str,
+    repo_id: str,
+    phase: str,
+    result: dict[str, Any],
+    duration_s: float,
+) -> None:
+    """Best-effort write of a worker_exits row for one command.
+
+    Observability must never bring down the worker, so we swallow any
+    DB-side failure (uninitialised schema, busy lock, missing state
+    dir) — the rest of the pipeline still has the in-memory ``result``
+    dict + the on-disk <kind>_results.json.
+    """
+    try:
+        classification = classify_failure(
+            phase=phase,
+            exit_code=result.get("exit"),
+            command=result.get("cmd"),
+            stderr_tail=result.get("stderr_tail"),
+        )
+        record_worker_exit(
+            task_id=task_id, repo_id=repo_id,
+            worker_role="runner", phase=phase,
+            classification=classification,
+            command=result.get("cmd"),
+            exit_code=result.get("exit"),
+            duration_ms=int(duration_s * 1000),
+            stdout_tail=result.get("stdout_tail"),
+            stderr_tail=result.get("stderr_tail"),
+            retryable=classification in (
+                "test_failure", "lint_failure", "claude_cli_failure", "timeout",
+            ),
+        )
+    except Exception:  # pragma: no cover — observability is best-effort
+        pass
 
 
 _STATUS_NAMES: dict[str, str] = {
