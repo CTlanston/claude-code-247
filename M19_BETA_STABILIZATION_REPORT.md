@@ -192,7 +192,63 @@ Deeper per-phase instrumentation (workspace prepare, branch, push,
 open_pr, merge gate calls) is left for incremental follow-ups; the
 infrastructure is in place so each addition is a one-line `record_worker_exit`
 call.
-## Phase 4 — Full tests: NOT STARTED
+## Phase 4 — Full tests: ✅ DONE
+
+### `pytest -q --no-cov`
+
+```
+490 passed in 12.61s
+```
+
+### `claude247 doctor`
+
+```
+✓ macOS host: Darwin 25.3.0
+✓ python >= 3.11: python 3.13.13
+✓ git: git version 2.50.1 (Apple Git-155)
+• docker: docker CLI found but daemon not reachable
+✓ gh auth: gh authenticated
+✓ claude CLI: 2.1.142 (Claude Code)
+✓ config source: loaded /Users/lanston/.claude-code-247/config.yaml (kind=user); env files probed: 2
+✓ auth mode: worker_mode=local_claude_code, usable=True — local Claude Code CLI available
+✓ sqlite3 (python): sqlite3 3.53.1
+✓ state dir writable: /Users/lanston/.claude-code-247
+✓ sqlite db init: schema v3 at /Users/lanston/.claude-code-247/state/claude247.db
+✓ repos.yaml: 1 repo(s) registered
+✓ dashboard port free: 127.0.0.1:8423 available
+✓ ntfy notifications: topic configured: claude-code-247-auto-evo
+• validator API keys: neither GEMINI_API_KEY nor OPENAI_API_KEY set; validators will use mocks
+• launchd: none of com.claude247.* services loaded
+OK
+```
+
+Key BR-001/2/3 evidence:
+- **schema v3** at `claude247.db` (BR-003 migration applied cleanly)
+- **config source** check present in doctor output (BR-002 working)
+- `kind=user` source resolved from `~/.claude-code-247/config.yaml`
+- `env files probed: 2` — both the user `.env` and the project-local `.env` (the original BR-002 bug — they're now discovered)
+- `worker_mode=local_claude_code` (M18-P0 invariant preserved)
+- Anthropic API key NOT present in env → no risk of silent fallback
+
+### `claude247 status --plain`
+
+```
+System: running
+Repos enabled: 1
+Active tasks: 0
+Stuck tasks: 0
+Need approval: 1
+Today: 1 completed, 1 failed
+Next actions:
+- claude247 approve-merge --repo auto-evo-playground --pr 53
+```
+
+Mobile-readable ✓. The "1 failed" / "Need approval: 1" lines refer to historical M17/M18 fixtures still in the DB; not M19 work.
+
+### Pre-Phase 5 reminder
+
+Doctor explicitly reports `neither GEMINI_API_KEY nor OPENAI_API_KEY set; validators will use mocks`. Per user instruction earlier: "if no keys, do not claim beta E2E auto-merge proof". Phase 5 will be run with whichever keys the user supplies; if none, Phase 5 will document mock-validator behavior honestly.
+
 ## Phase 5 — Third real E2E: NOT STARTED (gated)
 ## Phase 6 — Tag v1.0.0-beta.1: NOT STARTED (gated)
 
