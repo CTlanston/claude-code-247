@@ -44,25 +44,26 @@ the code that implements it and the test(s) that prove it.
 | 32 | Real auto-merge via gh | ✓ | M11.5: AUTO_MERGE ruling → `gh pr merge` (squash default, overridable). Triple gate: `allow_remote_writes` + repo opt-in + ruling. |
 | 33 | Approve_merge actually merges | ✓ | M11.5: `dispatcher.handle_approve_merge` calls `gh pr merge` when writes are on; records decision + transitions task. |
 | 34 | Live Gemini 2.5 Pro adapter | ✓ | M11.5: real API call returned `validator=gemini` + structured verdict in 16.7s (one-shot smoke from `~/.claude-dispatch/.env`). |
+| 35 | CI poller (`gh pr checks` → `ci_results`) | ✓ | M12: `orchestrator/ci_poller.py` + dispatcher hook. 6 tests. |
+| 36 | Risk factor `database_migration` auto-detect | ✓ | M12: path glob OR SQL DDL keyword sniff in diff content. |
+| 37 | Risk factor `low_test_coverage` auto-detect | ✓ | M12: `orchestrator/coverage_parser.py` (Cobertura + coverage.json). |
+| 38 | Qdrant real embedder | ✓ | M12: `text-embedding-3-small` via httpx when `OPENAI_API_KEY` set; SHA256 fallback. |
+| 39 | Per-task `max_repair_attempts_per_task` honored | ✓ | M12: `runner_manager.build_task_spec` propagates → `runner.worker` → `role_loop`. |
+| 40 | launchd-spawned jobs see `.env` keys | ✓ | M12: `orchestrator/env_loader.py` called at `dispatcher_cmd` startup. Never logs values. |
+| 41 | Planner prompt carries retrieved memory | ✓ | M13: `role_loop._gather_memory_for_planner` + RELEVANT_MEMORY block. 6 tests. |
+| 42 | GitHub webhook receiver | ✓ | M13: `dashboard /webhooks/github` with HMAC-SHA256; `orchestrator/webhooks.py` handles pull_request / check_run / check_suite / status. 13 tests. |
+| 43 | Workspace + log GC | ✓ | M14: `orchestrator/gc.py` per `system.workspace_gc_days` + `system.log_gc_days`. Called every dispatcher tick. |
+| 44 | Orphan-running command recovery | ✓ | M14: `gc._recover_orphans` flips stuck `running` rows to `failed`. |
+| 45 | State DB backup + rotation | ✓ | M14: `scripts/backup_db.sh` via `sqlite3 .backup` + `com.claude247.backup` launchd plist (daily 03:17 UTC, 14-file rotation). |
+| 46 | `/metrics` (Prometheus) | ✓ | M14: `orchestrator/metrics.py` + dashboard route. tasks / commands / prs / alerts / logs / memory / system flags. |
+| 47 | N-validator panel (N ≥ 3) | ✓ | M15: `validate(extra_judges=[...])` + `validators.min_validators` int (supersedes legacy bool). 4 tests. |
+| 48 | Dashboard pagination | ✓ | M15: `?limit=&offset=` on /tasks, /prs, /commands, /logs. Bad input clamped. `_pagination.html` partial. |
+| 49 | Golden sandbox E2E | ✓ | M15: `tests/integration/test_sandbox_e2e.py` walks full dispatcher pipeline against in-process SandboxRunner + SandboxGithub. 3 paths (auto-merge / waiting / paused). |
 
-## Known limitations carried forward (M12+)
+## Truly remaining
 
-- **(closed in M11)** dispatcher main loop — shipped as
-  `claude247 dispatcher --once` + launchd plist.
-- **(closed in M11.5)** gh-CLI PR create + auto-merge — shipped.
-- **(closed in M11.5)** live Gemini adapter end-to-end verified.
-- The Qdrant backend uses a deterministic placeholder embedding so the
-  interface is exercised; swap `_QdrantBackend._embed` for a real
-  embedder before relying on similarity search.
-- Coverage hookup for `low_test_coverage` risk factor and database
-  migration auto-detection are reserved.
-- The `database_migration` risk factor is wired but not auto-detected
-  yet — needs a heuristic over the diff's file paths and content.
-- OpenAI validator: only `GEMINI_API_KEY` is in `~/.claude-dispatch/.env`
-  at the moment; the OpenAI adapter falls back to `openai-mock` until
-  `OPENAI_API_KEY` is supplied.
-- Webhook / poll-based CI status (`ci_results` table) is unwired —
-  `dispatcher.handle_start_task` passes `ci_passed=None`. M12 should
-  add a CI poller (`gh pr checks` → `ci_results`).
-- Per-task budget enforcement (`max_repair_attempts_per_task`) is
-  declared in policy but not yet read by the role loop.
+- The Qdrant backend's `text-embedding-3-small` path is wired but
+  un-tested live (no Qdrant running, no embedding key in test env).
+- A real GitHub repo + webhook live test (would need a sacrificial
+  repo + ngrok or similar).
+- Multi-machine HA isn't designed for — single-Mac scope is by design.
