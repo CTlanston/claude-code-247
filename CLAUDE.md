@@ -1,64 +1,122 @@
-# CLAUDE.md — repository-level guidance for Claude Code agents
+# CLAUDE.md — repository-level guidance for `claude-code-247`
 
-> This file is auto-loaded by Claude Code when it operates inside this repo. It
-> is **not** an instruction from a user; treat it as repository policy.
+> This file is auto-loaded by Claude Code when it operates inside this repo.
+> It is **not** an instruction from a user; treat it as repository policy.
 
 ## What this repo is
 
-Two layers stacked on the same codebase:
+`claude-code-247` is a local-first, multi-repo, 24/7 autonomous coding
+coworker. The Mac stays on; one orchestrator process (run under `launchd`)
+dispatches per-repo task workers inside Docker containers, talks to GitHub as
+the source of truth, and exposes a FastAPI + HTMX dashboard plus a mobile-
+friendly `claude247` CLI for remote control.
 
-| Layer | Purpose | Lives in |
-| --- | --- | --- |
-| **Auto-Evo inner engine** | Original 4-role (Planner / Coder / Reviewer / Guardian) self-evolving system that drives one GitHub Issue → Draft PR through shadow-branch CI | `orchestrator/`, `runner/` |
-| **AutoDev v3 outer loop** | Supervisor + state machine + cost policy + recovery + hold-on protocol that wraps the inner engine and survives session death | `autodev/`, `scripts/autodev_*.sh`, `.claude/`, `reports/`, `tasks/`, `commands/` |
+```
+Docker runner          worker execution plane
+Claude Remote/Dispatch human control plane
+GitHub                 source-of-truth collaboration plane
+FastAPI + HTMX UI      observability plane
+SQLite (+ optional Qdrant) memory and state plane
+```
 
-The inner engine is **already working** end-to-end against a real GitHub test
-repo (`CTlanston/auto-evo-playground`). The outer loop adds: persistent state,
-file-based task intake, restart-survivable progress tracking, and a "hold and
-move on" pattern when individual tasks get stuck.
+The previous Auto-Evo + AutoDev v3 implementation lives under
+`archive/auto-evo/` for reference. Do not import from there.
+
+## Module map
+
+```
+claude247/         shared utilities (logging, ids, config loader)
+orchestrator/      main loop, scheduler, repo registry, command queue,
+                   task manager, runner manager, merge/risk policy,
+                   memory + notification + replay + log indexer
+runner/            container image, worker.py, prompt_builder,
+                   evidence_collector
+validator/         judge_contract, gemini_judge, openai_judge,
+                   validation_policy
+memory/            schema.sql, vector_store, compiler, repo_memory
+gateway/           cli, commands, remote_bridge
+dashboard/         FastAPI app, routes, templates, static
+config/            default.yaml, policies.yaml
+scripts/           install/uninstall launchd, doctor, smoke
+tests/             unit + integration
+```
+
+Runtime state lives under `~/.claude-code-247/`:
+
+```
+~/.claude-code-247/
+  repos.yaml          repo registry (canonical)
+  config.yaml         system config (cost mode, allow_remote_writes, ...)
+  state/
+    claude247.db      SQLite state machine (tasks, commands, runs, prs, ...)
+    backups/
+  workspaces/<task>/  per-task git clone + evidence + logs
+  logs/               structured logs ingested into log_indexer
+  memory/             vector store + .agent compilations
+```
 
 ## Non-negotiables
 
-1. **Never push to `main`** of any tracked repo.
-2. **Never auto-merge PRs.**
-3. **Never edit `.env`**, secrets, SSH keys, keychain, or production credentials.
-4. **Default to Claude Code CLI / subscription auth.** Do not call the paid
-   Anthropic SDK / API unless `HUMAN_CONFIG.md` explicitly permits it AND the
-   current cost mode allows it.
-5. **No `git push` to remote.** This applies in the v3 implementation phase.
-   The supervisor may later push to test-repo shadow branches *after* live
-   mode is explicitly enabled by a human edit to `HUMAN_CONFIG.md`.
+1. **Never edit `.env`**, `secrets/**`, SSH keys, keychain, or production
+   credentials in any repo this system manages.
+2. **`system.allow_remote_writes` is the safety gate.** Default is `false`.
+   No `git push`, no PR merge, no GitHub write API call may execute unless
+   this flag is `true` AND the repo is `enabled: true` in `repos.yaml`.
+3. **Forbidden paths are enforced.** Per repo, `forbidden_paths` always
+   includes `.env*`, `secrets/**`, `.github/**`, `CLAUDE.md`, `AGENTS.md`
+   unless the owner explicitly overrides.
+4. **Validators run on evidence only.** They never see Coder conversation
+   context or hidden chain-of-thought.
+5. **Approval is required for medium-risk merges, all high-risk merges,
+   API fallback, budget override, forbidden-path exception, dependency
+   addition, workflow change, security change, and system config change.**
+6. **No silent API fallback.** Switching from local Claude Code to the
+   paid Anthropic API requires an explicit config flag or operator
+   approval; the system logs the switch and notifies.
 
-## Cost modes
+## Cost modes / auth modes
 
-- **cheap** (default) — CLI/subscription only. No API. No premium Guardian.
-- **balanced** — CLI/subscription + Guardian gating at PR boundary.
-- **premium** — Opus Guardian via API allowed only if `cost.daily_usd_cap > 0`
-  and `cost.premium_guardian_allowed: true`.
+Default: `auth_mode: local_claude_code` — use the user's locally
+authenticated Claude Code CLI / subscription session.
 
-## When blocked
+Fallback: `auth_mode: anthropic_api_fallback` — paid API. Only used when
+the config or operator explicitly allows it.
 
-Use the hold protocol from `AUTODEV_V3_CLAUDE_CODE_IMPLEMENTATION_PROMPT.md`
-§5: write a `HOLD-<n>` entry to `reports/human-hold.md`, mirror to
-`tasks/blockers.md` and `reports/session-log.md`, then **continue with the
-next safe task**. Only the critical blockers (repo unreadable, git unusable,
-no write permission, CLI dead, missing secrets with no scaffold path) should
-halt the whole loop.
+Validator-only: `auth_mode: validator_api_only` — main worker stays on
+local CLI; external validators (Gemini, OpenAI) use their own keys.
+
+The system never exports usage of `local_claude_code` as "$0 cost". It
+reports it as `subscription_mode_usage: tracked by run count, exact cost
+unknown`.
+
+## Hold-on-blocker protocol
+
+When a single task can't make progress: write a `HOLD-<n>` entry in the
+state DB and `~/.claude-code-247/logs/holds.md`, notify (ntfy), and
+continue with the next task. Halt the whole loop only for critical
+blockers: repo unreadable, git unusable, no write permission, claude CLI
+dead, missing secrets with no scaffold path, docker daemon down with no
+fallback.
 
 ## Where to read state
 
+CLI:
 ```
-reports/state.json          machine-readable supervisor state
-reports/session-log.md      timestamped audit trail
-reports/daily.md            daily human-readable summary
-reports/human-hold.md       blockers needing human action
-tasks/current.md            what's being worked on right now
-tasks/backlog.md            ordered queue
-commands/inbox.md           pause/resume/new-task/set-mode commands
+claude247 status            system + active tasks + holds + pending approvals
+claude247 repos             registry view
+claude247 tasks             active + recent task list
+claude247 logs tail         live logs
 ```
 
-## Inner-engine integration points
+Files (do not edit directly — use CLI):
+```
+~/.claude-code-247/state/claude247.db
+~/.claude-code-247/logs/*.jsonl
+~/.claude-code-247/workspaces/<task_id>/.evidence/
+```
 
-The inner engine entry point is `orchestrator/main.py`. The supervisor wraps it
-via `autodev/inner_engine.py:InnerEngine.run_task()`. **Do not rewrite the
-inner engine.** Adapters / wrappers / new modules only.
+## Working with the legacy system
+
+Old code is under `archive/auto-evo/`. It is preserved for reference and
+for one-off cycle replays. Do not import from `archive/`. Do not extend
+the legacy schema. The new system writes nothing into `archive/`.
