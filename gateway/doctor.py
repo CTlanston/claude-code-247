@@ -151,6 +151,45 @@ def check_claude_smoke() -> Check:
                  detail={"exit": res.exit_code, "duration_s": res.duration_s})
 
 
+def check_launchd() -> Check:
+    """M18-P2: report which com.claude247.* launchd services are loaded.
+
+    Informational (warn-or-ok only) because launchd install is
+    operator-controlled. Doctor surfaces state, doesn't gate on it."""
+    if os.uname().sysname != "Darwin":
+        return Check(name="launchd", status="warn", required=False,
+                     message="not macOS — launchd not applicable")
+    services = ("com.claude247.dashboard", "com.claude247.orchestrator",
+                "com.claude247.dispatcher", "com.claude247.backup")
+    loaded: dict[str, bool] = {}
+    for svc in services:
+        rc, _, _ = _run(["launchctl", "list", svc], timeout=3.0)
+        loaded[svc] = (rc == 0)
+    loaded_count = sum(1 for v in loaded.values() if v)
+    plist_dir = Path.home() / "Library" / "LaunchAgents"
+    plists_present = sum(
+        1 for svc in services if (plist_dir / f"{svc}.plist").exists()
+    )
+    detail = {
+        "services": list(services),
+        "loaded": loaded,
+        "loaded_count": loaded_count,
+        "plists_present": plists_present,
+    }
+    if loaded_count == 0:
+        return Check(
+            name="launchd",
+            status="warn", required=False,
+            message=("none of com.claude247.* services loaded; "
+                     "run scripts/install_launchd.sh for 24/7 daemon mode"),
+            detail=detail,
+        )
+    msg = f"{loaded_count}/{len(services)} services loaded"
+    status = "ok" if loaded_count == len(services) else "warn"
+    return Check(name="launchd", status=status, required=False,
+                 message=msg, detail=detail)
+
+
 def check_auth_mode() -> Check:
     """M18-P0: report the configured worker_mode and whether it's usable.
 
@@ -311,6 +350,7 @@ ALL_CHECKS: list[Callable[[], Check]] = [
     check_dashboard_port,
     check_ntfy,
     check_validator_keys,
+    check_launchd,
 ]
 
 
