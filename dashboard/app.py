@@ -15,7 +15,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from memory.db import default_db_path, init_db, open_db
-from orchestrator import alert_deduper, budget_manager, log_indexer
+from orchestrator import alert_deduper, budget_manager, log_indexer, webhooks
 from orchestrator.command_queue import enqueue, list_commands
 from orchestrator.config import load_config
 from orchestrator.onboarding import onboard, validate_spec
@@ -344,6 +344,30 @@ def create_app() -> FastAPI:
             payload={"repo_id": repo_id, "goal": goal},
         )
         return JSONResponse({"command_id": cmd.id, "status": cmd.status})
+
+    @app.post("/webhooks/github")
+    async def github_webhook(request: Request) -> JSONResponse:
+        body = await request.body()
+        signature = request.headers.get("x-hub-signature-256")
+        event = request.headers.get("x-github-event") or ""
+        cfg = load_config()
+        secret = (cfg.get("github.webhook_secret") or "").strip()
+        if not secret:
+            raise HTTPException(status_code=503,
+                                 detail="github.webhook_secret not configured")
+        if not webhooks.verify_signature(body=body, signature_header=signature,
+                                          secret=secret):
+            raise HTTPException(status_code=401, detail="bad signature")
+        try:
+            payload = json.loads(body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="invalid json")
+        init_db()
+        outcome = webhooks.dispatch(event=event, payload=payload)
+        return JSONResponse({
+            "event": outcome.event, "action": outcome.action,
+            "handled": outcome.handled, "summary": outcome.summary,
+        })
 
     return app
 

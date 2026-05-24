@@ -52,6 +52,12 @@ notifications:
   # Dedup window: a fingerprint repeats within this many minutes -> coalesce.
   dedup_window_minutes: 30
 
+github:
+  # Shared secret used to verify HMAC-SHA256 signatures on incoming
+  # webhooks. Configure the SAME value in the GitHub repo's webhook
+  # settings. Empty = /webhooks/github returns 503.
+  webhook_secret: ""
+
 # Per-repo defaults. Each repo in repos.yaml inherits these unless overridden.
 repo_defaults:
   default_branch: main

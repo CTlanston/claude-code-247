@@ -63,6 +63,7 @@ def run_role_loop(
     claude_bin: str = "claude",
     invoke_fn: Callable[[ClaudeInvocation, str], ClaudeResult] | None = None,
     rerun_tests: Callable[[], list[dict[str, Any]]] | None = None,
+    retrieve_memory_fn: Callable[[str, str], list[str]] | None = None,
     model: str | None = None,
     max_repair_attempts: int = 3,
 ) -> RoleLoopOutcome:
@@ -71,13 +72,18 @@ def run_role_loop(
     ``invoke_fn`` is injectable for tests; default uses the real CLI.
     ``rerun_tests`` callback is what runs the repo's test commands again
     after the Coder/Repair; provided by the worker.
+    ``retrieve_memory_fn(repo_id, goal) -> list[str]`` is the planner
+    memory hook (M13). When None, the loop attempts to call
+    ``memory.compiler.retrieve_for_planning`` directly; failures (e.g.
+    DB not present in container) gracefully degrade to no memory.
     """
     invoke_real = invoke_fn or (lambda inv, bin_: invoke(inv, claude_bin=bin_))
     results: list[dict[str, Any]] = []
     notes: list[str] = []
 
     # --- Planner -----------------------------------------------------
-    planner_user = _planner_user_prompt(spec)
+    memory_snippets = _gather_memory_for_planner(spec, retrieve_memory_fn)
+    planner_user = _planner_user_prompt(spec, memory_snippets)
     planner_inv = ClaudeInvocation(
         role="planner",
         user_prompt=planner_user,
@@ -172,16 +178,44 @@ def run_role_loop(
 # ────────────────────────────────────────────────────────────────────
 
 
-def _planner_user_prompt(spec: dict[str, Any]) -> str:
+def _planner_user_prompt(spec: dict[str, Any],
+                          memory_snippets: list[str] | None = None) -> str:
+    mem_block = "\n".join(f"- {s}" for s in (memory_snippets or [])) or "_(none)_"
     return (
         f"GOAL\n{spec.get('goal', '')}\n\n"
         f"REPO\n{json.dumps({k: spec.get(k) for k in ('repo_id', 'branch')}, indent=2)}\n\n"
         f"ALLOWED_PATHS\n{json.dumps(spec.get('allowed_paths') or [])}\n\n"
         f"FORBIDDEN_PATHS\n{json.dumps(spec.get('forbidden_paths') or [])}\n\n"
         f"TEST_COMMANDS\n{json.dumps((spec.get('commands') or {}).get('test') or [])}\n\n"
-        "Write plan.md, contract.md, risk_assessment.md, worker_breakdown.md"
-        " into ./.evidence/ before exiting."
+        f"RELEVANT_MEMORY\n{mem_block}\n\n"
+        "Use RELEVANT_MEMORY to avoid repeating past mistakes and to honor\n"
+        "prior decisions. Then write plan.md, contract.md, risk_assessment.md,\n"
+        "and worker_breakdown.md into ./.evidence/ before exiting."
     )
+
+
+def _gather_memory_for_planner(
+    spec: dict[str, Any],
+    retrieve_fn: Callable[[str, str], list[str]] | None,
+) -> list[str]:
+    """Pull a short list of memory snippets relevant to the goal.
+
+    Default uses ``memory.compiler.retrieve_for_planning``; tests pass
+    their own ``retrieve_fn``. Any error (DB missing inside container,
+    vector store unreachable) falls back to an empty list — the planner
+    can still operate without memory."""
+    repo_id = spec.get("repo_id") or ""
+    goal = spec.get("goal") or ""
+    if not repo_id or not goal:
+        return []
+    try:
+        if retrieve_fn is not None:
+            return list(retrieve_fn(repo_id, goal))
+        from memory.compiler import retrieve_for_planning
+        hits = retrieve_for_planning(repo_id=repo_id, goal=goal, k=5)
+        return [f"[{h.item_type}] {h.text[:200]}" for h in hits]
+    except Exception:
+        return []
 
 
 def _coder_user_prompt(spec: dict[str, Any], workspace: Path) -> str:
