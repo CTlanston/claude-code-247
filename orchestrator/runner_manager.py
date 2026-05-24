@@ -294,6 +294,39 @@ class RunnerManager:
         self._git(["push", "-u", remote, prep.branch], cwd=prep.workspace)
         return True
 
+    def rewire_origin_to_github(self, prep: WorkspacePrep,
+                                 *, allow_local_fallback: bool = True) -> str:
+        """Point the workspace's ``origin`` at the registered repo's
+        actual GitHub URL.
+
+        ``prepare_workspace`` does ``git clone --shared <local_path>``, so
+        the workspace's origin URL is the local clone, not GitHub. To
+        push to GitHub we copy the URL from the original local repo's
+        origin and replace it.
+
+        Returns the URL that origin now points to. If the source repo
+        has no GitHub origin AND ``allow_local_fallback`` is true, leaves
+        origin pointed at the local clone (good for tests against a bare
+        local remote)."""
+        repo = self.get_repo(prep.repo_id)
+        try:
+            url = self._git(
+                ["config", "--get", "remote.origin.url"],
+                cwd=Path(repo.local_path).expanduser(), capture=True,
+            ).strip()
+        except RunnerManagerError:
+            url = ""
+        if not url:
+            if allow_local_fallback:
+                return ""
+            raise RunnerManagerError(
+                f"repo {repo.id!r}: no origin URL on {repo.local_path}"
+            )
+        # Replace origin (which currently points at local_path) with the
+        # GitHub URL. set-url is idempotent.
+        self._git(["remote", "set-url", "origin", url], cwd=prep.workspace)
+        return url
+
     # ── internals ───────────────────────────────────────────────────
 
     def _git(

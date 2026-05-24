@@ -238,6 +238,15 @@ def test_start_task_uses_mock_runner_and_records_validation() -> None:
                 workspace = prep.workspace
             return _Outcome
 
+        def commit_changes(self, prep, *, message, **_):
+            return None  # nothing to commit in the fake
+
+        def rewire_origin_to_github(self, prep, **_):
+            return "https://github.com/owner/demo-repo.git"
+
+        def push_branch(self, prep, remote="origin"):
+            return False  # gated by allow_remote_writes anyway
+
     def fake_validator(inp):
         r = normalize_response("mock", {
             "verdict": "PASS", "confidence": 0.9, "summary": "ok",

@@ -32,6 +32,7 @@ from typing import Any, Callable
 from memory.db import open_db
 from orchestrator import (
     budget_manager,
+    github_client as _github_client,
     log_indexer,
     notification_manager,
     system_state,
@@ -85,6 +86,7 @@ def run_once(
     runner: RunnerManager | None = None,
     validator_fn: Callable[[JudgeInput], Any] | None = None,
     notify_fn: Callable[..., Any] | None = None,
+    github=None,
     db_path: Path | str | None = None,
 ) -> DispatchResult:
     """Process at most one queued command."""
@@ -110,6 +112,7 @@ def run_once(
             runner=runner,
             validator_fn=validator_fn,
             notify_fn=notify_fn,
+            github=github,
             db_path=db_path,
         )
     except Exception as e:  # pragma: no cover — surfaced via command row
@@ -172,6 +175,7 @@ def handle_start_task(
     runner: RunnerManager | None = None,
     validator_fn: Callable[[JudgeInput], Any] | None = None,
     notify_fn: Callable[..., Any] | None = None,
+    github=None,
     db_path: Path | str | None = None,
 ) -> dict[str, Any]:
     payload = cmd.payload or {}
@@ -278,7 +282,9 @@ def handle_start_task(
         lint_passed=lint_passed,
     )
 
-    # Phase 5 — transition + notify
+    # Phase 5 — commit, push + PR create (when allowed), transition + notify
+    cfg = load_config()
+    gh = github or _github_client
     summary = {
         "task_id": task.id,
         "branch": prep.branch,
@@ -287,37 +293,133 @@ def handle_start_task(
         "risk_level": risk.level,
         "validators": [r.to_dict() for r in validation.results],
         "ruling": ruling.to_dict(),
+        "pushed": False,
+        "pr": None,
+        "merged": False,
     }
-    transition(task.id, TaskStatus.pr_created,
-               branch=prep.branch, risk_score=risk.score,
-               message=f"ruling: {ruling.decision.value}", db_path=db_path)
 
-    if ruling.decision is MergeDecision.AUTO_MERGE:
-        transition(task.id, TaskStatus.auto_merging,
-                   message="auto-merge ruling", db_path=db_path)
-        # Actual push + merge is out-of-scope for M11 per operator choice.
-        # Mark completed and notify.
-        transition(task.id, TaskStatus.merged,
-                   message="auto-merge target (push deferred to M12)",
-                   db_path=db_path)
-        notify(event="auto_merge_completed",
-               message=f"{task.id} → auto-merge (push deferred)",
-               repo_id=repo_id, task_id=task.id)
-        summary["next"] = "auto_merge_target"
-    elif ruling.decision is MergeDecision.WAITING_APPROVAL:
-        transition(task.id, TaskStatus.waiting_for_approval,
-                   message="; ".join(ruling.reasons)[:200], db_path=db_path)
-        notify(event="approval_required",
-               message=f"{repo_id} task {task.id} risk={risk.score}",
-               repo_id=repo_id, task_id=task.id)
-        summary["next"] = "waiting_for_approval"
-    else:  # BLOCKED
+    if ruling.decision is MergeDecision.BLOCKED:
+        transition(task.id, TaskStatus.pr_created, branch=prep.branch,
+                   risk_score=risk.score,
+                   message=f"ruling: {ruling.decision.value}", db_path=db_path)
         transition(task.id, TaskStatus.failed,
                    message="; ".join(ruling.reasons)[:200], db_path=db_path)
         notify(event="task_failed",
                message=f"blocked: {ruling.reasons[-1] if ruling.reasons else 'no reason'}",
                repo_id=repo_id, task_id=task.id)
         summary["next"] = "blocked"
+        log_indexer.write(level="info", component="dispatcher",
+                           message=f"start_task complete → blocked",
+                           payload=summary, repo_id=repo_id, task_id=task.id,
+                           db_path=db_path)
+        return summary
+
+    # Commit any worker-produced changes (excluding .evidence/).
+    commit_sha = None
+    try:
+        commit_sha = runner.commit_changes(prep,
+                                            message=f"agent({task.id[:10]}): {goal[:80]}")
+        summary["commit_sha"] = commit_sha
+    except RunnerManagerError as e:
+        log_indexer.write(level="warn", component="dispatcher",
+                           message=f"commit_changes: {e}",
+                           repo_id=repo_id, task_id=task.id, db_path=db_path)
+
+    # Try to push + open a PR when the global gate is open. Failures
+    # here are non-fatal — we still set the task into the ruling lane.
+    pr_number: int | None = None
+    pr_url: str | None = None
+    pr_record_id: str | None = None
+    if cfg.allow_remote_writes and commit_sha:
+        try:
+            runner.rewire_origin_to_github(prep)
+            pushed = runner.push_branch(prep)
+            summary["pushed"] = pushed
+            if pushed:
+                pr_title = f"agent: {goal[:60]}"
+                pr_body = _pr_body(task.id, repo_id, risk, validation, ruling)
+                created = gh.create_draft_pr(
+                    repo=repo.github_full_name,
+                    branch=prep.branch,
+                    title=pr_title,
+                    body=pr_body,
+                    base=repo.default_branch,
+                    workspace=str(prep.workspace),
+                )
+                pr_number = created.number
+                pr_url = created.url
+                pr_record_id = _record_pr(
+                    repo_id=repo_id, task_id=task.id,
+                    pr_number=created.number, branch=prep.branch,
+                    title=pr_title, body=pr_body, url=created.url,
+                    state="draft",
+                    approval_state=("required"
+                                     if ruling.decision is MergeDecision.WAITING_APPROVAL
+                                     else "not_required"),
+                    risk_score=risk.score, db_path=db_path,
+                )
+                summary["pr"] = {"number": pr_number, "url": pr_url,
+                                  "record_id": pr_record_id}
+                notify(event="pr_created",
+                       message=f"{repo.github_full_name}#{pr_number} {pr_title}",
+                       repo_id=repo_id, task_id=task.id, pr_number=pr_number)
+        except (RunnerManagerError, _github_client.GitHubError, OSError) as e:
+            log_indexer.write(level="error", component="dispatcher",
+                               message=f"push/PR failed: {e}",
+                               repo_id=repo_id, task_id=task.id, db_path=db_path)
+            summary["push_pr_error"] = str(e)
+
+    transition(task.id, TaskStatus.pr_created, branch=prep.branch,
+               pr_number=pr_number, risk_score=risk.score,
+               message=f"ruling: {ruling.decision.value}", db_path=db_path)
+
+    if ruling.decision is MergeDecision.AUTO_MERGE:
+        transition(task.id, TaskStatus.auto_merging,
+                   message="auto-merge ruling", db_path=db_path)
+        merged_ok = False
+        if cfg.allow_remote_writes and pr_number is not None:
+            try:
+                merge_method = ((repo.raw or {}).get("auto_merge") or {}).get(
+                    "method", "squash"
+                )
+                gh.merge_pr(repo=repo.github_full_name, number=pr_number,
+                             method=merge_method, delete_branch=True)
+                merged_ok = True
+                summary["merged"] = True
+                if pr_record_id:
+                    _mark_pr_merged(pr_record_id, db_path=db_path)
+            except _github_client.GitHubError as e:
+                log_indexer.write(level="error", component="dispatcher",
+                                   message=f"gh pr merge: {e}",
+                                   repo_id=repo_id, task_id=task.id,
+                                   db_path=db_path)
+                summary["merge_error"] = str(e)
+        if merged_ok:
+            transition(task.id, TaskStatus.merged,
+                       message="auto-merge completed", db_path=db_path)
+            notify(event="auto_merge_completed",
+                   message=f"{repo.github_full_name}#{pr_number} merged",
+                   repo_id=repo_id, task_id=task.id, pr_number=pr_number)
+            summary["next"] = "merged"
+        else:
+            # Either flag off, no PR, or merge failed — leave task in
+            # auto_merging so an operator can intervene.
+            transition(task.id, TaskStatus.failed,
+                       message=("gh pr merge failed" if summary.get("merge_error")
+                                else "auto_merge ruling but writes off / no PR"),
+                       db_path=db_path)
+            notify(event="task_failed",
+                   message=f"{task.id} auto-merge not applied",
+                   repo_id=repo_id, task_id=task.id, pr_number=pr_number)
+            summary["next"] = "auto_merge_not_applied"
+    elif ruling.decision is MergeDecision.WAITING_APPROVAL:
+        transition(task.id, TaskStatus.waiting_for_approval,
+                   message="; ".join(ruling.reasons)[:200], db_path=db_path)
+        notify(event="approval_required",
+               message=f"{repo_id} task {task.id} risk={risk.score}"
+                       + (f" PR #{pr_number}" if pr_number else ""),
+               repo_id=repo_id, task_id=task.id, pr_number=pr_number)
+        summary["next"] = "waiting_for_approval"
 
     log_indexer.write(level="info", component="dispatcher",
                        message=f"start_task complete → {ruling.decision.value}",
@@ -433,9 +535,14 @@ def handle_explain_stuck(cmd: Command, *, db_path=None, **_) -> dict:
     return summary
 
 
-def handle_approve_merge(cmd: Command, *, db_path=None, notify_fn=None, **_) -> dict:
+def handle_approve_merge(cmd: Command, *, db_path=None, notify_fn=None,
+                          github=None, **_) -> dict:
     if not cmd.repo_id or cmd.pr_number is None:
         return {"error": "missing repo_id or pr_number"}
+    notify = notify_fn or notification_manager.notify
+    gh = github or _github_client
+    cfg = load_config()
+
     with open_db(db_path) as conn:
         pr = conn.execute(
             "SELECT id, task_id FROM prs WHERE repo_id = ? AND pr_number = ?",
@@ -443,23 +550,66 @@ def handle_approve_merge(cmd: Command, *, db_path=None, notify_fn=None, **_) -> 
         ).fetchone()
         if pr is None:
             return {"error": f"PR not found: {cmd.repo_id}#{cmd.pr_number}"}
+        pr_id = pr["id"]
+        task_id = pr["task_id"]
         conn.execute(
             "UPDATE prs SET approval_state = 'approved', updated_at = ? "
             "WHERE id = ?",
-            (utc_now_iso(), pr["id"]),
+            (utc_now_iso(), pr_id),
         )
         conn.execute(
             "INSERT INTO decisions (id, repo_id, task_id, topic, decided_by, "
             "decision, rationale, created_at) VALUES (?,?,?,?,?,?,?,?)",
-            (make_id("dec"), cmd.repo_id, pr["task_id"],
+            (make_id("dec"), cmd.repo_id, task_id,
              f"PR #{cmd.pr_number} approval", cmd.created_by, "approved",
              (cmd.payload or {}).get("reason") or "", utc_now_iso()),
         )
-    if notify_fn:
-        notify_fn(event="auto_merge_completed",
-                  message=f"approved {cmd.repo_id}#{cmd.pr_number}",
-                  repo_id=cmd.repo_id, pr_number=cmd.pr_number)
-    return {"approved": True, "pr": cmd.pr_number}
+
+    out: dict[str, Any] = {"approved": True, "pr": cmd.pr_number,
+                            "merged": False}
+    # Try the actual merge when the gate is open.
+    repo = _get_repo(cmd.repo_id)
+    if cfg.allow_remote_writes and repo is not None:
+        try:
+            method = ((repo.raw or {}).get("auto_merge") or {}).get("method", "squash")
+            gh.merge_pr(repo=repo.github_full_name, number=cmd.pr_number,
+                         method=method, delete_branch=True)
+            out["merged"] = True
+            _mark_pr_merged(pr_id, db_path=db_path)
+            if task_id:
+                try:
+                    transition(task_id, TaskStatus.auto_merging,
+                               message="approve_merge fired", db_path=db_path)
+                except ValueError:
+                    pass
+                try:
+                    transition(task_id, TaskStatus.merged,
+                               message="merged via approve_merge",
+                               db_path=db_path)
+                except ValueError:
+                    pass
+            notify(event="auto_merge_completed",
+                   message=f"approved+merged {cmd.repo_id}#{cmd.pr_number}",
+                   repo_id=cmd.repo_id, task_id=task_id,
+                   pr_number=cmd.pr_number)
+        except _github_client.GitHubError as e:
+            out["merge_error"] = str(e)
+            log_indexer.write(level="error", component="dispatcher",
+                               message=f"approve_merge: gh pr merge: {e}",
+                               repo_id=cmd.repo_id, task_id=task_id,
+                               db_path=db_path)
+            notify(event="task_failed",
+                   message=f"approve fired but merge failed: {e}",
+                   repo_id=cmd.repo_id, task_id=task_id,
+                   pr_number=cmd.pr_number)
+    else:
+        # Approval recorded, but the gate is closed; operator must flip
+        # allow_remote_writes for the actual merge.
+        notify(event="approval_required",
+               message=f"approved {cmd.repo_id}#{cmd.pr_number} "
+                       f"(allow_remote_writes off; not merged)",
+               repo_id=cmd.repo_id, task_id=task_id, pr_number=cmd.pr_number)
+    return out
 
 
 def handle_reject_merge(cmd: Command, *, db_path=None, **_) -> dict:
@@ -595,6 +745,80 @@ def _record_validator_result(task_id: str, vr, *,
                 utc_now_iso(),
             ),
         )
+
+
+def _record_pr(
+    *, repo_id: str, task_id: str, pr_number: int, branch: str, title: str,
+    body: str, url: str, state: str, approval_state: str, risk_score: int,
+    db_path: Path | str | None,
+) -> str:
+    pid = make_id("pr")
+    now = utc_now_iso()
+    with open_db(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO prs (id, repo_id, task_id, pr_number, branch, title,
+                              body, url, state, approval_state, risk_score,
+                              created_at, updated_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(repo_id, pr_number) DO UPDATE SET
+              task_id = excluded.task_id, branch = excluded.branch,
+              title = excluded.title, body = excluded.body, url = excluded.url,
+              state = excluded.state, approval_state = excluded.approval_state,
+              risk_score = excluded.risk_score, updated_at = excluded.updated_at
+            """,
+            (pid, repo_id, task_id, pr_number, branch, title, body, url,
+             state, approval_state, risk_score, now, now),
+        )
+        row = conn.execute(
+            "SELECT id FROM prs WHERE repo_id = ? AND pr_number = ?",
+            (repo_id, pr_number),
+        ).fetchone()
+    return row["id"] if row else pid
+
+
+def _mark_pr_merged(pr_id: str, *, db_path: Path | str | None) -> None:
+    now = utc_now_iso()
+    with open_db(db_path) as conn:
+        conn.execute(
+            "UPDATE prs SET state = 'merged', merged_at = ?, updated_at = ? "
+            "WHERE id = ?",
+            (now, now, pr_id),
+        )
+
+
+def _pr_body(task_id: str, repo_id: str, risk, validation, ruling) -> str:
+    """Spec §11.4 PR body template."""
+    val_lines = "\n".join(
+        f"- **{r.validator}**: {r.verdict} (conf {r.confidence:.2f}) — {r.summary[:120]}"
+        for r in validation.results
+    ) or "_(none)_"
+    factor_lines = "\n".join(
+        f"- `{f.name}` (weight {f.weight}) — {f.reason}"
+        for f in risk.triggered
+    ) or "_(none)_"
+    return f"""## Agent Task
+
+- Task ID: `{task_id}`
+- Repo: `{repo_id}`
+- Risk: **{risk.score}** ({risk.level})
+- Decision: **{ruling.decision.value}**
+
+## Validator results
+
+{val_lines}
+
+## Risk factors
+
+{factor_lines}
+
+## Merge ruling reasons
+
+{chr(10).join(f"- {r}" for r in ruling.reasons) or "- (none)"}
+
+---
+_Generated by claude-code-247 dispatcher. See `claude247 replay --task {task_id}` for full evidence._
+"""
 
 
 def _record_risk_score(task_id: str, risk, *,
