@@ -209,6 +209,8 @@ def handle_start_task(
     repo = _get_repo(repo_id)
     if repo is None:
         return {"error": f"unknown repo {repo_id!r}"}
+    if not repo.enabled:
+        return {"deferred": True, "reason": f"repo {repo_id!r} disabled in registry"}
 
     budget_ok, budget_reasons = budget_manager.check_caps(
         repo_id, repo_raw=repo.raw, db_path=db_path,
@@ -301,6 +303,7 @@ def handle_start_task(
         ci_passed=None,
         tests_passed=test_passed,
         lint_passed=lint_passed,
+        diff_content=diff_content,
     )
 
     # Phase 5 — commit, push + PR create (when allowed), transition + notify
@@ -328,6 +331,7 @@ def handle_start_task(
         notify(event="task_failed",
                message=f"blocked: {ruling.reasons[-1] if ruling.reasons else 'no reason'}",
                repo_id=repo_id, task_id=task.id)
+        _record_failure_memory(repo, task.id, ruling, db_path=db_path)
         summary["next"] = "blocked"
         log_indexer.write(level="info", component="dispatcher",
                            message=f"start_task complete → blocked",
@@ -432,6 +436,7 @@ def handle_start_task(
             notify(event="task_failed",
                    message=f"{task.id} auto-merge not applied",
                    repo_id=repo_id, task_id=task.id, pr_number=pr_number)
+            _record_failure_memory(repo, task.id, ruling, db_path=db_path)
             summary["next"] = "auto_merge_not_applied"
     elif ruling.decision is MergeDecision.WAITING_APPROVAL:
         transition(task.id, TaskStatus.waiting_for_approval,
@@ -773,6 +778,33 @@ def _record_validator_result(task_id: str, vr, *,
                 utc_now_iso(),
             ),
         )
+
+
+def _record_failure_memory(repo: RepoEntry, task_id: str, ruling,
+                            *, db_path: Path | str | None) -> None:
+    """Append a one-liner to the repo's .agent/FAILURES.md and seed the
+    vector store with a failure item, so the next planner has context
+    without waiting for the daily compile."""
+    try:
+        from memory.repo_memory import AgentMemory
+        from memory.vector_store import MemoryItem, make_store
+        mem = AgentMemory(repo_path=Path(repo.local_path).expanduser())
+        line = (f"- `{task_id}` blocked at risk={ruling.risk_score} "
+                 f"({ruling.risk_level}): "
+                 f"{(ruling.reasons[-1] if ruling.reasons else 'unknown')}")
+        mem.append("FAILURES", line)
+        store = make_store(db_path=db_path)
+        store.add(MemoryItem(
+            repo_id=repo.id, item_type="failure",
+            text=f"task {task_id} ruling={ruling.decision.value} "
+                 f"risk={ruling.risk_score}: "
+                 f"{(ruling.reasons[-1] if ruling.reasons else '')}",
+            metadata={"task_id": task_id, "risk_score": ruling.risk_score},
+        ))
+    except Exception as e:  # never let memory writes break the dispatcher
+        log_indexer.write(level="warn", component="dispatcher",
+                           message=f"failure memory write failed: {e}",
+                           repo_id=repo.id, task_id=task_id, db_path=db_path)
 
 
 def _record_pr(

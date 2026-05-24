@@ -1,18 +1,31 @@
-"""`claude247 repo add` — interactive wizard.
+"""`claude247 repo add / enable / disable / list` commands.
 
-We deliberately keep the wizard simple in v1: prompt for each field, run
-``validate_spec()`` + ``probe_local_path()``, abort on errors, write to
-repos.yaml on success. The same code is used by the dashboard's
+`add` is an interactive wizard; we keep it simple in v1: prompt for each
+field, run ``validate_spec()`` + ``probe_local_path()``, abort on errors,
+write to repos.yaml on success. The same code is used by the dashboard's
 ``/onboarding`` route via ``onboard()``.
+
+`enable` / `disable` flip the `enabled` flag in both ``repos.yaml`` (the
+canonical store) AND the SQLite mirror in one operation, so the
+dispatcher's next pass sees the change without a separate sync.
 """
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import click
+import yaml
 
+from memory.db import init_db
 from orchestrator.onboarding import onboard, validate_spec
-from orchestrator.repo_registry import load_registry
+from orchestrator.repo_registry import (
+    RepoRegistryError,
+    default_repos_path,
+    load_registry,
+    parse_registry,
+    sync_to_db,
+)
 
 
 @click.group("repo", help="Repo management.")
@@ -65,6 +78,55 @@ def add(repo_id: str | None, from_spec: str | None, no_probe: bool, as_json: boo
 def list_(ctx: click.Context) -> None:
     from gateway.commands.repos_cmd import repos as repos_cmd
     ctx.invoke(repos_cmd)
+
+
+@repo.command("enable", help="Set the registry entry for <repo_id> to enabled=true.")
+@click.option("--repo", "repo_id", required=True)
+@click.option("--json", "as_json", is_flag=True)
+def enable(repo_id: str, as_json: bool) -> None:
+    res = _set_enabled(repo_id, True)
+    _emit_toggle(res, as_json, repo_id, "enabled")
+
+
+@repo.command("disable", help="Set the registry entry for <repo_id> to enabled=false. "
+                              "A disabled repo is skipped by start_task.")
+@click.option("--repo", "repo_id", required=True)
+@click.option("--json", "as_json", is_flag=True)
+def disable(repo_id: str, as_json: bool) -> None:
+    res = _set_enabled(repo_id, False)
+    _emit_toggle(res, as_json, repo_id, "disabled")
+
+
+def _set_enabled(repo_id: str, enabled: bool) -> dict:
+    """Flip the `enabled` flag in repos.yaml + SQLite mirror.
+
+    Returns a small result dict for the CLI to render."""
+    yaml_path = default_repos_path()
+    if not yaml_path.exists():
+        raise click.ClickException(f"registry not found: {yaml_path}")
+    body = yaml.safe_load(yaml_path.read_text(encoding="utf-8")) or {}
+    repos = body.get("repos") or []
+    target = next((r for r in repos if r.get("id") == repo_id), None)
+    if target is None:
+        raise click.ClickException(f"unknown repo_id {repo_id!r}")
+    prior = bool(target.get("enabled", True))
+    target["enabled"] = enabled
+    body["repos"] = repos
+    yaml_path.write_text(yaml.safe_dump(body, sort_keys=False), encoding="utf-8")
+    init_db()
+    entries = parse_registry(yaml_path.read_text(encoding="utf-8"))
+    sync_to_db(entries)
+    return {"repo_id": repo_id, "prior": prior, "now": enabled}
+
+
+def _emit_toggle(res: dict, as_json: bool, repo_id: str, verb: str) -> None:
+    if as_json:
+        click.echo(json.dumps(res, indent=2))
+        return
+    if res["prior"] == res["now"]:
+        click.echo(f"{repo_id} already {verb}; no change")
+    else:
+        click.echo(f"{repo_id}: {verb}")
 
 
 def _prompt_spec(rid: str | None) -> dict[str, object]:

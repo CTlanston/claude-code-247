@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 
 import click
 
@@ -10,24 +11,54 @@ from orchestrator.config import load_config
 from orchestrator.repo_registry import load_registry
 
 
+_ACTIVE_TASK_STATUSES = (
+    "queued", "planning", "coding", "testing", "reviewing",
+    "validating", "pr_created", "auto_merging",
+)
+
+
 def _build_status() -> dict[str, object]:
     cfg = load_config()
     init_db()
     entries = load_registry()
+    today_iso = time.strftime("%Y-%m-%d", time.gmtime())
     with open_db() as conn:
         sv = schema_version(conn)
         task_counts: dict[str, int] = {}
         for row in conn.execute("SELECT status, COUNT(*) AS c FROM tasks GROUP BY status"):
             task_counts[row["status"]] = int(row["c"])
-        pending_cmds = int(
-            conn.execute(
-                "SELECT COUNT(*) AS c FROM commands WHERE status IN ('queued','running','requires_approval')"
-            ).fetchone()["c"]
-        )
-        approvals = int(
-            conn.execute(
-                "SELECT COUNT(*) AS c FROM commands WHERE status = 'requires_approval'"
-            ).fetchone()["c"]
+        active = sum(task_counts.get(s, 0) for s in _ACTIVE_TASK_STATUSES)
+        stuck = task_counts.get("stuck", 0)
+        waiting_approval_tasks = task_counts.get("waiting_for_approval", 0)
+        pending_cmds = int(conn.execute(
+            "SELECT COUNT(*) AS c FROM commands WHERE status IN ('queued','running','requires_approval')"
+        ).fetchone()["c"])
+        approvals = int(conn.execute(
+            "SELECT COUNT(*) AS c FROM commands WHERE status = 'requires_approval'"
+        ).fetchone()["c"])
+        today_completed = int(conn.execute(
+            "SELECT COUNT(*) AS c FROM tasks WHERE status='merged' AND finished_at LIKE ?",
+            (f"{today_iso}%",),
+        ).fetchone()["c"])
+        today_failed = int(conn.execute(
+            "SELECT COUNT(*) AS c FROM tasks WHERE status IN ('failed','cancelled') "
+            "AND finished_at LIKE ?",
+            (f"{today_iso}%",),
+        ).fetchone()["c"])
+        stuck_row = conn.execute(
+            "SELECT id FROM tasks WHERE status='stuck' ORDER BY updated_at DESC LIMIT 1"
+        ).fetchone()
+        approval_row = conn.execute(
+            "SELECT repo_id, pr_number FROM prs WHERE approval_state='required' "
+            "ORDER BY updated_at DESC LIMIT 1"
+        ).fetchone()
+    next_actions: list[str] = []
+    if stuck_row:
+        next_actions.append(f"claude247 explain-stuck --task {stuck_row['id']}")
+    if approval_row and approval_row["pr_number"] is not None:
+        next_actions.append(
+            f"claude247 approve-merge --repo {approval_row['repo_id']} "
+            f"--pr {approval_row['pr_number']}"
         )
     flags = system_state.snapshot()
     paused_repos = sorted(
@@ -50,7 +81,13 @@ def _build_status() -> dict[str, object]:
             "enabled": sum(1 for e in entries if e.enabled),
         },
         "tasks": task_counts,
+        "active": active,
+        "stuck": stuck,
+        "waiting_approval_tasks": waiting_approval_tasks,
+        "today_completed": today_completed,
+        "today_failed": today_failed,
         "commands": {"pending": pending_cmds, "requires_approval": approvals},
+        "next_actions": next_actions,
     }
 
 
@@ -63,22 +100,23 @@ def status(as_json: bool, as_plain: bool) -> None:
         click.echo(json.dumps(s, indent=2, sort_keys=True))
         return
     if as_plain:
+        # Mirrors the directive §8 example shape — terse, phone-sized.
         sys_s = s["system"]
         repos_s = s["repos"]
-        paused_part = " PAUSED" if sys_s["paused"] else ""
+        click.echo(f"System: {'paused' if sys_s['paused'] else 'running'}")
+        click.echo(f"Repos enabled: {repos_s['enabled']}")
+        click.echo(f"Active tasks: {s['active']}")
+        click.echo(f"Stuck tasks: {s['stuck']}")
         click.echo(
-            f"System: {sys_s['auth_mode']} | writes={'on' if sys_s['allow_remote_writes'] else 'off'}{paused_part}"
+            f"Need approval: {s['waiting_approval_tasks'] + s['commands']['requires_approval']}"
         )
-        click.echo(f"Repos: {repos_s['enabled']}/{repos_s['count']} enabled")
+        click.echo(f"Today: {s['today_completed']} completed, {s['today_failed']} failed")
         if sys_s["paused_repos"]:
             click.echo("Paused repos: " + ", ".join(sys_s["paused_repos"]))
-        if s["tasks"]:
-            parts = [f"{k}={v}" for k, v in sorted(s["tasks"].items())]
-            click.echo("Tasks: " + " ".join(parts))
-        else:
-            click.echo("Tasks: 0")
-        cmds = s["commands"]
-        click.echo(f"Pending commands: {cmds['pending']} (approvals: {cmds['requires_approval']})")
+        if s["next_actions"]:
+            click.echo("Next actions:")
+            for action in s["next_actions"]:
+                click.echo(f"- {action}")
         return
     # default formatted output
     sys_s = s["system"]
@@ -94,5 +132,11 @@ def status(as_json: bool, as_plain: bool) -> None:
         click.echo(f"  paused repos      : {', '.join(sys_s['paused_repos'])}")
     tasks_part = ", ".join(f"{k}={v}" for k, v in sorted(s["tasks"].items())) or "(none)"
     click.echo(f"  tasks by status   : {tasks_part}")
+    click.echo(f"  active            : {s['active']}  stuck: {s['stuck']}  "
+               f"waiting-approval: {s['waiting_approval_tasks']}")
+    click.echo(f"  today             : {s['today_completed']} completed, "
+               f"{s['today_failed']} failed")
     cmds = s["commands"]
     click.echo(f"  pending commands  : {cmds['pending']} (approvals: {cmds['requires_approval']})")
+    if s["next_actions"]:
+        click.echo(f"  next              : {s['next_actions'][0]}")

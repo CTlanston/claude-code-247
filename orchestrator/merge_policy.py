@@ -55,7 +55,15 @@ def decide(
     ci_passed: bool | None,
     tests_passed: bool,
     lint_passed: bool,
+    diff_content: str | None = None,
 ) -> MergeRuling:
+    """Decide AUTO_MERGE / WAITING_APPROVAL / BLOCKED.
+
+    ``diff_content`` (added in M16) is the raw diff text. When non-empty
+    we run ``secret_scanner.has_secrets`` on it — any hit is a hard
+    BLOCK regardless of risk band, satisfying directive §14 "no
+    secret-like diff detected" auto-merge requirement.
+    """
     cfg = load_config()
     reasons: list[str] = []
 
@@ -69,6 +77,16 @@ def decide(
     if forbidden_factor:
         reasons.append(f"forbidden path touched: {forbidden_factor.reason}")
         return MergeRuling(MergeDecision.BLOCKED, risk.level, risk.score, reasons)
+
+    # Secret-like diff is always a hard block. The scan is cheap (regex
+    # over additions only) so we run it even when diff_content is short.
+    if diff_content:
+        from orchestrator.secret_scanner import scan as _scan_secrets
+        hits = _scan_secrets(diff_content)
+        if hits:
+            sample = ", ".join(sorted({h.pattern for h in hits})[:3])
+            reasons.append(f"secret-like content detected in diff ({sample})")
+            return MergeRuling(MergeDecision.BLOCKED, risk.level, risk.score, reasons)
 
     # Validator results must be PASS-PASS-no-gaps for auto.
     if validators.final_verdict != "PASS":
