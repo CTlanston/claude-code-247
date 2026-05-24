@@ -79,12 +79,24 @@ the code that implements it and the test(s) that prove it.
 | 57 | BR-003 — per-phase worker_exits observability | ✓ | M19-P3 (`687144c`): new `worker_exits` SQLite table (schema v3) + `orchestrator/worker_exits.py::{CLASSIFICATIONS, record_worker_exit, list_worker_exits, classify_failure}`; instrumented `evidence_collector.run_named_commands`; `handle_explain_stuck` surfaces rows; new `claude247 worker-exits` CLI. 25 tests. |
 | 58 | M19-F1 — secret_scanner FP on `tokens` | ✓ | M19-P5b (`396c153`): `(?im)` → `(?m)` in `env_var_assign` regex. 2 regression tests. Surfaced by Phase 5 first E2E run; verified fixed by Phase 5 rerun (Gemini real PASS conf 1.0 on the same diff that was previously redacted). |
 
+## M20 production proof (proposed v1.0.0-beta.2)
+
+| # | Item | Status | Where it lives |
+|---|---|---|---|
+| 59 | env_loader picks up secrets.env + handles bash `export` | ✓ | M20-P1b (`5aed874`): `orchestrator/env_loader.py::discover_env_paths` adds `<user_config_dir>/secrets.env`; `load()` strips `export ` prefix. 5 regression tests. |
+| 60 | Dispatcher startup uses full env chain | ✓ | M20-P3b (`1eb9d10`): `gateway/commands/dispatcher_cmd.py` calls `load_chain(discover_env_paths(cwd=None))` so the M20-P1b chain takes effect for launchd-spawned dispatchers. |
+| 61 | OpenAI validator default model unblocked | ✓ | M20-P3d: `validator/openai_judge.py::DEFAULT_MODEL` and `config/default.yaml::validators.openai.model` changed from `gpt-5` (org-gated) to `gpt-4o` (widely available). |
+| 62 | Evidence diff resolves base ref dynamically | ✓ | M20-P3g (`1c18d49`): `EvidenceCollector._resolve_base_ref()` uses `task_spec.default_branch` -> `origin/<branch>` -> `HEAD`. 2 regression tests. |
+| 63 | Evidence diff includes untracked new files | ✓ | M20-P3i (`ef30853`): `snapshot_diff_body_safe` synthesizes new-file diffs via `git ls-files --others`. 3 regression tests. |
+| 64 | Role-loop refreshes evidence between iterations | ✓ | M20-P3j (`cca1858`): `runner/role_loop.py::_refresh_diff_evidence` runs after coder and after each repair so reviewer sees fresh state. Demonstrated by the auto-merge E2E. |
+| 65 | launchd daemon mode installed + verified | ✓ | M20-P2: 4 services loaded (`dashboard` KeepAlive + `orchestrator`/`dispatcher`/`backup` scheduled). `/healthz` OK. |
+| 66 | 24h soak plan + baseline recorded | ✓ | M20-P5: [M20_SOAK_PLAN.md](M20_SOAK_PLAN.md). |
+| 67 | **Pure auto-merge end-to-end with both real validators** | ✓ | M20-P3 final: [auto-evo-playground#59 (MERGED)](https://github.com/CTlanston/auto-evo-playground/pull/59). Gemini PASS conf 1.0 + OpenAI PASS conf 1.0 + risk 0 + ruling AUTO_MERGE + merged in 3s. Anthropic worker spend $0.00. |
+
 ## Truly remaining
 
-- Real-validator auto-merge demo with BOTH Gemini + OpenAI returning
-  real `PASS` on a non-trivial diff — gated on the operator setting
-  `OPENAI_API_KEY`. System is ready (M19-P5 rerun proved the path
-  end-to-end except for the missing OpenAI key).
+- 24h soak observed (currently only the baseline is recorded — the
+  t+1h / t+6h / t+24h checkpoints in `M20_SOAK_PLAN.md` are pending).
 - Deeper per-phase `worker_exits` instrumentation outside
   `evidence_collector.run_named_commands` (e.g., `prepare_workspace`,
   `checkout_repo`, `create_branch`, `push`, `open_pr`, `merge_policy`,
