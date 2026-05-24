@@ -188,3 +188,37 @@ observation — exactly the kind of test that catches "the daemon
 quietly OOMed at 3 AM" failures that no unit test will. It's the
 right gate.
 
+---
+
+## Branch / tag / release state after M21 push
+
+Per operator instruction at the end of M21: push the implementation
+branch only; do not advance `main`, do not tag `v1.0.0`, do not
+publish a release.
+
+| Field | Value |
+|---|---|
+| `claude247/v1` pushed | **YES** |
+| Remote `claude247/v1` SHA | `574376b9c1f23a7ec356d0755279834852b9e175` (= local HEAD) |
+| `main` still at `v1.0.0-beta.2` | **YES** (`560227ebb6f29f3bec6753f26caadf884a608880`) |
+| `v1.0.0` tag pushed | **NO** |
+| GitHub release for `v1.0.0` created | **NO** |
+| GA status | **NO-GO** — pending 24h soak full PASS + README refresh |
+
+Verification commands (re-runnable):
+
+```bash
+$ git ls-remote origin claude247/v1
+574376b9c1f23a7ec356d0755279834852b9e175    refs/heads/claude247/v1
+
+$ git ls-remote origin main
+560227ebb6f29f3bec6753f26caadf884a608880    refs/heads/main      # = v1.0.0-beta.2
+
+$ git ls-remote --tags origin 'v1.0.0-*' | grep -v 'alpha\|beta'
+# (empty — no GA tag)
+```
+
+Next milestone (proposed M22): close the 24h soak observation,
+refresh README for M20/M21, then re-evaluate the GA_GATE checklist.
+No new features expected.
+
