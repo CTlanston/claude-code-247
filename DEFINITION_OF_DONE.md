@@ -60,10 +60,26 @@ the code that implements it and the test(s) that prove it.
 | 48 | Dashboard pagination | ✓ | M15: `?limit=&offset=` on /tasks, /prs, /commands, /logs. Bad input clamped. `_pagination.html` partial. |
 | 49 | Golden sandbox E2E | ✓ | M15: `tests/integration/test_sandbox_e2e.py` walks full dispatcher pipeline against in-process SandboxRunner + SandboxGithub. 3 paths (auto-merge / waiting / paused). |
 
-## Truly remaining
+## M18 beta-readiness (v1.0.0-beta.0)
 
-- The Qdrant backend's `text-embedding-3-small` path is wired but
+| # | Item | Status | Where it lives |
+|---|---|---|---|
+| 50 | Explicit `worker_mode` + no silent API fallback | ✓ | M18-P0: `runner/auth.py`, `runner/claude_cli.py`, `config/default.yaml` (`auth.*`), `gateway/doctor.py::check_auth_mode`. 12 tests in `tests/unit/test_auth_mode_no_silent_fallback.py`. |
+| 51 | Real OpenAI validator + mock-cannot-silently-pass-auto-merge | ✓ | M18-P1: `validator/openai_judge.py` (real REST via httpx, mock-labeled fallback), `validator/validation_policy.py` (mock-gate). Per-validator `require_real_for_auto_merge` flag. |
+| 52 | launchd doctor + plist test coverage | ✓ | M18-P2: `scripts/doctor_launchd.sh`, `gateway/doctor.py::check_launchd`, `tests/unit/test_launchd_plist_generation.py` (9 tests). |
+| 53 | Live GitHub webhook through ngrok | ✓ | M18-P3: `WEBHOOK_LIVE_REPORT.md`. Explicit `handle_ping` added in `orchestrator/webhooks.py`. Real deliveries: 1 ping + 1 pull_request + 7 check_run, all 200 OK + DB persisted. |
+| 54 | Second real E2E on local-first auth path | ✓ | M18-P4: `REAL_E2E_REPORT_M18_P4.md`. $0.00 Anthropic spend, real Gemini judge, PR #53 cycled through full pipeline, auto-merge gate held on NEEDS_HUMAN verdict. |
+
+## Truly remaining (beta-readiness backlog → BR-001/002/003)
+
+- BR-001 (medium): `JudgeInput` includes diff *summary*, not diff
+  *body*. Real validators (correctly) refuse to verify byte-identical
+  preservation without the body. Surfaced by P4.
+- BR-002 (low): `env_loader.load()` only reads
+  `~/.claude-code-247/.env`; project-local `.env` is ignored.
+  `OPENAI_API_KEY` in CWD/.env runs as mock in P4.
+- BR-003 (low): dispatcher summary reports `worker_exit: 3` even when
+  role artifacts are complete and PR is clean. Observability nit.
+- Qdrant backend's `text-embedding-3-small` path is wired but
   un-tested live (no Qdrant running, no embedding key in test env).
-- A real GitHub repo + webhook live test (would need a sacrificial
-  repo + ngrok or similar).
 - Multi-machine HA isn't designed for — single-Mac scope is by design.
