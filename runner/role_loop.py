@@ -120,6 +120,14 @@ def run_role_loop(
         return RoleLoopOutcome(False, "ERROR", 0, results,
                                notes=notes + [f"coder failed: {coder_res.error}"])
 
+    # M20-P3j: refresh evidence after the coder writes files. Without
+    # this snapshot, the reviewer reads a stale diff_summary.md /
+    # diff_body_safe.md left over from worker.py's pre-roleloop call
+    # (when the workspace was clean), declares the diff "empty", and
+    # cascades to NEEDS_REPAIR -> NEEDS_HUMAN regardless of what the
+    # coder actually produced.
+    _refresh_diff_evidence(collector, spec)
+
     # Re-run repo's tests after Coder so the Reviewer judges the latest state.
     if rerun_tests is not None:
         post_coder_tests = rerun_tests()
@@ -173,9 +181,30 @@ def run_role_loop(
             return RoleLoopOutcome(False, "ERROR", repair_attempts, results, notes=notes)
         if rerun_tests is not None:
             post_coder_tests = rerun_tests()
+        # M20-P3j: refresh evidence after each repair so the next
+        # reviewer iteration sees the post-repair state.
+        _refresh_diff_evidence(collector, spec)
 
 
 # ────────────────────────────────────────────────────────────────────
+
+
+def _refresh_diff_evidence(collector: EvidenceCollector,
+                            spec: dict[str, Any]) -> None:
+    """M20-P3j: re-snapshot diff_summary, diff_body_safe, and
+    file_manifest mid-roleloop. Without this, the reviewer's view of
+    the workspace is frozen at whatever state existed before the
+    coder/repair Claude CLI subprocess wrote files, so it judges an
+    empty diff and cascades to NEEDS_REPAIR -> NEEDS_HUMAN even when
+    the work is plausibly correct."""
+    try:
+        collector.snapshot_diff()
+        collector.snapshot_diff_body_safe(
+            forbidden_paths=spec.get("forbidden_paths"),
+        )
+        collector.snapshot_manifest()
+    except Exception:  # pragma: no cover — evidence refresh is best-effort
+        pass
 
 
 def _planner_user_prompt(spec: dict[str, Any],
