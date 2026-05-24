@@ -127,6 +127,29 @@ def check_claude_cli() -> Check:
     )
 
 
+def check_claude_smoke() -> Check:
+    """Optional: round-trip a trivial prompt through `claude -p`. Slow
+    (multi-second), so only emitted when called explicitly."""
+    path = _which("claude")
+    if not path:
+        return Check(name="claude smoke", status="fail", required=False,
+                     message="claude CLI not installed")
+    # Delegate to runner.claude_cli so production + doctor share the path.
+    from runner.claude_cli import smoke_check
+    res = smoke_check(timeout=45.0)
+    if res.ok and "OK" in res.text.upper():
+        return Check(
+            name="claude smoke",
+            status="ok", required=False,
+            message=f"round-trip in {res.duration_s}s",
+            detail={"duration_s": res.duration_s, "auth_mode": res.auth_mode,
+                    "cost_usd": res.cost_usd},
+        )
+    return Check(name="claude smoke", status="warn", required=False,
+                 message=res.error or f"unexpected response: {res.text[:80]!r}",
+                 detail={"exit": res.exit_code, "duration_s": res.duration_s})
+
+
 def check_sqlite() -> Check:
     import sqlite3
     return Check(name="sqlite3 (python)", status="ok", required=True,
