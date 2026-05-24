@@ -34,12 +34,23 @@ the code that implements it and the test(s) that prove it.
 | 27 | Tests pass | ✓ | 242 pass in <8s on Python 3.13 |
 | 28 | Docs are complete | ✓ | `docs/{ARCHITECTURE,INSTALL,REMOTE_DISPATCH,SECURITY,MEMORY,AUTO_MERGE_POLICY,VALIDATORS,REPO_ONBOARDING,OPERATIONS}.md` + README, CLAUDE.md, IMPLEMENTATION_PLAN.md |
 
-## Known limitations carried forward (M11+)
+## M11 / M11.5 acceptance (added)
 
-- The `orchestrator/scheduler.py` "main loop" that drains the command
-  queue and dispatches role-loop runs is implicit. M0..M10 land all
-  the pieces; M11 should wire the long-running poll loop and add the
-  `claude247 dispatcher` / `claude247 dispatcher --once` entry point.
+| # | Criterion | Status | Where |
+|---|---|---|---|
+| 29 | Long-running dispatcher | ✓ | M11: `orchestrator/dispatcher.py::run_once,run_loop` + `gateway/commands/dispatcher_cmd.py` + `scripts/launchd/com.claude247.dispatcher.plist.tpl` (StartInterval=30). 24 tests. |
+| 30 | System / repo pause flags | ✓ | M11: `orchestrator/system_state.py` + schema v2 (`system_state` table). Surfaced in `claude247 status`. |
+| 31 | Real PR creation via gh | ✓ | M11.5: `orchestrator/github_client.py` + `dispatcher.handle_start_task` wires push + draft PR + records into `prs`. 10 + 7 tests. |
+| 32 | Real auto-merge via gh | ✓ | M11.5: AUTO_MERGE ruling → `gh pr merge` (squash default, overridable). Triple gate: `allow_remote_writes` + repo opt-in + ruling. |
+| 33 | Approve_merge actually merges | ✓ | M11.5: `dispatcher.handle_approve_merge` calls `gh pr merge` when writes are on; records decision + transitions task. |
+| 34 | Live Gemini 2.5 Pro adapter | ✓ | M11.5: real API call returned `validator=gemini` + structured verdict in 16.7s (one-shot smoke from `~/.claude-dispatch/.env`). |
+
+## Known limitations carried forward (M12+)
+
+- **(closed in M11)** dispatcher main loop — shipped as
+  `claude247 dispatcher --once` + launchd plist.
+- **(closed in M11.5)** gh-CLI PR create + auto-merge — shipped.
+- **(closed in M11.5)** live Gemini adapter end-to-end verified.
 - The Qdrant backend uses a deterministic placeholder embedding so the
   interface is exercised; swap `_QdrantBackend._embed` for a real
   embedder before relying on similarity search.
@@ -47,3 +58,11 @@ the code that implements it and the test(s) that prove it.
   migration auto-detection are reserved.
 - The `database_migration` risk factor is wired but not auto-detected
   yet — needs a heuristic over the diff's file paths and content.
+- OpenAI validator: only `GEMINI_API_KEY` is in `~/.claude-dispatch/.env`
+  at the moment; the OpenAI adapter falls back to `openai-mock` until
+  `OPENAI_API_KEY` is supplied.
+- Webhook / poll-based CI status (`ci_results` table) is unwired —
+  `dispatcher.handle_start_task` passes `ci_passed=None`. M12 should
+  add a CI poller (`gh pr checks` → `ci_results`).
+- Per-task budget enforcement (`max_repair_attempts_per_task`) is
+  declared in policy but not yet read by the role loop.
