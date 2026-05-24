@@ -61,6 +61,9 @@ cli.add_command(memory_grp)
 cli.add_command(replay_cmd)
 cli.add_command(dispatcher_cmd)
 cli.add_command(worker_exits_cmd)
+# M21-P2: the same callback also lives under `task-phases` to match
+# the directive's preferred spelling (`claude247 task-phases --task X`).
+cli.add_command(worker_exits_cmd, name="task-phases")
 
 
 def main() -> int:

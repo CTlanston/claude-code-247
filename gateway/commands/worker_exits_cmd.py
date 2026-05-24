@@ -42,11 +42,17 @@ def worker_exits(
 
     if as_plain:
         for r in rows:
-            symbol = "✓" if r.classification == "success" else "✗"
+            # M21-P2: prefer the lifecycle ``status`` over the older
+            # ``classification`` for the at-a-glance symbol.
+            effective = r.status or r.classification
+            symbol = {
+                "success": "✓", "skipped": "•", "in_progress": "…",
+            }.get(effective, "✗")
+            dur = f"{r.duration_ms}ms" if r.duration_ms is not None else "?"
+            err = f" {r.error_type}" if r.error_type else ""
             click.echo(
-                f"{symbol} {r.created_at} {r.phase:<14} "
-                f"{r.classification:<22} exit={r.exit_code} "
-                f"{(r.command or '')[:60]}"
+                f"{symbol} {r.started_at or r.created_at} {r.phase:<18} "
+                f"{(r.status or r.classification):<14}{err} dur={dur}"
             )
         return
 
@@ -54,15 +60,25 @@ def worker_exits(
     click.echo(f"worker_exits for task {task_id}")
     click.echo("-" * 78)
     for r in rows:
+        status_label = r.status or r.classification
         click.echo(
-            f"[{r.created_at}] role={r.worker_role} phase={r.phase} "
-            f"-> {r.classification} (exit={r.exit_code}, "
+            f"[{r.started_at or r.created_at}] role={r.worker_role} phase={r.phase} "
+            f"-> {status_label} ({r.classification}, exit={r.exit_code}, "
             f"duration={r.duration_ms}ms)"
         )
+        if r.error_type:
+            click.echo(f"  error: {r.error_type}: {r.error_message or ''}")
         if r.command:
             click.echo(f"  $ {r.command}")
         if r.stderr_tail:
             click.echo(f"  stderr: {r.stderr_tail[:200]}")
         if r.next_action:
             click.echo(f"  next:  {r.next_action}")
+        if r.payload:
+            click.echo(f"  meta:  {r.payload}")
         click.echo("")
+
+
+# M21-P2: `claude247 task-phases --task <id>` is the directive's
+# preferred spelling. We register the same callback under both names
+# in gateway/cli.py so it doesn't matter which the operator types.

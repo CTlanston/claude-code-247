@@ -47,6 +47,7 @@ from orchestrator.merge_policy import MergeDecision, decide as merge_decide
 from orchestrator.repo_registry import RepoEntry, load_registry
 from orchestrator.risk_score import DiffStats, compute_risk
 from orchestrator.runner_manager import RunnerManager, RunnerManagerError
+from orchestrator.worker_exits import record_phase
 from orchestrator.task_manager import (
     TaskStatus, create_task, get_task, get_timeline, list_tasks, transition,
 )
@@ -235,17 +236,25 @@ def handle_start_task(
 
     runner = runner or RunnerManager(backend="local")
 
-    # Phase 1 — workspace + worker
+    # Phase 1 — workspace + worker (M21-P2: instrumented)
     transition(task.id, TaskStatus.planning,
                message="prepare_workspace + worker", db_path=db_path)
     try:
-        prep = runner.prepare_workspace(task_id=task.id, repo_id=repo_id, goal=goal)
-        spec = runner.build_task_spec(task_id=task.id, repo=repo,
-                                       goal=goal, branch=prep.branch)
-        outcome = runner.run(
-            prep=prep, spec=spec,
-            allow_roles=payload.get("allow_roles", True),
-        )
+        with record_phase(task_id=task.id, repo_id=repo_id,
+                           phase="prepare_workspace") as _rec_ws:
+            prep = runner.prepare_workspace(task_id=task.id, repo_id=repo_id, goal=goal)
+            spec = runner.build_task_spec(task_id=task.id, repo=repo,
+                                           goal=goal, branch=prep.branch)
+            _rec_ws.metadata["branch"] = prep.branch
+            _rec_ws.metadata["workspace"] = str(prep.workspace)
+        with record_phase(task_id=task.id, repo_id=repo_id,
+                           phase="worker") as _rec_worker:
+            outcome = runner.run(
+                prep=prep, spec=spec,
+                allow_roles=payload.get("allow_roles", True),
+            )
+            _rec_worker.metadata["exit_code"] = outcome.exit_code
+            _rec_worker.exit_code = outcome.exit_code
     except (RunnerManagerError, subprocess.CalledProcessError, OSError) as e:
         transition(task.id, TaskStatus.failed,
                    message=f"runner error: {e}", db_path=db_path)
@@ -255,36 +264,49 @@ def handle_start_task(
     budget_manager.increment(repo_id, counter="worker_runs_count", db_path=db_path)
     budget_manager.increment(repo_id, counter="local_cc_run_count", db_path=db_path)
 
-    # Phase 2 — validators on the evidence package
+    # Phase 2 — validators on the evidence package (M21-P2: instrumented)
     transition(task.id, TaskStatus.validating,
                branch=prep.branch, message="validators on .evidence/",
                db_path=db_path)
     evidence_dir = prep.workspace / ".evidence"
     inp = JudgeInput.from_evidence_dir(evidence_dir, task_id=task.id, repo_id=repo_id)
-    if validator_fn is not None:
-        # Test injection — caller provides the policy directly.
-        validation = validator_fn(inp)
-    else:
-        validation = validate_evidence(inp)
+    with record_phase(task_id=task.id, repo_id=repo_id,
+                       phase="validators") as _rec_val:
+        if validator_fn is not None:
+            # Test injection — caller provides the policy directly.
+            validation = validator_fn(inp)
+        else:
+            validation = validate_evidence(inp)
+        _rec_val.metadata["final_verdict"] = validation.final_verdict
+        _rec_val.metadata["verdicts"] = [
+            {"validator": r.validator, "verdict": r.verdict,
+             "confidence": r.confidence}
+            for r in validation.results
+        ]
     for vr in validation.results:
         _record_validator_result(task.id, vr, db_path=db_path)
         budget_manager.increment(repo_id, counter="validator_runs_count",
                                   db_path=db_path)
 
-    # Phase 3 — diff + coverage + risk score
-    diff, diff_content = _diff_against_base(prep.workspace, repo.default_branch)
-    coverage_pct = coverage_parser.extract_coverage_pct(prep.workspace)
-    risk = compute_risk(
-        diff,
-        allowed_paths=(repo.raw or {}).get("allowed_paths") or ["**"],
-        forbidden_paths=(repo.raw or {}).get("forbidden_paths") or [],
-        validators=validation.results,
-        ci_passed=None,
-        test_results=_evidence_json(evidence_dir, "test_results.json", []),
-        lint_results=_evidence_json(evidence_dir, "lint_results.json", []),
-        coverage_pct=coverage_pct,
-        diff_content=diff_content,
-    )
+    # Phase 3 — diff + coverage + risk score (M21-P2: instrumented)
+    with record_phase(task_id=task.id, repo_id=repo_id,
+                       phase="risk_score") as _rec_risk:
+        diff, diff_content = _diff_against_base(prep.workspace, repo.default_branch)
+        coverage_pct = coverage_parser.extract_coverage_pct(prep.workspace)
+        risk = compute_risk(
+            diff,
+            allowed_paths=(repo.raw or {}).get("allowed_paths") or ["**"],
+            forbidden_paths=(repo.raw or {}).get("forbidden_paths") or [],
+            validators=validation.results,
+            ci_passed=None,
+            test_results=_evidence_json(evidence_dir, "test_results.json", []),
+            lint_results=_evidence_json(evidence_dir, "lint_results.json", []),
+            coverage_pct=coverage_pct,
+            diff_content=diff_content,
+        )
+        _rec_risk.metadata["risk_score"] = risk.score
+        _rec_risk.metadata["risk_level"] = risk.level
+        _rec_risk.metadata["files_changed"] = len(diff.files)
     _record_risk_score(task.id, risk, db_path=db_path)
 
     # Phase 4 — merge policy
@@ -296,15 +318,21 @@ def handle_start_task(
         r.get("exit", 0) == 0
         for r in _evidence_json(evidence_dir, "lint_results.json", [])
     )
-    ruling = merge_decide(
-        risk=risk,
-        validators=validation,
-        repo=repo,
-        ci_passed=None,
-        tests_passed=test_passed,
-        lint_passed=lint_passed,
-        diff_content=diff_content,
-    )
+    with record_phase(task_id=task.id, repo_id=repo_id,
+                       phase="merge_policy") as _rec_mp:
+        ruling = merge_decide(
+            risk=risk,
+            validators=validation,
+            repo=repo,
+            ci_passed=None,
+            tests_passed=test_passed,
+            lint_passed=lint_passed,
+            diff_content=diff_content,
+        )
+        _rec_mp.metadata["decision"] = ruling.decision.value
+        _rec_mp.metadata["reasons"] = list(ruling.reasons)
+        if ruling.decision is MergeDecision.BLOCKED:
+            _rec_mp.classification = "merge_policy_block"
 
     # Phase 5 — commit, push + PR create (when allowed), transition + notify
     cfg = load_config()
@@ -357,20 +385,29 @@ def handle_start_task(
     pr_record_id: str | None = None
     if cfg.allow_remote_writes and commit_sha:
         try:
-            runner.rewire_origin_to_github(prep)
-            pushed = runner.push_branch(prep)
-            summary["pushed"] = pushed
+            with record_phase(task_id=task.id, repo_id=repo_id,
+                               phase="push") as _rec_push:
+                runner.rewire_origin_to_github(prep)
+                pushed = runner.push_branch(prep)
+                summary["pushed"] = pushed
+                _rec_push.metadata["pushed"] = pushed
+                _rec_push.command = f"git push origin {prep.branch}"
             if pushed:
                 pr_title = f"agent: {goal[:60]}"
                 pr_body = _pr_body(task.id, repo_id, risk, validation, ruling)
-                created = gh.create_draft_pr(
-                    repo=repo.github_full_name,
-                    branch=prep.branch,
-                    title=pr_title,
-                    body=pr_body,
-                    base=repo.default_branch,
-                    workspace=str(prep.workspace),
-                )
+                with record_phase(task_id=task.id, repo_id=repo_id,
+                                   phase="open_pr") as _rec_pr:
+                    _rec_pr.command = "gh pr create --draft"
+                    created = gh.create_draft_pr(
+                        repo=repo.github_full_name,
+                        branch=prep.branch,
+                        title=pr_title,
+                        body=pr_body,
+                        base=repo.default_branch,
+                        workspace=str(prep.workspace),
+                    )
+                    _rec_pr.metadata["pr_number"] = created.number
+                    _rec_pr.metadata["pr_url"] = created.url
                 pr_number = created.number
                 pr_url = created.url
                 pr_record_id = _record_pr(
@@ -402,32 +439,46 @@ def handle_start_task(
         transition(task.id, TaskStatus.auto_merging,
                    message="auto-merge ruling", db_path=db_path)
         merged_ok = False
-        if cfg.allow_remote_writes and pr_number is not None:
-            try:
-                am_cfg = (repo.raw or {}).get("auto_merge") or {}
-                # GitHub rejects merging draft PRs; mark ready first.
+        # M21-P2: record the auto_merge phase explicitly, even when
+        # skipped (writes off / no PR) or failed (gh pr merge errored).
+        with record_phase(task_id=task.id, repo_id=repo_id,
+                           phase="auto_merge") as _rec_am:
+            if not (cfg.allow_remote_writes and pr_number is not None):
+                _rec_am.skip(
+                    "writes off" if not cfg.allow_remote_writes
+                    else "no PR number to merge"
+                )
+            else:
                 try:
-                    gh.mark_ready(repo.github_full_name, pr_number)
-                except _github_client.GitHubError as ready_err:
-                    log_indexer.write(level="warn", component="dispatcher",
-                                       message=f"gh pr ready: {ready_err}",
+                    am_cfg = (repo.raw or {}).get("auto_merge") or {}
+                    _rec_am.command = "gh pr merge --squash --delete-branch"
+                    _rec_am.metadata["pr_number"] = pr_number
+                    # GitHub rejects merging draft PRs; mark ready first.
+                    try:
+                        gh.mark_ready(repo.github_full_name, pr_number)
+                    except _github_client.GitHubError as ready_err:
+                        log_indexer.write(level="warn", component="dispatcher",
+                                           message=f"gh pr ready: {ready_err}",
+                                           repo_id=repo_id, task_id=task.id,
+                                           db_path=db_path)
+                    gh.merge_pr(repo=repo.github_full_name, number=pr_number,
+                                 method=am_cfg.get("method", "squash"),
+                                 delete_branch=True,
+                                 auto=bool(am_cfg.get("auto", False)),
+                                 admin=bool(am_cfg.get("admin", False)))
+                    merged_ok = True
+                    summary["merged"] = True
+                    if pr_record_id:
+                        _mark_pr_merged(pr_record_id, db_path=db_path)
+                except _github_client.GitHubError as e:
+                    log_indexer.write(level="error", component="dispatcher",
+                                       message=f"gh pr merge: {e}",
                                        repo_id=repo_id, task_id=task.id,
                                        db_path=db_path)
-                gh.merge_pr(repo=repo.github_full_name, number=pr_number,
-                             method=am_cfg.get("method", "squash"),
-                             delete_branch=True,
-                             auto=bool(am_cfg.get("auto", False)),
-                             admin=bool(am_cfg.get("admin", False)))
-                merged_ok = True
-                summary["merged"] = True
-                if pr_record_id:
-                    _mark_pr_merged(pr_record_id, db_path=db_path)
-            except _github_client.GitHubError as e:
-                log_indexer.write(level="error", component="dispatcher",
-                                   message=f"gh pr merge: {e}",
-                                   repo_id=repo_id, task_id=task.id,
-                                   db_path=db_path)
-                summary["merge_error"] = str(e)
+                    summary["merge_error"] = str(e)
+                    _rec_am.fail(classification="github_failure",
+                                  error_type="GitHubError",
+                                  error_message=str(e)[:1000])
         if merged_ok:
             transition(task.id, TaskStatus.merged,
                        message="auto-merge completed", db_path=db_path)

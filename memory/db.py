@@ -58,12 +58,45 @@ def connect(path: Path | str | None = None) -> sqlite3.Connection:
 
 
 def init_db(path: Path | str | None = None) -> Path:
-    """Initialize (or upgrade-in-place) the state DB. Idempotent."""
+    """Initialize (or upgrade-in-place) the state DB. Idempotent.
+
+    For backwards-compatible column additions (e.g. M21-P2's status /
+    started_at / finished_at / error_type fields on worker_exits),
+    we run lightweight ALTER TABLE migrations before the schema.sql
+    bootstrap because SQLite's CREATE TABLE IF NOT EXISTS leaves an
+    existing table alone — so new columns wouldn't appear without an
+    explicit migration step.
+    """
     target = Path(path).expanduser() if path is not None else default_db_path()
     target.parent.mkdir(parents=True, exist_ok=True)
     with connect(target) as conn:
+        _migrate_v4_worker_exits_phase_columns(conn)
         conn.executescript(load_schema_sql())
     return target
+
+
+def _migrate_v4_worker_exits_phase_columns(conn: sqlite3.Connection) -> None:
+    """M21-P2 (schema v4): add status / started_at / finished_at /
+    error_type columns to worker_exits when migrating from v3.
+
+    Safe to run on a brand-new DB (the worker_exits table won't exist
+    yet — we silently skip) and on an already-migrated DB (existing
+    columns trigger a no-op).
+    """
+    try:
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(worker_exits)").fetchall()}
+    except sqlite3.OperationalError:
+        return  # table doesn't exist yet — schema.sql will create it fresh
+    if not cols:
+        return  # same as above
+    for name, ddl in (
+        ("status", "ALTER TABLE worker_exits ADD COLUMN status TEXT"),
+        ("started_at", "ALTER TABLE worker_exits ADD COLUMN started_at TEXT"),
+        ("finished_at", "ALTER TABLE worker_exits ADD COLUMN finished_at TEXT"),
+        ("error_type", "ALTER TABLE worker_exits ADD COLUMN error_type TEXT"),
+    ):
+        if name not in cols:
+            conn.execute(ddl)
 
 
 @contextmanager

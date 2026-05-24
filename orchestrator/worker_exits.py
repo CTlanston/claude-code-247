@@ -23,9 +23,10 @@ debugging a confidently-mislabelled one.
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from memory.db import open_db
 from orchestrator.ids import make_id, utc_now_iso
@@ -69,6 +70,11 @@ class WorkerExit:
     retryable: bool
     next_action: str | None
     payload: dict[str, Any] = field(default_factory=dict)
+    # M21-P2: phase lifecycle fields
+    status: str | None = None
+    started_at: str | None = None
+    finished_at: str | None = None
+    error_type: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -89,6 +95,10 @@ class WorkerExit:
             "retryable": self.retryable,
             "next_action": self.next_action,
             "payload": self.payload,
+            "status": self.status,
+            "started_at": self.started_at,
+            "finished_at": self.finished_at,
+            "error_type": self.error_type,
         }
 
 
@@ -109,11 +119,20 @@ def record_worker_exit(
     next_action: str | None = None,
     payload: dict[str, Any] | None = None,
     run_id: str | None = None,
+    status: str | None = None,
+    started_at: str | None = None,
+    finished_at: str | None = None,
+    error_type: str | None = None,
     db_path: Path | str | None = None,
 ) -> WorkerExit:
     """Insert one row into ``worker_exits``. Raises ``ValueError`` on
     an unknown classification (typos are the most common bug here, and
-    silently dropping them would erode the contract)."""
+    silently dropping them would erode the contract).
+
+    M21-P2: ``status`` / ``started_at`` / ``finished_at`` / ``error_type``
+    are optional lifecycle fields. ``record_phase()`` populates them
+    for free; direct callers may leave them None.
+    """
     if classification not in CLASSIFICATIONS:
         raise ValueError(
             f"unknown classification {classification!r}; "
@@ -128,14 +147,16 @@ def record_worker_exit(
             INSERT INTO worker_exits (
               id, created_at, task_id, repo_id, run_id, worker_role, phase,
               command, exit_code, duration_ms, classification, stdout_tail,
-              stderr_tail, error_message, retryable, next_action, payload_json
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+              stderr_tail, error_message, retryable, next_action, payload_json,
+              status, started_at, finished_at, error_type
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 we_id, now, task_id, repo_id, run_id, worker_role, phase,
                 command, exit_code, duration_ms, classification,
                 stdout_tail, stderr_tail, error_message,
                 1 if retryable else 0, next_action, payload_json,
+                status, started_at, finished_at, error_type,
             ),
         )
     return WorkerExit(
@@ -146,7 +167,160 @@ def record_worker_exit(
         stderr_tail=stderr_tail, error_message=error_message,
         retryable=retryable, next_action=next_action,
         payload=payload or {},
+        status=status, started_at=started_at, finished_at=finished_at,
+        error_type=error_type,
     )
+
+
+# ── M21-P2: phase recording context manager ──────────────────────────────
+
+
+@dataclass
+class _PhaseRecord:
+    """Mutable state shared with the ``record_phase()`` caller. Settable
+    fields let the caller attach metadata, override classification,
+    or mark the phase as skipped."""
+    task_id: str
+    repo_id: str
+    worker_role: str
+    phase: str
+    started_at: str
+    metadata: dict[str, Any] = field(default_factory=dict)
+    classification: str = "success"
+    status: str = "in_progress"
+    exit_code: int | None = None
+    command: str | None = None
+    next_action: str | None = None
+    error_message: str | None = None
+    error_type: str | None = None
+    run_id: str | None = None
+
+    def skip(self, reason: str) -> None:
+        """Mark this phase as skipped (e.g., when a precondition isn't met)."""
+        self.status = "skipped"
+        self.classification = "success"
+        self.exit_code = 0
+        self.metadata["skip_reason"] = reason
+
+    def fail(self, *, classification: str, error_type: str | None = None,
+             error_message: str | None = None, exit_code: int = -1) -> None:
+        """Mark this phase as a failure explicitly (when not using exceptions)."""
+        self.status = "failure"
+        self.classification = classification
+        self.error_type = error_type
+        self.error_message = error_message
+        self.exit_code = exit_code
+
+
+@contextmanager
+def record_phase(
+    *,
+    task_id: str,
+    repo_id: str,
+    phase: str,
+    worker_role: str = "dispatcher",
+    run_id: str | None = None,
+    db_path: Path | str | None = None,
+) -> Iterator[_PhaseRecord]:
+    """Bracket a phase with a worker_exits row.
+
+    Usage::
+
+        with record_phase(task_id=t, repo_id=r, phase="push") as rec:
+            rec.command = "git push origin agent/x"
+            runner.push_branch(prep)
+
+    On exception: the row is written with status=failure, classification
+    inferred from the exception class, error_type=class name, error_message
+    = str(exc), exit_code=-1, finished_at=now. The exception is re-raised.
+
+    On normal exit (status not explicitly set to "skipped" or "failure"):
+    status defaults to "success", classification="success", exit_code=0.
+
+    The recorder is best-effort: a database failure inside the with-block
+    must NOT shadow the original exception. If recording itself fails
+    we silently drop the row and let the user-facing flow continue.
+    """
+    rec = _PhaseRecord(
+        task_id=task_id, repo_id=repo_id, worker_role=worker_role,
+        phase=phase, started_at=utc_now_iso(),
+        run_id=run_id,
+    )
+    raised: BaseException | None = None
+    try:
+        yield rec
+    except BaseException as e:  # includes KeyboardInterrupt / SystemExit
+        raised = e
+        if rec.status == "in_progress":
+            rec.status = "failure"
+            rec.error_type = type(e).__name__
+            rec.error_message = str(e)[:1000]
+            rec.exit_code = -1
+            rec.classification = _classification_for_exception(e, phase, rec.command)
+    finally:
+        finished = utc_now_iso()
+        if rec.status == "in_progress":
+            rec.status = "success"
+            rec.classification = rec.classification or "success"
+            rec.exit_code = 0 if rec.exit_code is None else rec.exit_code
+        try:
+            _emit_phase_row(rec, finished_at=finished, db_path=db_path)
+        except Exception:  # pragma: no cover — observability never breaks flow
+            pass
+        if raised is not None:
+            raise raised
+
+
+def _emit_phase_row(rec: _PhaseRecord, *, finished_at: str,
+                     db_path: Path | str | None) -> None:
+    duration_ms = _iso_delta_ms(rec.started_at, finished_at)
+    record_worker_exit(
+        task_id=rec.task_id, repo_id=rec.repo_id,
+        worker_role=rec.worker_role, phase=rec.phase,
+        classification=rec.classification,
+        command=rec.command,
+        exit_code=rec.exit_code,
+        duration_ms=duration_ms,
+        error_message=rec.error_message,
+        next_action=rec.next_action,
+        payload=dict(rec.metadata),
+        run_id=rec.run_id,
+        status=rec.status,
+        started_at=rec.started_at,
+        finished_at=finished_at,
+        error_type=rec.error_type,
+        db_path=db_path,
+    )
+
+
+def _classification_for_exception(exc: BaseException, phase: str,
+                                    command: str | None) -> str:
+    """Map an exception class + phase to one of the canonical labels.
+    Reuses ``classify_failure``'s heuristics with the exception type as
+    a tiebreaker. Always returns a valid label."""
+    name = type(exc).__name__.lower()
+    if "timeout" in name:
+        return "timeout"
+    if any(k in name for k in ("auth", "permission", "denied")):
+        return "auth_failure"
+    return classify_failure(
+        phase=phase, exit_code=-1, command=command,
+        stderr_tail=f"{type(exc).__name__}: {exc}",
+    )
+
+
+def _iso_delta_ms(start: str, end: str) -> int | None:
+    """Return the millisecond delta between two ISO-8601 timestamps.
+    Returns None if either string can't be parsed (we never raise from
+    a phase record).
+    """
+    from datetime import datetime
+    try:
+        t0 = datetime.fromisoformat(start.replace("Z", "+00:00"))
+        t1 = datetime.fromisoformat(end.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return int((t1 - t0).total_seconds() * 1000)
 
 
 def list_worker_exits(
@@ -159,7 +333,8 @@ def list_worker_exits(
     query = (
         "SELECT id, created_at, task_id, repo_id, run_id, worker_role, phase, "
         "command, exit_code, duration_ms, classification, stdout_tail, "
-        "stderr_tail, error_message, retryable, next_action, payload_json "
+        "stderr_tail, error_message, retryable, next_action, payload_json, "
+        "status, started_at, finished_at, error_type "
         "FROM worker_exits WHERE task_id = ? ORDER BY created_at ASC"
     )
     params: tuple = (task_id,)
@@ -176,6 +351,16 @@ def _row_to_exit(row: Any) -> WorkerExit:
         payload = json.loads(row["payload_json"] or "{}")
     except (TypeError, json.JSONDecodeError):
         payload = {}
+    # M21-P2 columns may be NULL on rows written by the pre-migration
+    # recorder — sqlite3.Row supports both subscript and dict() pull but
+    # only for columns that exist in the SELECT. The query in
+    # list_worker_exits explicitly enumerates them, so they're always
+    # present here; we defensively coerce missing→None anyway.
+    def _get(name: str):
+        try:
+            return row[name]
+        except (IndexError, KeyError):
+            return None
     return WorkerExit(
         id=row["id"], created_at=row["created_at"],
         task_id=row["task_id"], repo_id=row["repo_id"],
@@ -188,6 +373,10 @@ def _row_to_exit(row: Any) -> WorkerExit:
         retryable=bool(row["retryable"]),
         next_action=row["next_action"],
         payload=payload,
+        status=_get("status"),
+        started_at=_get("started_at"),
+        finished_at=_get("finished_at"),
+        error_type=_get("error_type"),
     )
 
 

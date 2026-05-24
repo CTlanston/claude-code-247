@@ -316,16 +316,23 @@ CREATE TABLE IF NOT EXISTS worker_exits (
   error_message   TEXT,
   retryable       INTEGER NOT NULL DEFAULT 0,
   next_action     TEXT,
-  payload_json    TEXT
+  payload_json    TEXT,
+  -- M21-P2: phase lifecycle fields (additive; older rows have these NULL)
+  status          TEXT,                         -- in_progress|success|failure|skipped
+  started_at      TEXT,                         -- ISO-8601 UTC
+  finished_at     TEXT,                         -- ISO-8601 UTC
+  error_type      TEXT                          -- Python exception class name when status=failure
 );
 CREATE INDEX IF NOT EXISTS idx_worker_exits_task ON worker_exits(task_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_worker_exits_classification ON worker_exits(classification, created_at);
+CREATE INDEX IF NOT EXISTS idx_worker_exits_task_phase ON worker_exits(task_id, phase, started_at);
 
 -- ────────────────────────────────────────────────────────────────────────
 -- schema_version: tracks migrations.
 --   v1  initial M1 schema
 --   v2  M11 added system_state
 --   v3  M19/BR-003 added worker_exits
+--   v4  M21-P2 added phase lifecycle fields to worker_exits
 CREATE TABLE IF NOT EXISTS schema_version (
   version         INTEGER PRIMARY KEY,
   applied_at      TEXT NOT NULL
@@ -336,3 +343,5 @@ INSERT OR IGNORE INTO schema_version (version, applied_at)
 VALUES (2, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
 INSERT OR IGNORE INTO schema_version (version, applied_at)
 VALUES (3, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+INSERT OR IGNORE INTO schema_version (version, applied_at)
+VALUES (4, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
