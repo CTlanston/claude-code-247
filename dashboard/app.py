@@ -15,7 +15,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from memory.db import default_db_path, init_db, open_db
-from orchestrator import alert_deduper, budget_manager, log_indexer, webhooks
+from orchestrator import alert_deduper, budget_manager, log_indexer, metrics, webhooks
 from orchestrator.command_queue import enqueue, list_commands
 from orchestrator.config import load_config
 from orchestrator.onboarding import onboard, validate_spec
@@ -34,6 +34,13 @@ def create_app() -> FastAPI:
     @app.get("/healthz")
     async def healthz() -> JSONResponse:
         return JSONResponse({"ok": True})
+
+    @app.get("/metrics")
+    async def metrics_endpoint() -> Any:
+        from fastapi.responses import PlainTextResponse
+        init_db()
+        return PlainTextResponse(metrics.render(),
+                                  media_type="text/plain; version=0.0.4")
 
     # ── overview ────────────────────────────────────────────────────
 

@@ -3,6 +3,7 @@
 #   com.claude247.dashboard    keep-alive uvicorn on 127.0.0.1:8423
 #   com.claude247.orchestrator periodic poll/heartbeat (every 60s)
 #   com.claude247.dispatcher   drains the command queue (every 30s)
+#   com.claude247.backup       SQLite .backup snapshot daily 03:17 UTC
 #
 # Idempotent: re-run to refresh after config changes.
 set -Eeuo pipefail
@@ -40,7 +41,7 @@ render() {
     "$tpl" > "$dest"
 }
 
-for name in com.claude247.dashboard com.claude247.orchestrator com.claude247.dispatcher; do
+for name in com.claude247.dashboard com.claude247.orchestrator com.claude247.dispatcher com.claude247.backup; do
   src="$TPL_DIR/${name}.plist.tpl"
   dest="$DEST_DIR/${name}.plist"
   render "$src" "$dest"
@@ -53,8 +54,9 @@ done
 
 echo
 echo "claude247 launchd jobs loaded."
-echo "  dashboard:  http://127.0.0.1:8423"
+echo "  dashboard:  http://127.0.0.1:8423  (metrics: /metrics)"
 echo "  dispatcher: fires every 30s (StartInterval)"
-echo "  logs:       $LOG_DIR/{dashboard,orchestrator,dispatcher}.{out,err}.log"
+echo "  backup:     daily at 03:17 UTC (SQLite .backup, 14-file rotation)"
+echo "  logs:       $LOG_DIR/{dashboard,orchestrator,dispatcher,backup}.{out,err}.log"
 echo
 echo "uninstall with: scripts/uninstall_launchd.sh"

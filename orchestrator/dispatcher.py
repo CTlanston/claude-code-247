@@ -34,6 +34,7 @@ from orchestrator import (
     budget_manager,
     ci_poller,
     coverage_parser,
+    gc as _gc,
     github_client as _github_client,
     log_indexer,
     notification_manager,
@@ -103,6 +104,12 @@ def run_once(
             log_indexer.write(level="warn", component="dispatcher",
                                message=f"ci_poller error: {e}",
                                db_path=db_path)
+        # GC is cheap when nothing is due; run on every tick.
+        try:
+            _gc.run_gc(db_path=db_path)
+        except Exception as e:
+            log_indexer.write(level="warn", component="dispatcher",
+                               message=f"gc error: {e}", db_path=db_path)
 
     cmd = claim_next(types=list(HANDLED_COMMAND_TYPES), db_path=db_path)
     if cmd is None:
