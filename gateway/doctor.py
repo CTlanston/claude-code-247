@@ -190,6 +190,41 @@ def check_launchd() -> Check:
                  message=msg, detail=detail)
 
 
+def check_config_source() -> Check:
+    """BR-002: report which config.yaml was loaded and which .env files
+    contributed to the running environment. Surfaces ``RuntimeConfig``
+    so an operator can diagnose "why is OPENAI_API_KEY missing" without
+    strace.
+    """
+    from orchestrator.env_loader import load_runtime_config
+
+    # Do NOT apply env on a doctor probe — we want a non-destructive
+    # snapshot of what WOULD load. Applying could mask later cwd-dependent
+    # tests in a long-running process.
+    rc = load_runtime_config(apply_env=False)
+    detail = rc.to_dict()
+    if rc.config_source is None:
+        return Check(
+            name="config source",
+            status="warn",
+            required=False,
+            message=("no config.yaml resolved — set $CLAUDE247_CONFIG or "
+                     "create one under $CLAUDE247_CONFIG_DIR/config.yaml"),
+            detail=detail,
+        )
+    message = (
+        f"loaded {rc.config_source} (kind={rc.config_source_kind}); "
+        f"env files probed: {len(rc.env_files_loaded)}"
+    )
+    return Check(
+        name="config source",
+        status="ok",
+        required=False,
+        message=message,
+        detail=detail,
+    )
+
+
 def check_auth_mode() -> Check:
     """M18-P0: report the configured worker_mode and whether it's usable.
 
@@ -342,6 +377,7 @@ ALL_CHECKS: list[Callable[[], Check]] = [
     check_docker,
     check_gh,
     check_claude_cli,
+    check_config_source,
     check_auth_mode,
     check_sqlite,
     check_state_dir,

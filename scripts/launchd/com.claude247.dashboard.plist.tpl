@@ -19,6 +19,8 @@
     <string>@HOME@</string>
     <key>PATH</key>
     <string>@PATH@</string>
+    <key>CLAUDE247_CONFIG</key>
+    <string>@HOME@/.claude-code-247/config.yaml</string>
     <key>PYTHONPATH</key>
     <string>@REPO_ROOT@</string>
   </dict>

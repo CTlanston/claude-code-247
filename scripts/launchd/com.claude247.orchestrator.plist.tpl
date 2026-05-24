@@ -18,6 +18,8 @@
     <string>@HOME@</string>
     <key>PATH</key>
     <string>@PATH@</string>
+    <key>CLAUDE247_CONFIG</key>
+    <string>@HOME@/.claude-code-247/config.yaml</string>
   </dict>
   <key>StartInterval</key>
   <integer>60</integer>

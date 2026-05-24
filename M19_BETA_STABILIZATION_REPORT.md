@@ -114,7 +114,38 @@ Safe diff body now produced and wired into validator input.
 
 **Test posture**: 437 passing (up from 419 baseline).
 
-## Phase 2 — BR-002 status: NOT STARTED
+## Phase 2 — BR-002 status: ✅ DONE
+
+Deterministic env + config resolution.
+
+**Locked precedence** (mirrored in tests):
+
+- **Config YAML**: CLI `--config` → `$CLAUDE247_CONFIG` → `$CLAUDE247_CONFIG_DIR/config.yaml` (default `~/.claude-code-247/config.yaml`) → `<cwd>/.claude247/config.yaml`.
+- **Env values**: already-set `os.environ` > project-root `.env` > CWD `.env` > `<config_dir>/.env`. Among `.env` files, first-wins.
+
+**Code**:
+- `orchestrator/config.py`: new `resolve_config_path(cwd, explicit)` + `EXPLICIT_CONFIG_ENV = "CLAUDE247_CONFIG"`
+- `orchestrator/env_loader.py`:
+  - `discover_env_paths(cwd, project_root)` returns ordered candidate paths
+  - `load_chain(paths)` — first-wins semantics
+  - `RuntimeConfig` dataclass: `cwd`, `config_source`, `config_source_kind`,
+    `env_files_loaded`, `env_keys_applied` (names only — never values),
+    `worker_mode`, `allow_api_fallback`, `*_key_present` flags, paths
+  - `load_runtime_config(cwd, explicit_config, project_root, apply_env)` 
+    composes the above without echoing secret values
+- `gateway/doctor.py`: new `check_config_source()` probe surfaces RuntimeConfig
+  in both `--plain` and `--json` output
+- `scripts/launchd/*.plist.tpl` (all 4): added `<key>CLAUDE247_CONFIG</key>` 
+  to `EnvironmentVariables` so launchd-launched workers resolve config 
+  without shell profile
+
+**Tests** (28 new):
+- `tests/unit/test_env_loader_precedence.py` (7)
+- `tests/unit/test_env_loader_cwd_support.py` (7)
+- `tests/unit/test_doctor_reports_config_source.py` (5)
+- `tests/unit/test_launchd_plist_sets_config_env.py` (9 — 4×2 parametrized + 1)
+
+**Test posture**: 465 passing (up from 437 after Phase 1).
 ## Phase 3 — BR-003 status: NOT STARTED
 ## Phase 4 — Full tests: NOT STARTED
 ## Phase 5 — Third real E2E: NOT STARTED (gated)

@@ -17,12 +17,45 @@ from typing import Any
 import yaml
 
 DEFAULT_CONFIG_DIR_ENV = "CLAUDE247_CONFIG_DIR"
+EXPLICIT_CONFIG_ENV = "CLAUDE247_CONFIG"
 
 
 def default_config_dir() -> Path:
     if env := os.environ.get(DEFAULT_CONFIG_DIR_ENV):
         return Path(env).expanduser()
     return Path.home() / ".claude-code-247"
+
+
+def resolve_config_path(
+    *,
+    cwd: Path | None = None,
+    explicit: Path | None = None,
+) -> Path | None:
+    """Resolve which ``config.yaml`` to read (BR-002).
+
+    Precedence (highest to lowest):
+      1. ``explicit`` argument (CLI ``--config`` flag)
+      2. ``$CLAUDE247_CONFIG`` env var
+      3. ``<CLAUDE247_CONFIG_DIR or ~/.claude-code-247>/config.yaml``
+      4. ``<cwd>/.claude247/config.yaml``
+
+    Returns the first existing path or ``None``. Never silently
+    fabricates a path.
+    """
+    candidates: list[Path] = []
+    if explicit is not None:
+        candidates.append(Path(explicit).expanduser())
+    env_explicit = os.environ.get(EXPLICIT_CONFIG_ENV)
+    if env_explicit:
+        candidates.append(Path(env_explicit).expanduser())
+    user_cfg = default_config_dir() / "config.yaml"
+    candidates.append(user_cfg)
+    if cwd is not None:
+        candidates.append(Path(cwd).expanduser() / ".claude247" / "config.yaml")
+    for p in candidates:
+        if p.exists():
+            return p
+    return None
 
 
 def _bundled_yaml(name: str) -> dict[str, Any]:
