@@ -50,17 +50,28 @@ def validate(
     *,
     gemini: JudgeFn | None = None,
     openai: JudgeFn | None = None,
+    extra_judges: list[JudgeFn] | None = None,
 ) -> ValidationOutcome:
     """Run the configured validators and apply the agreement rule.
 
     Defaults call the real adapters which themselves fall back to the
     mock when no API key is configured — so the function is always
     safe to call.
+
+    M15: ``extra_judges`` lets the caller plug additional validators
+    (≥3 total). The agreement rule is uniform — every enabled judge
+    must return the same verdict.
     """
     cfg = load_config()
     enabled_gem = bool(cfg.get("validators.gemini.enabled", True))
     enabled_op = bool(cfg.get("validators.openai.enabled", True))
-    require_two = bool(cfg.get("validators.require_two_validators", True))
+    # M15: prefer the new min_validators int; fall back to old boolean.
+    min_validators = cfg.get("validators.min_validators")
+    if min_validators is None:
+        min_validators = 2 if bool(
+            cfg.get("validators.require_two_validators", True)
+        ) else 1
+    min_validators = max(1, int(min_validators))
 
     results: list[JudgeResult] = []
     reasons: list[str] = []
@@ -75,14 +86,18 @@ def validate(
             i, model=cfg.get("validators.openai.model", openai_judge.DEFAULT_MODEL)
         ))
         results.append(op_fn(inp))
+    for fn in (extra_judges or []):
+        results.append(fn(inp))
 
     # No validators configured.
     if not results:
         reasons.append("no validators enabled in config")
         return ValidationOutcome(False, True, "NEEDS_HUMAN", results, reasons)
 
-    if require_two and len(results) < 2:
-        reasons.append("require_two_validators=true but fewer than 2 ran")
+    if len(results) < min_validators:
+        reasons.append(
+            f"min_validators={min_validators} but only {len(results)} ran"
+        )
         return ValidationOutcome(False, True, "NEEDS_HUMAN", results, reasons)
 
     verdicts = {r.verdict for r in results}

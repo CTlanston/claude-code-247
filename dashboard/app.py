@@ -24,6 +24,15 @@ from orchestrator.task_manager import get_task, get_timeline, list_tasks
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 
+DEFAULT_PAGE_LIMIT = 50
+MAX_PAGE_LIMIT = 200
+
+
+def _clamp_pagination(limit: int, offset: int) -> tuple[int, int]:
+    limit = max(1, min(MAX_PAGE_LIMIT, int(limit or DEFAULT_PAGE_LIMIT)))
+    offset = max(0, int(offset or 0))
+    return limit, offset
+
 
 def create_app() -> FastAPI:
     app = FastAPI(title="claude-code-247", version="1.0.0-alpha.0")
@@ -124,15 +133,27 @@ def create_app() -> FastAPI:
     # ── tasks ───────────────────────────────────────────────────────
 
     @app.get("/tasks", response_class=HTMLResponse)
-    async def tasks_page(request: Request) -> HTMLResponse:
+    async def tasks_page(request: Request, limit: int = DEFAULT_PAGE_LIMIT,
+                          offset: int = 0) -> HTMLResponse:
         init_db()
-        rows = list_tasks(limit=100)
+        limit, offset = _clamp_pagination(limit, offset)
+        with open_db() as conn:
+            total = int(conn.execute("SELECT COUNT(*) AS c FROM tasks").fetchone()["c"])
+            rows = list(conn.execute(
+                "SELECT id, repo_id, goal, status, created_at FROM tasks "
+                "ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?",
+                (limit, offset),
+            ).fetchall())
         ctx = {
             "request": request,
             "title": "Tasks — claude-code-247",
-            "tasks": [{"id": t.id, "repo_id": t.repo_id, "goal": t.goal,
-                       "status": t.status, "created_at": t.created_at}
-                      for t in rows],
+            "tasks": [{"id": r["id"], "repo_id": r["repo_id"], "goal": r["goal"],
+                       "status": r["status"], "created_at": r["created_at"]}
+                      for r in rows],
+            "pagination": {
+                "limit": limit, "offset": offset, "total": total,
+                "base": "/tasks",
+            },
         }
         return templates.TemplateResponse(request, "tasks.html", ctx)
 
@@ -153,14 +174,21 @@ def create_app() -> FastAPI:
     # ── prs ────────────────────────────────────────────────────────
 
     @app.get("/prs", response_class=HTMLResponse)
-    async def prs_page(request: Request) -> HTMLResponse:
+    async def prs_page(request: Request, limit: int = DEFAULT_PAGE_LIMIT,
+                        offset: int = 0) -> HTMLResponse:
         init_db()
+        limit, offset = _clamp_pagination(limit, offset)
         with open_db() as conn:
+            total = int(conn.execute("SELECT COUNT(*) AS c FROM prs").fetchone()["c"])
             rows = list(conn.execute(
                 "SELECT repo_id, pr_number, branch, title, state, approval_state, "
-                "risk_score, url, created_at FROM prs ORDER BY created_at DESC LIMIT 100"
+                "risk_score, url, created_at FROM prs "
+                "ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                (limit, offset),
             ).fetchall())
-        ctx = {"request": request, "title": "PRs — claude-code-247", "prs": rows}
+        ctx = {"request": request, "title": "PRs — claude-code-247", "prs": rows,
+                "pagination": {"limit": limit, "offset": offset, "total": total,
+                                "base": "/prs"}}
         return templates.TemplateResponse(request, "prs.html", ctx)
 
     @app.get("/prs/{repo_id}/{pr_number}", response_class=HTMLResponse)
@@ -211,11 +239,17 @@ def create_app() -> FastAPI:
     # ── commands ───────────────────────────────────────────────────
 
     @app.get("/commands", response_class=HTMLResponse)
-    async def commands_page(request: Request) -> HTMLResponse:
+    async def commands_page(request: Request, limit: int = DEFAULT_PAGE_LIMIT,
+                             offset: int = 0) -> HTMLResponse:
         init_db()
-        rows = list_commands(limit=200)
+        limit, offset = _clamp_pagination(limit, offset)
+        with open_db() as conn:
+            total = int(conn.execute("SELECT COUNT(*) AS c FROM commands").fetchone()["c"])
+        rows = list_commands(limit=limit + offset)[offset:offset + limit]
         ctx = {"request": request, "title": "Commands — claude-code-247",
-               "commands": rows}
+               "commands": rows,
+               "pagination": {"limit": limit, "offset": offset, "total": total,
+                               "base": "/commands"}}
         return templates.TemplateResponse(request, "commands.html", ctx)
 
     # ── budgets ────────────────────────────────────────────────────
@@ -233,17 +267,23 @@ def create_app() -> FastAPI:
 
     @app.get("/logs", response_class=HTMLResponse)
     async def logs_page(request: Request, q: str = "", level: str = "",
-                        component: str = "", repo: str = "", task: str = "") -> HTMLResponse:
+                        component: str = "", repo: str = "", task: str = "",
+                        limit: int = DEFAULT_PAGE_LIMIT,
+                        offset: int = 0) -> HTMLResponse:
         init_db()
+        limit, offset = _clamp_pagination(limit, offset)
         entries = log_indexer.search(
             text=q or None, level=level or None,
             component=component or None, repo_id=repo or None,
-            task_id=task or None, limit=200,
-        )
+            task_id=task or None, limit=limit + offset,
+        )[offset:offset + limit]
+        base = f"/logs?q={q}&level={level}&component={component}&repo={repo}&task={task}"
         ctx = {
             "request": request, "title": "Logs — claude-code-247",
             "logs": entries, "filter_q": q, "filter_level": level,
             "filter_component": component, "filter_repo": repo, "filter_task": task,
+            "pagination": {"limit": limit, "offset": offset, "total": None,
+                            "base": base},
         }
         return templates.TemplateResponse(request, "logs.html", ctx)
 
