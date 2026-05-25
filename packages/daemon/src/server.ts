@@ -7,6 +7,7 @@ import { registerStatusRoutes } from './routes/status.js'
 import { registerMissionRoutes } from './routes/missions.js'
 import { registerTaskRoutes } from './routes/tasks.js'
 import { registerRepoRoutes } from './routes/repos.js'
+import { registerIntakeRoutes } from './routes/intake.js'
 
 export function createServer(
   db: AedevDb,
@@ -19,7 +20,6 @@ export function createServer(
   registerMissionRoutes(app, db)
   registerTaskRoutes(app, db)
   registerRepoRoutes(app, db)
-  // stateDir is passed through for Phase 4 intake routes
-  void stateDir
+  registerIntakeRoutes(app, db, stateDir)
   return app
 }

@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS roadmaps (
 CREATE TABLE IF NOT EXISTS missions (
   id TEXT PRIMARY KEY,
   roadmap_id TEXT REFERENCES roadmaps(id),
-  repo_id TEXT REFERENCES repos(id),
+  repo_id TEXT,
   title TEXT NOT NULL,
   description TEXT,
   status TEXT NOT NULL DEFAULT 'draft',

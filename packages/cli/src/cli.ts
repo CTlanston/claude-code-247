@@ -5,6 +5,7 @@ import { registerRepoCommand } from './commands/repo.js'
 import { registerMissionCommand } from './commands/mission.js'
 import { registerTaskCommand } from './commands/task.js'
 import { registerStatusCommand } from './commands/status.js'
+import { registerIntakeCommand } from './commands/intake.js'
 
 export function createCli(): Command {
   const program = new Command()
@@ -15,5 +16,6 @@ export function createCli(): Command {
   registerMissionCommand(program)
   registerTaskCommand(program)
   registerStatusCommand(program)
+  registerIntakeCommand(program)
   return program
 }
