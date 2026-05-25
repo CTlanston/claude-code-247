@@ -15,9 +15,15 @@ GA_BLOCKER is satisfied.**
 
 Each row points at the canonical evidence file or test.
 
+**Allowed status values:** `PASS` · `PARTIAL` · `FAIL` · `WAIVED_BY_OWNER`.
+
+`WAIVED_BY_OWNER` means the owner accepted publication without a full
+PASS for this gate. It must be paired with an explicit caveat and a
+follow-up item. It is **not** a `PASS`.
+
 | # | Criterion | Status | Evidence |
 |---|---|---|---|
-| 1 | 24h soak PASS — launchd services stay healthy, dispatcher doesn't crash-loop, no orphan running commands, no alert storm | ⏳ **PARTIAL** (baseline only) | [M20_SOAK_RESULT.md](M20_SOAK_RESULT.md); needs 24h wallclock to complete |
+| 1 | 24h soak PASS — launchd services stay healthy, dispatcher doesn't crash-loop, no orphan running commands, no alert storm | ⚠️ **WAIVED_BY_OWNER** at v1.0.0 release | See `## GA decision: v1.0.0 owner waiver` below. ~9h12m healthy soak observed (4/4 launchd loaded, ~1182 dispatcher idle ticks, backup completed and dispatcher continued, 0 alerts, 0 orphan commands, $0 Anthropic worker spend). Full 24h wall-clock duration **not** completed at release time. Follow-up: record final T+24h result after wall-clock crosses `2026-05-25T21:46Z`. |
 | 2 | `pytest -q` full PASS | ✅ 526 passing | latest commit |
 | 3 | `claude247 doctor` returns OK (only known non-blocking warnings) | ✅ | [M21_GA_READINESS_REPORT.md](M21_GA_READINESS_REPORT.md) §Phase 0 |
 | 4 | launchd 4 services loaded + healthy | ✅ | M21_GA_READINESS_REPORT.md §Phase 0 |
@@ -35,11 +41,13 @@ Each row points at the canonical evidence file or test.
 | 16 | Logs searchable (`claude247 logs search`) | ✅ | tests/unit/test_log_indexer.py |
 | 17 | Phase observability — every dispatched phase writes a worker_exits row with status/started_at/finished_at | ✅ | tests/integration/test_m21_happy_path_phase_observability.py |
 | 18 | gh merge failure surfaces phase exit (no silent failure) | ✅ | tests/integration/test_merge_failure_records_worker_exit.py |
-| 19 | Docs current (README + docs/ + DoD + CHANGELOG) | ⏳ partial — README hasn't been refreshed for M20/M21; will close in P6 |
+| 19 | Docs current (README + docs/ + DoD + CHANGELOG) | ✅ PASS at v1.0.0 release | README, CHANGELOG, DEFINITION_OF_DONE, GA_GATE, M20_SOAK_RESULT, M22_GA_DECISION_REPORT, RELEASE_NOTES_GA all updated in the v1.0.0 release commit. Watchdog dashboard documented in README. |
 
-**Status: 17/19 GA_BLOCKERs satisfied as of 2026-05-24 22:00 UTC.**
-Outstanding: (1) 24h soak, (19) README refresh. Neither requires more
-code; both are wallclock + writing.
+**Status at v1.0.0 release: 18 / 19 PASS + 1 WAIVED_BY_OWNER (gate #1).**
+
+Prior to the M22b owner waiver: 17 / 19 PASS, 2 outstanding. The
+waiver closes the outstanding wallclock gate; the docs refresh
+closes the other.
 
 ---
 
@@ -108,6 +116,55 @@ blocker via informal scope creep.
    soak from a new T0.
 3. **The GA tag is created on `main` only**, after a fast-forward
    from `claude247/v1`. No tag may point to a non-main commit.
+4. **Owner waivers must be explicit, named, dated, and paired with a
+   follow-up.** `WAIVED_BY_OWNER` is never silent and never claims
+   the gate passed. The original criterion remains visible.
+
+## GA decision: v1.0.0 owner waiver (2026-05-25)
+
+The owner explicitly approved the early `v1.0.0` release with a soak
+waiver after **~9h 12m of healthy soak evidence**, instead of
+waiting for the full 24h wall-clock window the gate originally
+required.
+
+Observed soak evidence at decision time:
+
+| Probe | Value |
+|---|---|
+| Elapsed since T0 (dispatcher reload `2026-05-24T21:46Z`) | ~9h 12m |
+| 24h target progress | ~38.4% |
+| launchd services loaded | 4 / 4 |
+| Dashboard `/healthz` | OK |
+| Dispatcher healthy idle ticks (30s interval) | ~1182 |
+| Backup job (daily, local hour 03) | Completed successfully; dispatcher continued working afterward |
+| Active tasks | 0 |
+| Stuck tasks | 0 |
+| Orphan running commands | 0 |
+| New alerts since T0 | 0 |
+| Structured log errors since T0 | 0 |
+| Anthropic worker spend since T0 | $0.0000 |
+
+Known yellow flag (recorded, not waived):
+
+- One early SQLite schema-migration race at **T0 + 7 minutes**:
+  `dispatcher.err.log` recorded one `sqlite3.OperationalError: no
+  such column: started_at` traceback. The file stopped growing at
+  that timestamp; the subsequent ~1182 dispatcher ticks succeeded;
+  the error did not repeat. Most plausible cause: schema.sql
+  referenced the M21-P2 phase columns before the in-place ALTER
+  TABLE migration finished on that particular tick.
+
+Required follow-up (non-blocking, but committed):
+
+- Record the final T+24h soak result after `2026-05-25T21:46Z`
+  wall-clock passes. File the result in `M22c_SOAK_FINAL.md`.
+- If the final observation shows any failure mode that 9h could
+  not catch, open a post-GA hotfix.
+
+The waiver is **explicit**, **named** (owner decision via the M22b
+directive), **dated** (2026-05-25), and **paired with a
+follow-up** (final T+24h observation). Per hard rule #4, it is
+**not** a `PASS`.
 
 ---
 

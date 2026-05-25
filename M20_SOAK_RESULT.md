@@ -67,3 +67,73 @@ correctness; PR #59 proved end-to-end correctness; the soak proves
 the system doesn't crash-loop or leak when *nothing is happening*.
 Without that proof, "production-ready" claims would skip past the
 most common operational failure mode of agentic daemons.
+
+---
+
+## Owner waiver and early termination for v1.0.0 release (2026-05-25)
+
+**STATUS: WAIVED_BY_OWNER for v1.0.0. Final T+24h observation is a
+post-GA follow-up.**
+
+At T+9h 12m (~38.4% of the original 24h window), the owner explicitly
+approved early publication of `v1.0.0` instead of waiting for the
+full wall-clock window. The decision is documented in
+[M22_GA_DECISION_REPORT.md](M22_GA_DECISION_REPORT.md) §"M22b owner
+waiver" and [GA_GATE.md](GA_GATE.md) §"GA decision: v1.0.0 owner
+waiver".
+
+### Observed at decision time (T+9h 12m, 2026-05-25 ~06:58Z)
+
+| Probe | Value |
+|---|---|
+| Elapsed since dispatcher T0 (`2026-05-24T21:46Z`) | ~9h 12m |
+| launchd services loaded | 4 / 4 |
+| Dashboard `/healthz` | OK |
+| Dispatcher healthy idle ticks (every 30s) | ~1182 |
+| Dispatcher `out.log` mtime | 18 seconds ago at observation time |
+| Backup script daily run | **Completed** — created `claude247-20260525T011703Z.db` (2.06 MB); dispatcher continued working after backup |
+| Active tasks | 0 |
+| Stuck tasks | 0 |
+| Orphan running commands | 0 |
+| New alerts since T0 | 0 |
+| Structured log errors since T0 | 0 |
+| Anthropic worker spend since T0 | $0.0000 |
+| Worker runs since T0 | 0 (idle, expected) |
+
+### Known yellow flag (recorded, not waived)
+
+One early SQLite schema-migration race at **T+7 minutes**:
+`dispatcher.err.log` recorded one `sqlite3.OperationalError: no such
+column: started_at` traceback (originating in
+`memory/db.py::init_db`), then **the file stopped growing**. The
+subsequent ~1182 dispatcher ticks all succeeded; the error did not
+repeat. Most plausible root cause: schema.sql referenced the new
+M21-P2 phase columns before the in-place ALTER TABLE migration
+completed on that particular tick.
+
+### What the early termination does NOT prove
+
+The original 24h soak was designed to catch failure modes that
+typically only appear after many hours:
+
+- slow memory / file-descriptor leaks
+- SQLite WAL unbounded growth
+- launchd log rotation issues that surface only after the log file
+  crosses a buffer threshold
+- interval-based phone-home leaks where the interval exceeds the
+  observation window
+
+**9h 12m of observation cannot definitively rule these out.** The
+trend is excellent and no early-warning signal fired, but proving a
+negative requires the full window.
+
+### Required post-GA follow-up
+
+- At or after `2026-05-25T21:46Z` (the original T+24h checkpoint),
+  re-run the full M20_SOAK_PLAN.md health-check block.
+- File the result in a new `M22c_SOAK_FINAL.md`. If anything failed
+  during the post-waiver window, open a v1.0.1 hotfix issue.
+- The watchdog dashboard (`claude247 status-board` /
+  `/status-board`) will automatically flip `soak.result` from
+  `PARTIAL` to `PASS` or `FAIL` once the wall-clock crosses 24h, so
+  the result is visible without manual computation.

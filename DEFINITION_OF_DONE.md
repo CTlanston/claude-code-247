@@ -111,11 +111,39 @@ the code that implements it and the test(s) that prove it.
 | 79 | GA gate document | ✓ | [GA_GATE.md](GA_GATE.md) (19 GA_BLOCKERs; 17/19 satisfied) |
 | 80 | M21 final report (GO/NO-GO) | ✓ | [M21_GA_READINESS_REPORT.md](M21_GA_READINESS_REPORT.md) — current answer is **NO-GO until 24h soak**. |
 
-## Truly remaining (GA blockers)
+## M22b — watchdog status board + v1.0.0 GA release (2026-05-25)
 
-- **24h soak full PASS** — currently PARTIAL ([M20_SOAK_RESULT.md](M20_SOAK_RESULT.md)).
-  Wallclock-only blocker. No code change needed.
-- **README refresh** for M20/M21 — writing-only blocker.
+| # | Item | Status | Where it lives |
+|---|---|---|---|
+| 81 | Read-only watchdog status board (CLI + FastAPI route + Markdown writer) | ✓ | `gateway/status_board.py`, `gateway/commands/status_board_cmd.py`, `dashboard/app.py::/status-board`, `dashboard/templates/status_board.html` |
+| 82 | Apple-style watchdog page with Activity ring + i18n EN ↔ 中文 + dark mode + auto-refresh | ✓ | `dashboard/templates/status_board.html` (zero external deps, vanilla JS + SVG) |
+| 83 | Usage card (runs / cost / active workers / by role / by auth_mode) | ✓ | `gateway/status_board.py::collect_usage`, `tests/unit/test_status_board_usage.py` |
+| 84 | Watchdog read-only contract regression test | ✓ | `tests/unit/test_status_board.py::test_read_only_does_not_mutate_db` |
+| 85 | M22b owner waiver for 24h soak | ⚠️ **WAIVED_BY_OWNER** | [GA_GATE.md](GA_GATE.md) gate #1, [M22_GA_DECISION_REPORT.md](M22_GA_DECISION_REPORT.md) §"M22b owner waiver", [M20_SOAK_RESULT.md](M20_SOAK_RESULT.md) §"Owner waiver" |
+| 86 | Docs current (README + CHANGELOG + DoD + GA_GATE + soak + decision + release notes) | ✓ | this file, [CHANGELOG.md](CHANGELOG.md), [README.md](README.md), [GA_GATE.md](GA_GATE.md), [RELEASE_NOTES_GA.md](RELEASE_NOTES_GA.md) |
+
+## v1.0.0 release record
+
+| Field | Value |
+|---|---|
+| Tag | `v1.0.0` |
+| Date | 2026-05-25 |
+| GA decision | APPROVED with explicit owner soak waiver |
+| Tests at release | **566 passing** (was 526 at M21; +40 for M22b watchdog) |
+| Doctor at release | `ok=True`, 0 fails, 3 known non-blocking warns |
+| Launchd at release | 4 / 4 services healthy |
+| Soak status at release | **WAIVED_BY_OWNER** (~9h 12m observed of 24h target, all probes green; final T+24h is a post-GA follow-up) |
+| GA gates at release | **18 PASS + 1 WAIVED_BY_OWNER** (gate #1) |
+| Known yellow flag | One self-healed SQLite schema-migration race at T+7m; did not repeat |
+
+## Post-GA follow-up (committed, not deferred indefinitely)
+
+1. **Record final T+24h soak result** in `M22c_SOAK_FINAL.md` after
+   `2026-05-25T21:46Z` wall-clock passes. The watchdog auto-detects
+   the crossover.
+2. **Schema v5 migration** — add `runs.input_tokens` /
+   `runs.output_tokens` columns + worker write-through, enabling
+   token-level rate display in the watchdog Usage card.
 
 ## Post-GA backlog (NOT blockers)
 

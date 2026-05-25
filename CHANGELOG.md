@@ -3,6 +3,67 @@
 All notable changes to `claude-code-247` are recorded here.
 Pre-1.0 releases are pre-release on GitHub.
 
+## [v1.0.0] — 2026-05-25 — GA release with explicit owner soak waiver
+
+First GA release. See [RELEASE_NOTES_GA.md](RELEASE_NOTES_GA.md) for
+the full notes and [M22_GA_DECISION_REPORT.md](M22_GA_DECISION_REPORT.md)
+for the GA decision record.
+
+### Headline
+
+- **`v1.0.0` tagged** on `main` after fast-forward from `claude247/v1`.
+- **24h soak gate explicitly waived by owner** after ~9h 12m of
+  healthy soak evidence (~38.4% of original window). The waiver is
+  recorded as `WAIVED_BY_OWNER` (not `PASS`) in `GA_GATE.md` gate
+  #1, with a required post-GA follow-up to record the final T+24h
+  observation in `M22c_SOAK_FINAL.md`.
+
+### Added in this release (M22b)
+
+- **Read-only watchdog status board** —
+  `claude247 status-board` / `claude247 watchdog` CLI with plain /
+  JSON / Markdown output, and `/status-board` HTML page on the
+  dashboard with **Apple-style Activity ring** for soak progress,
+  auto-refresh every 15s (configurable), pause/resume, EN ↔ 中文
+  language toggle, and dark mode following the OS. Backed by
+  `/status-board.json` for machine readers.
+- **Usage card** on the watchdog board surfacing runs total/today/
+  last hour, active workers, USD cost today and total, plus
+  per-role and per-auth_mode chip breakdowns. A `note` field
+  explains why $0.00 is correct under subscription mode.
+- **Strict read-only contract** for the watchdog —
+  `tests/unit/test_status_board.py::test_read_only_does_not_mutate_db`
+  asserts the CLI invocation leaves all row counts unchanged. Safe
+  to run while a dispatcher tick is in flight.
+
+### Documentation updates
+
+- README refreshed: GA status, new watchdog dashboard section,
+  updated quick-start command list.
+- `GA_GATE.md` updated: gate #1 = `WAIVED_BY_OWNER`, gate #19 = `PASS`.
+  Added hard rule #4 (owner waivers must be explicit, named, dated,
+  paired with follow-up). Added "GA decision: v1.0.0 owner waiver"
+  section.
+- `M20_SOAK_RESULT.md` updated with the owner-waiver section and
+  the explicit post-GA follow-up plan.
+- `M22_GA_DECISION_REPORT.md` updated with the M22b owner waiver
+  block including the soak evidence table and known yellow flag.
+- `DEFINITION_OF_DONE.md` updated with the v1.0.0 release record.
+- New: `RELEASE_NOTES_GA.md`.
+
+### Testing
+
+- **566 passing** (was 526 at M21; +40 new tests for the M22b
+  watchdog: 6 unit files + 1 integration file, including the
+  read-only-contract regression test).
+
+### Known yellow flag (carried into the release notes, not waived)
+
+- One early SQLite schema-migration race recorded at T+7 minutes of
+  the soak window. The file stopped growing at that timestamp; the
+  subsequent ~1182 dispatcher ticks all succeeded; the error did
+  not repeat. See `M20_SOAK_RESULT.md` for the full analysis.
+
 ## [Unreleased] — M21 GA-readiness hardening
 
 GA-readiness milestone (M21). Not tagged. See

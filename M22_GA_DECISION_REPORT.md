@@ -195,3 +195,66 @@ into `main`, **do not** cut a GitHub release.
 * The running dashboard daemon will pick up the new `/status-board`
   routes on its next restart; until then the CLI works regardless.
 
+---
+
+## M22b owner waiver — early v1.0.0 release (2026-05-25)
+
+**GA DECISION: APPROVED BY OWNER WITH EXPLICIT SOAK WAIVER.**
+
+The original 24h soak gate did not reach full wall-clock duration
+before release. The owner explicitly approved early `v1.0.0` release
+after **~9h+ of healthy soak evidence**.
+
+### Observed soak evidence at decision time
+
+| Probe | Value |
+|---|---|
+| Elapsed since dispatcher T0 (`2026-05-24T21:46Z`) | **~9h 12m / 24h (~38.4%)** |
+| launchd services loaded | **4 / 4** |
+| Dashboard `/healthz` | OK |
+| Dispatcher healthy idle ticks (every 30s) | **~1182** |
+| Backup job (daily, local hour 03) | **Completed** — `claude247-20260525T011703Z.db` (2.06 MB) created; dispatcher continued working after |
+| Active tasks | 0 |
+| Stuck tasks | 0 |
+| Orphan running commands | 0 |
+| New alerts since T0 | 0 |
+| Structured log errors since T0 | 0 |
+| Anthropic worker spend since T0 | **$0.0000** |
+
+### Known yellow flag
+
+- One early sqlite schema-migration race at **T0 + 7 minutes**
+- self-healed
+- not repeated
+- dispatcher continued healthy afterward
+
+### Owner waiver
+
+- 24h soak full PASS is **waived** for the `v1.0.0` release
+- Final T+24h observation remains a post-GA follow-up
+- The waiver is documented (this report), gated (`GA_GATE.md` gate
+  #1 = `WAIVED_BY_OWNER`, not `PASS`), and dated (2026-05-25)
+- Per hard rule #4 added to `GA_GATE.md` in this same release:
+  `WAIVED_BY_OWNER` ≠ `PASS`. The original criterion remains
+  visible.
+
+### Pre-release validation
+
+| Check | Result |
+|---|---|
+| `pytest -q` | **566 passing** in 17.34s |
+| `claude247 doctor --json` | `ok=True`, 0 fails, 3 known non-blocking warns (docker daemon offline by design; dashboard port busy = our own daemon; validator API keys not in shell env — dispatcher uses `secrets.env`) |
+| `claude247 status --plain` | system running, 0 active, 0 stuck, 6 historical approval items from M19/M20 fixtures, 1 repo enabled |
+| `scripts/doctor_launchd.sh` | 4/4 services healthy |
+
+### Post-GA follow-up commitments
+
+1. Record final T+24h soak result after `2026-05-25T21:46Z` in
+   `M22c_SOAK_FINAL.md`. The watchdog dashboard will auto-flip
+   `soak.result` to `PASS` or `FAIL` once the wall-clock crosses 24h.
+2. If anything failed during the post-waiver window, open a v1.0.1
+   hotfix issue.
+3. Schema v5 migration (add `runs.input_tokens` / `runs.output_tokens`
+   columns) — queued for post-GA so the in-flight dispatcher is not
+   disturbed mid-soak.
+
