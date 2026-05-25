@@ -14,6 +14,17 @@ export { HeartbeatService } from './heartbeat.js'
 export { DailySummaryGenerator } from './daily-summary.js'
 export type { DailySummaryOptions, DailySummaryStats } from './daily-summary.js'
 export { ReleasePipeline, ShellGitClient } from './release-pipeline.js'
+export { PremiumDebugger, buildFailureSignature } from './premium-debugger.js'
+export type {
+  PremiumDebuggerOptions,
+  PremiumDebugContext,
+  PremiumDebugInput,
+  PremiumDebugResponse,
+  PremiumDebugResult,
+  PremiumDebuggerFn,
+  RepairAttempt,
+  CircuitBreakerResult,
+} from './premium-debugger.js'
 export type {
   GitClient,
   DeployRequest,
