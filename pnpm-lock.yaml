@@ -74,7 +74,11 @@ importers:
 
   packages/github: {}
 
-  packages/runner: {}
+  packages/runner:
+    dependencies:
+      '@aedev/core':
+        specifier: workspace:*
+        version: link:../core
 
   packages/secrets: {}
 

@@ -1,21 +1,12 @@
 /** Worker runner for isolated task execution. */
 
-/** Execution mode for the worker runner. */
-export type RunnerMode = 'docker' | 'local' | 'mock'
+// Re-export core types for backward compatibility
+export type { RunnerMode, RunnerConfig, RunResult } from '@aedev/core'
 
-/** Configuration for the runner. */
-export interface RunnerConfig {
-  mode: RunnerMode
-  maxConcurrentWorkers: number
-  worktreeBaseDir: string
-  outputBaseDir: string
-}
-
-/** Result produced by a completed worker run. */
-export interface RunResult {
-  runId: string
-  taskId: string
-  exitCode: number
-  evidenceDir: string
-  durationMs: number
-}
+export { EvidenceWriter } from './evidence.js'
+export { MockRunner } from './mock-runner.js'
+export { DockerRunner } from './docker-runner.js'
+export { WorktreeManager } from './worktree.js'
+export { ClaudeCodeAdapter } from './claude-adapter.js'
+export { RunnerManager } from './runner-manager.js'
+export type { RunnerInterface } from './runner-interface.js'
