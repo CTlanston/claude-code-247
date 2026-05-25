@@ -1,0 +1,25 @@
+import { Command } from 'commander'
+import { registerInitCommand } from './commands/init.js'
+import { registerDaemonCommand } from './commands/daemon.js'
+import { registerRepoCommand } from './commands/repo.js'
+import { registerMissionCommand } from './commands/mission.js'
+import { registerTaskCommand } from './commands/task.js'
+import { registerStatusCommand } from './commands/status.js'
+import { registerIntakeCommand } from './commands/intake.js'
+import { registerGitHubCommand } from './commands/github.js'
+import { registerMemoryCommand } from './commands/memory.js'
+
+export function createCli(): Command {
+  const program = new Command()
+  program.name('aedev').description('aedev - local-first AI engineering OS').version('0.0.1')
+  registerInitCommand(program)
+  registerDaemonCommand(program)
+  registerRepoCommand(program)
+  registerMissionCommand(program)
+  registerTaskCommand(program)
+  registerStatusCommand(program)
+  registerIntakeCommand(program)
+  registerGitHubCommand(program)
+  registerMemoryCommand(program)
+  return program
+}

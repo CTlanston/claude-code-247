@@ -7,6 +7,10 @@ __pycache__/
 build/
 dist/
 
+# Node.js / pnpm
+node_modules/
+*.tsbuildinfo
+
 # Secrets — .env.example stays tracked
 .env
 
