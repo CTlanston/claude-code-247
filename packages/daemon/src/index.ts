@@ -15,6 +15,22 @@ export { DailySummaryGenerator } from './daily-summary.js'
 export type { DailySummaryOptions, DailySummaryStats } from './daily-summary.js'
 export { ReleasePipeline, ShellGitClient } from './release-pipeline.js'
 export { PremiumDebugger, buildFailureSignature } from './premium-debugger.js'
+export { MissionScheduler } from './mission-scheduler.js'
+export type {
+  ScheduledMission,
+  SchedulerOptions,
+  DispatchFn,
+} from './mission-scheduler.js'
+export { InterruptionPolicy } from './interruption-policy.js'
+export type {
+  InterruptionReason,
+  InterruptionUrgency,
+  InterruptionRequest,
+  PolicySnapshot,
+  InterruptionPolicyOptions,
+} from './interruption-policy.js'
+export { ProductMemory } from './product-memory.js'
+export type { ProductMemoryCategory, RecordOptions } from './product-memory.js'
 export type {
   PremiumDebuggerOptions,
   PremiumDebugContext,

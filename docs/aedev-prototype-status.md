@@ -84,7 +84,17 @@ parity as a rollback path.
 | 9 | Approval gate enforced: no mission executes without `requestApproval()` + distinct `approveMission()` | ✅ enforced by tests |
 | 10 | `@aedev/claude247-bridge` routes an `aedev` mission through the Python kernel and surfaces evidence in `aedev`'s SQLite | ✅ landed (Phase 3) |
 
-Gates 1–6, 9, 10 are passing.  Gates 7 (real validators) and 8 (real GitHub PR) are downstream — they are now reachable via the bridge for missions that need Python-side execution.
+Gates 1–7, 9, 10 are passing.  Gate 8 (real GitHub PR end-to-end) remains token-dependent.  Phases 4–10 of the migration plan are landed at MVP scope:
+
+| Phase | What landed |
+|-------|-------------|
+| 4 | Real Gemini + OpenAI REST validators (no SDK), evidence-only, inconclusive-on-error |
+| 5 | Architect/Designer/Builder/QA/Reviewer/Release role pipeline, task graph, DailySummaryGenerator |
+| 6 | @aedev/qa with BrowserQA + MockBrowserDriver, optional Playwright wiring, screenshot/preview merge gates |
+| 7 | @aedev/preview adapters for Cloudflare Pages (default), Vercel, GitHub Pages (static-only); secret-grant pause on missing token |
+| 8 | ReleasePipeline: deploy → healthcheck → direct git revert + incident report on failure |
+| 9 | PremiumDebugger with failure-signature hashing and 5 circuit breakers (credentials, forbidden path, same-signature streak, no-diff streak, missing debuggerFn) |
+| 10 | MissionScheduler (event-table-backed, survives restart), InterruptionPolicy (7 reason types), ProductMemory (4 typed categories) |
 
 **Phase 2 verification (unit + opt-in smoke):**
 
