@@ -13,6 +13,17 @@ export { createServer } from './server.js'
 export { HeartbeatService } from './heartbeat.js'
 export { DailySummaryGenerator } from './daily-summary.js'
 export type { DailySummaryOptions, DailySummaryStats } from './daily-summary.js'
+export { ReleasePipeline, ShellGitClient } from './release-pipeline.js'
+export type {
+  GitClient,
+  DeployRequest,
+  DeployResult,
+  DeployFn,
+  HealthcheckOptions,
+  ReleasePipelineOptions,
+  ReleaseRequest,
+  ReleaseResult,
+} from './release-pipeline.js'
 export {
   RolePipeline,
   ArchitectRole,
