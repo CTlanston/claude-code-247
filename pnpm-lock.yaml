@@ -82,7 +82,11 @@ importers:
 
   packages/secrets: {}
 
-  packages/validators: {}
+  packages/validators:
+    dependencies:
+      '@aedev/core':
+        specifier: workspace:*
+        version: link:../core
 
 packages:
 

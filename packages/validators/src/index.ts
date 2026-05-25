@@ -1,17 +1,13 @@
 /** External validator adapters (Gemini + OpenAI). */
 
-/** Supported external validator names. */
-export type ValidatorName = 'gemini' | 'openai'
+// Re-export core types for backward compatibility
+export type { ValidatorName, ValidatorVerdict, ValidatorResult, MergePolicyDecision } from '@aedev/core'
 
-/** Verdict returned by a validator. */
-export type ValidatorVerdict = 'pass' | 'fail' | 'inconclusive'
-
-/** A complete validator result for a task. */
-export interface ValidatorResult {
-  validator: ValidatorName
-  taskId: string
-  verdict: ValidatorVerdict
-  summary: string
-  evidenceBundlePath: string
-  createdAt: string
-}
+export { RiskScorer } from './risk-scorer.js'
+export type { RiskFactors, RiskScoreResult } from './risk-scorer.js'
+export { MergePolicy } from './merge-policy.js'
+export { EvidenceReviewer } from './reviewer.js'
+export type { ReviewResult } from './reviewer.js'
+export { MockValidator } from './mock-validator.js'
+export { GeminiValidator } from './gemini-validator.js'
+export { OpenAIValidator } from './openai-validator.js'
