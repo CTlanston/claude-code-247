@@ -110,6 +110,12 @@ importers:
         specifier: ^21.0.0
         version: 21.1.1
 
+  packages/preview:
+    dependencies:
+      '@aedev/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/qa:
     dependencies:
       '@aedev/core':
