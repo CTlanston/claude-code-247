@@ -17,7 +17,7 @@
 |-------|---------------|------|
 | **Control plane** | TypeScript `aedev` (pnpm monorepo) | Primary entry point — CLI, Fastify daemon, dashboard, state machine, mission flow, approvals, memory, risk policy, evidence bundle. |
 | **Execution kernel** | Python `claude247` v1.0.0 GA | Mature Docker worker runtime, headless `claude --print`, Gemini + OpenAI judges, GitHub PR creation.  Invoked by `aedev` during the parity window. |
-| **Bridge** | `@aedev/claude247-bridge` | Enqueues tasks into the Python state DB, polls status, imports evidence back into `aedev`'s SQLite.  See gate 10 below. |
+| **Bridge** | `@aedev/claude247-bridge` | Subprocess interop with `claude247` CLI: `Claude247Bridge.enqueue/listTasks/getTask/readEvidence` + `Claude247BridgeRunner` (implements `RunnerInterface`).  Selectable via `RunnerConfig.mode === 'claude247-bridge'`. |
 
 ---
 
@@ -82,9 +82,9 @@ parity as a rollback path.
 | 7 | `GeminiValidator` and `OpenAIValidator` return real verdicts for a sample evidence bundle | ❌ not implemented |
 | 8 | `aedev github sync` creates a real draft PR against a test repo | ⏳ requires `AEDEV_GITHUB_TOKEN` to verify |
 | 9 | Approval gate enforced: no mission executes without `requestApproval()` + distinct `approveMission()` | ✅ enforced by tests |
-| 10 | `@aedev/claude247-bridge` routes an `aedev` mission through the Python kernel and surfaces evidence in `aedev`'s SQLite | ⏳ in progress (Phase 3) |
+| 10 | `@aedev/claude247-bridge` routes an `aedev` mission through the Python kernel and surfaces evidence in `aedev`'s SQLite | ✅ landed (Phase 3) |
 
-Gates 1–6, 9 are passing.  Gate 10 is in active development.  Gates 7, 8 are downstream of the bridge work.
+Gates 1–6, 9, 10 are passing.  Gates 7 (real validators) and 8 (real GitHub PR) are downstream — they are now reachable via the bridge for missions that need Python-side execution.
 
 **Phase 2 verification (unit + opt-in smoke):**
 

@@ -52,6 +52,12 @@ importers:
         specifier: ^5.4.0
         version: 5.4.21(@types/node@25.9.1)
 
+  packages/claude247-bridge:
+    dependencies:
+      '@aedev/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/cli:
     dependencies:
       '@aedev/core':
@@ -106,6 +112,9 @@ importers:
 
   packages/runner:
     dependencies:
+      '@aedev/claude247-bridge':
+        specifier: workspace:*
+        version: link:../claude247-bridge
       '@aedev/core':
         specifier: workspace:*
         version: link:../core

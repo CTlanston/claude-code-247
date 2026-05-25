@@ -1,8 +1,8 @@
-import type { AedevDb, Task, RunnerConfig, RunResult } from '@aedev/core'
+import type { AedevDb, Task, RunnerConfig, RunResult, RunnerInterface } from '@aedev/core'
 import { validateTaskTransition, nowIso } from '@aedev/core'
+import { Claude247Bridge, Claude247BridgeRunner } from '@aedev/claude247-bridge'
 import { MockRunner } from './mock-runner.js'
 import { DockerRunner } from './docker-runner.js'
-import type { RunnerInterface } from './runner-interface.js'
 
 export class RunnerManager {
   constructor(
@@ -13,6 +13,7 @@ export class RunnerManager {
   getRunner(mode: RunnerConfig['mode']): RunnerInterface {
     if (mode === 'mock') return new MockRunner()
     if (mode === 'docker') return new DockerRunner()
+    if (mode === 'claude247-bridge') return new Claude247BridgeRunner(new Claude247Bridge())
     throw new Error(`Unsupported runner mode: ${mode}`)
   }
 
