@@ -58,8 +58,8 @@
 |-----------|-------------------|--------------|-------------|
 | `DockerRunner.run()` | Real container launch with mounts + timeout + evidence capture (Phase 2 landed) | Production worker logic still routed to Python `runner/worker.py` via bridge | Gate 5 / Gate 10 |
 | `ClaudeCodeAdapter.run()` | Real `claude --print` subprocess (Phase 2 landed) | Mirrors Python `runner/claude_cli.py` shape | Gate 6 |
-| `GeminiValidator` | Stub (returns `inconclusive`) | Python `validator/gemini_judge.py` for production verdicts | Gate 7 |
-| `OpenAIValidator` | Stub (returns `inconclusive`) | Python `validator/openai_judge.py` | Gate 7 |
+| `GeminiValidator` | Real REST adapter against `generativelanguage.googleapis.com` (no SDK).  Returns `inconclusive` on any HTTP/parse error so merge stays blocked. | Python `validator/gemini_judge.py` available for cross-validation | Gate 7 |
+| `OpenAIValidator` | Real REST adapter against `/v1/chat/completions` with `response_format: json_object`.  Supports `AEDEV_OPENAI_BASE_URL` override for OpenAI-compatible proxies. | Python `validator/openai_judge.py` available for cross-validation | Gate 7 |
 | GitHub sync (`aedev github sync`) | Real Octokit calls (requires `AEDEV_GITHUB_TOKEN`) | Python `orchestrator/github_client.py` for parity scenarios | Gate 8 |
 | Mission → worker dispatch | Routed via `@aedev/claude247-bridge` | Python orchestrator dispatch loop | Gate 10 |
 
@@ -79,7 +79,7 @@ parity as a rollback path.
 | 4 | `pnpm lint` — zero lint errors | ✅ |
 | 5 | `DockerRunner.run()` executes a real container, captures stdout/stderr/exit-code, enforces timeout, writes evidence | ✅ landed (Phase 2) |
 | 6 | `ClaudeCodeAdapter.run()` invokes `claude --print` via stdin, parses JSON, strips API key in subscription mode | ✅ landed (Phase 2) |
-| 7 | `GeminiValidator` and `OpenAIValidator` return real verdicts for a sample evidence bundle | ❌ not implemented |
+| 7 | `GeminiValidator` and `OpenAIValidator` return real verdicts for a sample evidence bundle | ✅ landed (Phase 4) |
 | 8 | `aedev github sync` creates a real draft PR against a test repo | ⏳ requires `AEDEV_GITHUB_TOKEN` to verify |
 | 9 | Approval gate enforced: no mission executes without `requestApproval()` + distinct `approveMission()` | ✅ enforced by tests |
 | 10 | `@aedev/claude247-bridge` routes an `aedev` mission through the Python kernel and surfaces evidence in `aedev`'s SQLite | ✅ landed (Phase 3) |
