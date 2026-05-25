@@ -56,8 +56,8 @@
 
 | Component | TypeScript status | Delegates to | Bridge gate |
 |-----------|-------------------|--------------|-------------|
-| `DockerRunner.run()` | Real subprocess (planned Phase 2) | Python `runner/worker.py` for production parity scenarios via bridge | Gate 5 / Gate 10 |
-| `ClaudeCodeAdapter.run()` | Real subprocess (planned Phase 2) | Python `runner/claude_cli.py` shape | Gate 6 |
+| `DockerRunner.run()` | Real container launch with mounts + timeout + evidence capture (Phase 2 landed) | Production worker logic still routed to Python `runner/worker.py` via bridge | Gate 5 / Gate 10 |
+| `ClaudeCodeAdapter.run()` | Real `claude --print` subprocess (Phase 2 landed) | Mirrors Python `runner/claude_cli.py` shape | Gate 6 |
 | `GeminiValidator` | Stub (returns `inconclusive`) | Python `validator/gemini_judge.py` for production verdicts | Gate 7 |
 | `OpenAIValidator` | Stub (returns `inconclusive`) | Python `validator/openai_judge.py` | Gate 7 |
 | GitHub sync (`aedev github sync`) | Real Octokit calls (requires `AEDEV_GITHUB_TOKEN`) | Python `orchestrator/github_client.py` for parity scenarios | Gate 8 |
@@ -77,14 +77,23 @@ parity as a rollback path.
 | 2 | `pnpm test` — all unit tests pass | ✅ |
 | 3 | `pnpm typecheck` — zero type errors | ✅ |
 | 4 | `pnpm lint` — zero lint errors | ✅ |
-| 5 | `DockerRunner.run()` executes a real Docker container task end-to-end | ⏳ in progress (Phase 2) |
-| 6 | `ClaudeCodeAdapter.run()` executes a real `claude --print` subprocess and returns a structured transcript | ⏳ in progress (Phase 2) |
+| 5 | `DockerRunner.run()` executes a real container, captures stdout/stderr/exit-code, enforces timeout, writes evidence | ✅ landed (Phase 2) |
+| 6 | `ClaudeCodeAdapter.run()` invokes `claude --print` via stdin, parses JSON, strips API key in subscription mode | ✅ landed (Phase 2) |
 | 7 | `GeminiValidator` and `OpenAIValidator` return real verdicts for a sample evidence bundle | ❌ not implemented |
 | 8 | `aedev github sync` creates a real draft PR against a test repo | ⏳ requires `AEDEV_GITHUB_TOKEN` to verify |
 | 9 | Approval gate enforced: no mission executes without `requestApproval()` + distinct `approveMission()` | ✅ enforced by tests |
 | 10 | `@aedev/claude247-bridge` routes an `aedev` mission through the Python kernel and surfaces evidence in `aedev`'s SQLite | ⏳ in progress (Phase 3) |
 
-Gates 1–4, 9 are passing.  Gates 5, 6, 10 are in active development.  Gates 7, 8 are downstream of the bridge work.
+Gates 1–6, 9 are passing.  Gate 10 is in active development.  Gates 7, 8 are downstream of the bridge work.
+
+**Phase 2 verification (unit + opt-in smoke):**
+
+```bash
+pnpm test                # unit tests, all green — uses fake binaries in temp dir
+AEDEV_SMOKE_CLAUDE=1 pnpm test --filter @aedev/runner   # real `claude --print` round-trip
+AEDEV_SMOKE_DOCKER=1 pnpm test --filter @aedev/runner   # real container against alpine:3.20
+pnpm test:smoke          # both smoke groups at once
+```
 
 ---
 

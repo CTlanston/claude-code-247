@@ -1,18 +1,23 @@
 /** Typed errors for the aedev system. */
 
 /**
- * Thrown by any TypeScript aedev component that is a recognised placeholder —
- * i.e. the component exists in the prototype but its real implementation has
- * not been completed yet.  Callers can use `instanceof ExperimentalFeatureError`
- * to distinguish "not implemented in prototype" from general runtime failures.
+ * Thrown by an aedev adapter that exists in the codebase but is not configured
+ * for the current runtime (e.g. an optional adapter selected by feature flag
+ * or runner mode that is not enabled).  Callers can use
+ * `instanceof ExperimentalFeatureError` to distinguish "optional adapter not
+ * configured" from a generic runtime failure.
+ *
+ * Per ADR-0009, this error must not appear on a configured happy path.  The
+ * default `DockerRunner` and `ClaudeCodeAdapter` paths are real implementations
+ * and never throw this error.
  */
 export class ExperimentalFeatureError extends Error {
   readonly feature: string
 
   constructor(feature: string, detail?: string) {
     const msg = detail
-      ? `[aedev prototype] ${feature} is not yet implemented: ${detail}`
-      : `[aedev prototype] ${feature} is not yet implemented`
+      ? `[aedev] ${feature} is not configured: ${detail}`
+      : `[aedev] ${feature} is not configured`
     super(msg)
     this.name = 'ExperimentalFeatureError'
     this.feature = feature
