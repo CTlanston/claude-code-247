@@ -11,3 +11,22 @@ export type DaemonState = 'starting' | 'running' | 'stopping' | 'stopped'
 export { Daemon } from './daemon.js'
 export { createServer } from './server.js'
 export { HeartbeatService } from './heartbeat.js'
+export { DailySummaryGenerator } from './daily-summary.js'
+export type { DailySummaryOptions, DailySummaryStats } from './daily-summary.js'
+export {
+  RolePipeline,
+  ArchitectRole,
+  DesignerRole,
+  BuilderRole,
+  QARole,
+  ReviewerRole,
+  ReleaseRole,
+} from './roles/index.js'
+export type {
+  Role,
+  RoleContext,
+  RoleOutput,
+  BuilderTaskSpec,
+  RolePipelineOptions,
+  RolePipelineRunResult,
+} from './roles/index.js'
