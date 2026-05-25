@@ -7,3 +7,7 @@ export const DEFAULT_PORT = 7247 as const
 
 /** Daemon lifecycle states. */
 export type DaemonState = 'starting' | 'running' | 'stopping' | 'stopped'
+
+export { Daemon } from './daemon.js'
+export { createServer } from './server.js'
+export { HeartbeatService } from './heartbeat.js'

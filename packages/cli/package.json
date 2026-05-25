@@ -9,5 +9,9 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aedev/core": "workspace:*",
+    "commander": "^13.0.0"
   }
 }

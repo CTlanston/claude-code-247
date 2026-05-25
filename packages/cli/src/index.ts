@@ -14,3 +14,5 @@ export type CliCommand =
   | 'dashboard'
   | 'status'
   | 'secret'
+
+export { createCli } from './cli.js'
