@@ -1,4 +1,5 @@
 import type { Task, RunnerConfig, RunResult } from '@aedev/core'
+import { ExperimentalFeatureError } from '@aedev/core'
 import type { RunnerInterface } from './runner-interface.js'
 
 export class DockerRunner implements RunnerInterface {
@@ -15,8 +16,14 @@ export class DockerRunner implements RunnerInterface {
     // config reserved for future Docker implementation
     void config
     if (process.env['AEDEV_DOCKER_RUNNER'] !== '1') {
-      throw new Error('DockerRunner is feature-flagged. Set AEDEV_DOCKER_RUNNER=1 to enable.')
+      throw new ExperimentalFeatureError(
+        'DockerRunner',
+        'Set AEDEV_DOCKER_RUNNER=1 to enable (prototype only — not production-ready)',
+      )
     }
-    throw new Error(`DockerRunner for task ${task.id} not yet fully implemented. Coming in Phase 5 full release.`)
+    throw new ExperimentalFeatureError(
+      'DockerRunner.run',
+      `Task ${task.id}: Docker worker execution requires Phase 5 full release`,
+    )
   }
 }

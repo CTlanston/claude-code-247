@@ -6,6 +6,25 @@
 > runs external validators, scores risk, and merges low-risk changes
 > automatically — gated by your phone if anything bigger.
 
+## ⚡ Product spine at a glance
+
+| | Python `claude247` | TypeScript `aedev` |
+|---|---|---|
+| **Status** | **GA v1.0.0 — production** | **Experimental prototype** |
+| **Quick start** | `make install && claude247 doctor` | `pnpm install && aedev init` |
+| **Autonomous workers** | ✅ Docker + Claude Code | ❌ placeholder (throws `ExperimentalFeatureError`) |
+| **Dual validators** | ✅ Gemini + OpenAI | ❌ stub (returns `inconclusive`) |
+| **Auto-merge gate** | ✅ risk + dual validator | ✅ same policy, guarded by tests |
+| **Dashboard** | ✅ FastAPI + HTMX | ✅ Vite + React (UI only) |
+
+**If you want the system to actually run tasks: use Python `claude247` below.**
+
+The TypeScript `aedev` packages exist as the intended next-generation architecture.
+They have passing unit tests, a working Fastify daemon, and a React dashboard,
+but the Docker runner and Claude Code adapter are not yet implemented.
+See [`docs/aedev-prototype-status.md`](docs/aedev-prototype-status.md) for the
+full status and the nine gates that must turn green before TypeScript replaces Python.
+
 ## What you get
 
 - **Multi-repo from day one.** One registry, many repos. Per-repo budget,
@@ -103,7 +122,7 @@ claude247 status-board --plain
 The watchdog reads `M20_SOAK_RESULT.md` to auto-discover the
 dispatcher T0; pass `--t0 2026-05-24T21:46Z` to override.
 
-## Status
+## Status (Python `claude247` — production)
 
 - **`v1.0.0` GA — released 2026-05-25.**
 - The first GA release. See [RELEASE_NOTES_GA.md](RELEASE_NOTES_GA.md)
@@ -118,7 +137,7 @@ dispatcher T0; pass `--t0 2026-05-24T21:46Z` to override.
   `FAIL` once wall-clock crosses `2026-05-25T21:46Z`.
 - Pre-release history (`alpha.0` → `beta.2`) preserved on GitHub.
 
-## Documentation
+## Documentation (Python `claude247`)
 
 - [RELEASE_NOTES_GA.md](RELEASE_NOTES_GA.md) — v1.0.0 release notes
 - [GA_GATE.md](GA_GATE.md) — 19-gate GA contract + owner-waiver policy
@@ -135,6 +154,42 @@ dispatcher T0; pass `--t0 2026-05-24T21:46Z` to override.
 - `docs/VALIDATORS.md` — Gemini + OpenAI judge contracts
 - `docs/REPO_ONBOARDING.md` — adding repos
 - `docs/OPERATIONS.md` — day-to-day operating playbook
+
+---
+
+## Experimental: TypeScript `aedev` prototype
+
+> ⚠️ **Not production-ready.** The Docker runner and Claude Code adapter are
+> placeholder stubs — they throw `ExperimentalFeatureError`.  Do not use
+> `aedev` to manage real repos until all gates in
+> [`docs/aedev-prototype-status.md`](docs/aedev-prototype-status.md) are green.
+
+```bash
+# Install TypeScript packages (Node.js ≥ 20, pnpm ≥ 9 required)
+pnpm install
+
+# Run all tests
+pnpm test
+
+# Type-check
+pnpm typecheck
+
+# Lint
+pnpm lint
+
+# Start the prototype daemon (port 7247) — serves UI + REST API
+# No real workers will run; mock runner is used for testing.
+cd packages/daemon && pnpm start
+
+# Open prototype dashboard
+open http://localhost:7248
+```
+
+Architecture decisions for `aedev`: [`docs/adr/`](docs/adr/) (ADR-0001 through ADR-0008).
+
+Migration plan: [`docs/aedev-prototype-status.md`](docs/aedev-prototype-status.md).
+
+---
 
 ## License
 
