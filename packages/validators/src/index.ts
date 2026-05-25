@@ -6,6 +6,7 @@ export type { ValidatorName, ValidatorVerdict, ValidatorResult, MergePolicyDecis
 export { RiskScorer } from './risk-scorer.js'
 export type { RiskFactors, RiskScoreResult } from './risk-scorer.js'
 export { MergePolicy } from './merge-policy.js'
+export type { MergePolicyEvidence } from './merge-policy.js'
 export { EvidenceReviewer } from './reviewer.js'
 export type { ReviewResult } from './reviewer.js'
 export { MockValidator } from './mock-validator.js'
