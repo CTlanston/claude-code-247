@@ -1,18 +1,10 @@
-/** GitHub collaboration surface adapter. */
-
-/** Identifies a GitHub repository. */
-export interface GitHubRepo {
-  owner: string
-  repo: string
-  defaultBranch: string
-}
-
-/** Status of a GitHub pull request. */
-export type PrStatus = 'open' | 'closed' | 'merged' | 'draft'
-
-/** A published GitHub check run result. */
-export interface CheckResult {
-  name: string
-  status: 'queued' | 'in_progress' | 'completed'
-  conclusion: 'success' | 'failure' | 'neutral' | 'skipped' | null
-}
+export { createOctokit } from './client.js'
+export type { Octokit } from './client.js'
+export { PrManager } from './pr-manager.js'
+export type { CreatePrOptions, PrInfo } from './pr-manager.js'
+export { CheckManager } from './check-manager.js'
+export type { CheckConclusion } from './check-manager.js'
+export { IssueImporter } from './issue-importer.js'
+export type { ImportedIssue } from './issue-importer.js'
+export { GitHubSync } from './github-sync.js'
+export type { SyncConfig, SyncResult } from './github-sync.js'

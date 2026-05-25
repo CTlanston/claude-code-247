@@ -8,6 +8,9 @@ import { registerMissionRoutes } from './routes/missions.js'
 import { registerTaskRoutes } from './routes/tasks.js'
 import { registerRepoRoutes } from './routes/repos.js'
 import { registerIntakeRoutes } from './routes/intake.js'
+import { registerGitHubRoutes } from './routes/github.js'
+import { registerSseRoutes } from './routes/sse.js'
+import { registerMemoryRoutes } from './routes/memory.js'
 
 export function createServer(
   db: AedevDb,
@@ -21,5 +24,9 @@ export function createServer(
   registerTaskRoutes(app, db)
   registerRepoRoutes(app, db)
   registerIntakeRoutes(app, db, stateDir)
+  registerGitHubRoutes(app, db)
+  registerSseRoutes(app, db)
+  registerMemoryRoutes(app, db)
+  app.get('/approvals', async () => ({ approvals: db.listApprovals() }))
   return app
 }

@@ -33,4 +33,30 @@ describe('AedevDb', () => {
     const byEntityId = db.queryEvents({ entityId: 'task-1' })
     expect(byEntityId).toHaveLength(1)
   })
+
+  it('updateMissionGitHub sets github fields on a mission', () => {
+    const repo = db.insertRepo({ name: 'r1', path: '/tmp/r1', defaultBranch: 'main', enabled: true, testCommands: [], forbiddenPaths: [], riskRules: {}, mergePolicy: 'WAITING' })
+    const mission = db.insertMission({ repoId: repo.id, title: 'My mission', status: 'approved' })
+    db.updateMissionGitHub(mission.id, { githubBranch: 'aedev/abc123', githubPrUrl: 'https://github.com/a/b/pull/5', githubPrNumber: 5 })
+    const updated = db.getMission(mission.id)
+    expect(updated?.githubBranch).toBe('aedev/abc123')
+    expect(updated?.githubPrUrl).toBe('https://github.com/a/b/pull/5')
+    expect(updated?.githubPrNumber).toBe(5)
+  })
+
+  it('insertMemoryItem throws when content contains secrets', () => {
+    expect(() => db.insertMemoryItem({
+      type: 'failure', title: 'Leaked creds', content: 'TOKEN=abc123', approved: false,
+    })).toThrow('secrets')
+  })
+
+  it('insertMemoryItem stores and retrieves items', () => {
+    const item = db.insertMemoryItem({ type: 'decision', title: 'Use retries', content: 'Always retry on timeout', approved: false })
+    expect(item.id).toBeDefined()
+    const items = db.listMemoryItems()
+    expect(items).toHaveLength(1)
+    db.approveMemoryItem(item.id)
+    const approved = db.listMemoryItems({ approved: true })
+    expect(approved).toHaveLength(1)
+  })
 })

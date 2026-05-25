@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3'
 import { runMigrations } from './migrations.js'
 import { generateId, nowIso } from './ids.js'
-import type { Repo, Mission, Task, Run, Approval, Event, RiskScore, ValidatorResult } from './schema.js'
+import type { Repo, Mission, Task, Run, Approval, Event, RiskScore, ValidatorResult, MemoryItem } from './schema.js'
 import type { RiskLevel, RunnerMode, ValidatorName, ValidatorVerdict } from './schema.js'
 
 export class AedevDb {
@@ -70,6 +70,17 @@ export class AedevDb {
     this.db.prepare('UPDATE missions SET status = ?, updated_at = ? WHERE id = ?').run(status, nowIso(), id)
   }
 
+  updateMissionGitHub(id: string, fields: { githubBranch?: string; githubPrUrl?: string; githubPrNumber?: number }): void {
+    const sets: string[] = []
+    const vals: unknown[] = []
+    if (fields.githubBranch !== undefined) { sets.push('github_branch = ?'); vals.push(fields.githubBranch) }
+    if (fields.githubPrUrl !== undefined) { sets.push('github_pr_url = ?'); vals.push(fields.githubPrUrl) }
+    if (fields.githubPrNumber !== undefined) { sets.push('github_pr_number = ?'); vals.push(fields.githubPrNumber) }
+    if (sets.length === 0) return
+    vals.push(nowIso(), id)
+    this.db.prepare(`UPDATE missions SET ${sets.join(', ')}, updated_at = ? WHERE id = ?`).run(...vals)
+  }
+
   listMissions(repoId?: string): Mission[] {
     const rows = repoId
       ? this.db.prepare('SELECT * FROM missions WHERE repo_id = ?').all(repoId) as Record<string, unknown>[]
@@ -85,6 +96,9 @@ export class AedevDb {
       status: r['status'] as Mission['status'],
       riskLevel: r['risk_level'] as RiskLevel | undefined,
       prdPath: r['prd_path'] as string | undefined,
+      githubBranch: r['github_branch'] as string | undefined,
+      githubPrUrl: r['github_pr_url'] as string | undefined,
+      githubPrNumber: r['github_pr_number'] as number | undefined,
       createdAt: r['created_at'] as string, updatedAt: r['updated_at'] as string,
     }
   }
@@ -227,6 +241,43 @@ export class AedevDb {
       id, s.taskId, s.runId ?? null, s.score, s.level, JSON.stringify(s.factors), s.computedAt
     )
     return { ...s, id }
+  }
+
+  // --- Memory items ---
+  insertMemoryItem(item: Omit<MemoryItem, 'id' | 'createdAt'>): MemoryItem {
+    const secretPattern = /PASSWORD\s*=|TOKEN\s*=|SECRET\s*=|API_KEY\s*=/i
+    if (secretPattern.test(item.content)) {
+      throw new Error('Memory content appears to contain secrets (PASSWORD=, TOKEN=, SECRET=, API_KEY=). Sanitize before storing.')
+    }
+    const id = generateId(); const now = nowIso()
+    this.db.prepare(`INSERT INTO memory_items (id,type,title,content,source_task_id,source_mission_id,repo_id,approved,created_at) VALUES (?,?,?,?,?,?,?,?,?)`).run(
+      id, item.type, item.title, item.content,
+      item.sourceTaskId ?? null, item.sourceMissionId ?? null, item.repoId ?? null,
+      item.approved ? 1 : 0, now
+    )
+    return { ...item, id, createdAt: now }
+  }
+
+  approveMemoryItem(id: string): void {
+    this.db.prepare('UPDATE memory_items SET approved = 1 WHERE id = ?').run(id)
+  }
+
+  listMemoryItems(filters: { approved?: boolean; repoId?: string } = {}): MemoryItem[] {
+    let sql = 'SELECT * FROM memory_items WHERE 1=1'
+    const params: unknown[] = []
+    if (filters.approved !== undefined) { sql += ' AND approved = ?'; params.push(filters.approved ? 1 : 0) }
+    if (filters.repoId) { sql += ' AND repo_id = ?'; params.push(filters.repoId) }
+    sql += ' ORDER BY created_at DESC'
+    const rows = this.db.prepare(sql).all(...params) as Record<string, unknown>[]
+    return rows.map((r) => ({
+      id: r['id'] as string, type: r['type'] as string, title: r['title'] as string,
+      content: r['content'] as string,
+      sourceTaskId: r['source_task_id'] as string | undefined,
+      sourceMissionId: r['source_mission_id'] as string | undefined,
+      repoId: r['repo_id'] as string | undefined,
+      approved: r['approved'] === 1,
+      createdAt: r['created_at'] as string,
+    }))
   }
 
   // --- Events ---

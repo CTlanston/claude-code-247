@@ -6,6 +6,8 @@ import { registerMissionCommand } from './commands/mission.js'
 import { registerTaskCommand } from './commands/task.js'
 import { registerStatusCommand } from './commands/status.js'
 import { registerIntakeCommand } from './commands/intake.js'
+import { registerGitHubCommand } from './commands/github.js'
+import { registerMemoryCommand } from './commands/memory.js'
 
 export function createCli(): Command {
   const program = new Command()
@@ -17,5 +19,7 @@ export function createCli(): Command {
   registerTaskCommand(program)
   registerStatusCommand(program)
   registerIntakeCommand(program)
+  registerGitHubCommand(program)
+  registerMemoryCommand(program)
   return program
 }

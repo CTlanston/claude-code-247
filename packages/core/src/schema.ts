@@ -45,6 +45,9 @@ export interface Mission {
   status: MissionStatus
   riskLevel?: RiskLevel
   prdPath?: string
+  githubBranch?: string
+  githubPrUrl?: string
+  githubPrNumber?: number
   createdAt: string
   updatedAt: string
 }

@@ -152,6 +152,11 @@ CREATE TABLE IF NOT EXISTS events (
 
 export const MIGRATIONS: Migration[] = [
   { version: 1, name: 'initial-schema', up: INITIAL_SQL },
+  { version: 2, name: 'add-github-fields', up: `
+  ALTER TABLE missions ADD COLUMN github_branch TEXT;
+  ALTER TABLE missions ADD COLUMN github_pr_url TEXT;
+  ALTER TABLE missions ADD COLUMN github_pr_number INTEGER;
+` },
 ]
 
 export function runMigrations(db: Database.Database): void {

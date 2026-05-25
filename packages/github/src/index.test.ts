@@ -1,19 +1,21 @@
 import { describe, it, expect } from 'vitest'
-import type { GitHubRepo, PrStatus } from './index.js'
+import type { PrInfo, SyncConfig, SyncResult } from './index.js'
 
 describe('github', () => {
-  it('GitHubRepo has owner, repo, and defaultBranch', () => {
-    const r: GitHubRepo = {
-      owner: 'acme',
-      repo: 'my-app',
-      defaultBranch: 'main',
-    }
-    expect(r.owner).toBe('acme')
-    expect(r.defaultBranch).toBe('main')
+  it('PrInfo has number, url, and state', () => {
+    const pr: PrInfo = { number: 1, url: 'https://github.com/a/b/pull/1', state: 'open' }
+    expect(pr.number).toBe(1)
+    expect(pr.state).toBe('open')
   })
 
-  it('PrStatus covers expected values', () => {
-    const statuses: PrStatus[] = ['open', 'closed', 'merged', 'draft']
-    expect(statuses).toHaveLength(4)
+  it('SyncConfig has owner, repo, and defaultBranch', () => {
+    const cfg: SyncConfig = { owner: 'acme', repo: 'my-app', defaultBranch: 'main' }
+    expect(cfg.owner).toBe('acme')
+    expect(cfg.defaultBranch).toBe('main')
+  })
+
+  it('SyncResult has missionId, prNumber, prUrl, branchName', () => {
+    const result: SyncResult = { missionId: 'abc', prNumber: 5, prUrl: 'https://github.com/a/b/pull/5', branchName: 'aedev/abc' }
+    expect(result.prNumber).toBe(5)
   })
 })
