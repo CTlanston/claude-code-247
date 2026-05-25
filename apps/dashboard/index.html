@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>aedev</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: system-ui, sans-serif; background: #0f172a; color: #f1f5f9; }
+      nav { display: flex; gap: 1px; background: #1e293b; border-bottom: 1px solid #334155; }
+      nav button { padding: 10px 20px; background: transparent; border: none; color: #94a3b8; cursor: pointer; font-size: 14px; }
+      nav button.active { color: #f1f5f9; border-bottom: 2px solid #3b82f6; }
+      .page { padding: 24px; max-width: 1200px; }
+      h1 { font-size: 22px; font-weight: 600; margin-bottom: 16px; }
+      .card { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+      .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; }
+      .badge-draft { background: #374151; color: #9ca3af; }
+      .badge-approved { background: #064e3b; color: #6ee7b7; }
+      .badge-running { background: #1e3a5f; color: #93c5fd; }
+      .badge-done { background: #14532d; color: #86efac; }
+      .badge-failed { background: #450a0a; color: #fca5a5; }
+      .badge-pending { background: #451a03; color: #fdba74; }
+      button.action { background: #3b82f6; color: white; border: none; border-radius: 4px; padding: 6px 12px; cursor: pointer; font-size: 13px; margin-right: 6px; }
+      button.action:hover { background: #2563eb; }
+      button.action.danger { background: #ef4444; }
+      .error { color: #fca5a5; padding: 16px; }
+      .empty { color: #64748b; padding: 16px; }
+      .dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; display: inline-block; margin-right: 6px; }
+      .dot.off { background: #ef4444; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

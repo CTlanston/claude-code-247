@@ -11,9 +11,10 @@ export default tseslint.config(
       '**/.venv/**',
       'eslint.config.mjs',
       'vitest.config.ts',
+      'apps/dashboard/dist/**',
     ],
   },
   {
-    files: ['packages/*/src/**/*.ts', 'apps/*/src/**/*.ts'],
+    files: ['packages/*/src/**/*.ts', 'packages/*/src/**/*.tsx', 'apps/*/src/**/*.ts', 'apps/*/src/**/*.tsx'],
   },
 )
