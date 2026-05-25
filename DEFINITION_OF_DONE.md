@@ -135,6 +135,11 @@ the code that implements it and the test(s) that prove it.
 | Soak status at release | **WAIVED_BY_OWNER** (~9h 12m observed of 24h target, all probes green; final T+24h is a post-GA follow-up) |
 | GA gates at release | **18 PASS + 1 WAIVED_BY_OWNER** (gate #1) |
 | Known yellow flag | One self-healed SQLite schema-migration race at T+7m; did not repeat |
+| Annotated tag SHA | `d10ed715cada64ea66bcac817592690ae92f2969` |
+| main commit (tag points here) | `811ffce27438b79ab426bbc5717effcd6b76a4ea` |
+| GitHub Release URL | https://github.com/CTlanston/claude-code-247/releases/tag/v1.0.0 |
+| Pre-release flag | false (normal release) |
+| Post-GA T+24h follow-up required | YES — file `M22c_SOAK_FINAL.md` after `2026-05-25T21:46Z` |
 
 ## Post-GA follow-up (committed, not deferred indefinitely)
 

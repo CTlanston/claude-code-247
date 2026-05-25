@@ -64,6 +64,18 @@ for the GA decision record.
   subsequent ~1182 dispatcher ticks all succeeded; the error did
   not repeat. See `M20_SOAK_RESULT.md` for the full analysis.
 
+### Release verification
+
+| Field | Value |
+|---|---|
+| Annotated tag SHA | `d10ed715cada64ea66bcac817592690ae92f2969` |
+| main commit (= tag points here) | `811ffce27438b79ab426bbc5717effcd6b76a4ea` |
+| GitHub Release URL | https://github.com/CTlanston/claude-code-247/releases/tag/v1.0.0 |
+| Pre-release flag | false (normal release) |
+| Tests | 566 passing |
+| Doctor | ok=True, 0 fails, 3 known non-blocking warns |
+| Post-GA T+24h follow-up | required — `M22c_SOAK_FINAL.md` after `2026-05-25T21:46Z` |
+
 ## [Unreleased] — M21 GA-readiness hardening
 
 GA-readiness milestone (M21). Not tagged. See

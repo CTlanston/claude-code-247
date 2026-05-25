@@ -258,3 +258,29 @@ after **~9h+ of healthy soak evidence**.
    columns) — queued for post-GA so the in-flight dispatcher is not
    disturbed mid-soak.
 
+## v1.0.0 release verification (2026-05-25)
+
+| Field | Value |
+|---|---|
+| v1.0.0 release created | **YES** |
+| Annotated tag SHA | `d10ed715cada64ea66bcac817592690ae92f2969` |
+| main SHA (= tag commit) | `811ffce27438b79ab426bbc5717effcd6b76a4ea` |
+| GitHub Release URL | https://github.com/CTlanston/claude-code-247/releases/tag/v1.0.0 |
+| Pre-release flag | **false** (this is a normal release) |
+| Draft flag | false |
+| Tests at release | **566 passing** |
+| Doctor at release | `ok=True`, 0 fails, 3 known non-blocking warns |
+| Status at release | system running, 0 active, 0 stuck, 1 repo enabled |
+| Watchdog soak at release | PARTIAL ~39% (~9h 31m / 24h) — auto-flips to PASS/FAIL after `2026-05-25T21:46Z` |
+| Soak waiver | **WAIVED_BY_OWNER** in `GA_GATE.md` gate #1 |
+| Post-GA T+24h follow-up required | **YES** — file in `M22c_SOAK_FINAL.md` after `2026-05-25T21:46Z` |
+
+**Note on commit ordering:** the `v1.0.0` tag points to commit
+`811ffce` (the "docs: approve v1.0.0 with explicit soak waiver"
+commit). This post-release verification block was committed *after*
+the tag, so a `git log v1.0.0..main` may show one extra commit
+("docs: record v1.0.0 release verification"). The release artifact
+itself is the tag, and the tag points to the documented release
+commit `811ffce` — the post-release commit only adds verification
+metadata.
+
