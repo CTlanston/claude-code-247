@@ -6,24 +6,24 @@
 > runs external validators, scores risk, and merges low-risk changes
 > automatically — gated by your phone if anything bigger.
 
-## ⚡ Product spine at a glance
+## ⚡ Architecture at a glance — dual kernel, single product
 
-| | Python `claude247` | TypeScript `aedev` |
+`claude-code-247` is one product OS with two cooperating kernels:
+
+| Layer | Implementation | Role |
 |---|---|---|
-| **Status** | **GA v1.0.0 — production** | **Experimental prototype** |
-| **Quick start** | `make install && claude247 doctor` | `pnpm install && aedev init` |
-| **Autonomous workers** | ✅ Docker + Claude Code | ❌ placeholder (throws `ExperimentalFeatureError`) |
-| **Dual validators** | ✅ Gemini + OpenAI | ❌ stub (returns `inconclusive`) |
-| **Auto-merge gate** | ✅ risk + dual validator | ✅ same policy, guarded by tests |
-| **Dashboard** | ✅ FastAPI + HTMX | ✅ Vite + React (UI only) |
+| **Control plane** | **TypeScript `aedev`** (pnpm monorepo) | Primary CLI, daemon, dashboard, state machine, mission intake, roadmap, task graph, approvals, memory, risk, preview/deploy orchestration, evidence bundle. |
+| **Execution kernel** | **Python `claude247`** (v1.0.0 GA) | Mature Docker worker runtime, headless `claude --print` invocation, Gemini + OpenAI judges, GitHub PR creation. Invoked by `aedev` during the parity window. |
+| **Bridge** | `@aedev/claude247-bridge` | Enqueues tasks into the Python state DB, polls status, imports evidence back into `aedev`'s SQLite. |
 
-**If you want the system to actually run tasks: use Python `claude247` below.**
-
-The TypeScript `aedev` packages exist as the intended next-generation architecture.
-They have passing unit tests, a working Fastify daemon, and a React dashboard,
-but the Docker runner and Claude Code adapter are not yet implemented.
-See [`docs/aedev-prototype-status.md`](docs/aedev-prototype-status.md) for the
-full status and the nine gates that must turn green before TypeScript replaces Python.
+This dual-kernel design is recorded in
+[ADR-0009](docs/adr/0009-aedev-as-primary-control-plane.md), which supersedes
+[ADR-0008](docs/adr/0008-product-spine-python-now-typescript-experimental.md).
+`aedev` is the primary entry point for new product-OS work; the Python kernel
+continues to drive worker execution and validator orchestration until the
+TypeScript runtime reaches parity (see
+[`docs/aedev-prototype-status.md`](docs/aedev-prototype-status.md) for the
+parity gate list).
 
 ## What you get
 
@@ -46,28 +46,48 @@ full status and the nine gates that must turn green before TypeScript replaces P
 
 ## Quick start
 
+`aedev` is the primary control plane. The Python `claude247` kernel is
+installed alongside it during the parity window and handles worker execution
+underneath.
+
 ```bash
-# 1. Install the package and CLI
+# 1. Install the Python execution kernel (mature, GA v1.0.0)
 make install                    # creates venv + installs deps + launchd plists
+claude247 doctor                # verify kernel environment
 
-# 2. Check the environment
-claude247 doctor
+# 2. Install the TypeScript control plane
+pnpm install
+pnpm -r build
 
-# 3. Add your first repo (CLI wizard)
-claude247 repo add
+# 3. Initialize aedev home (~/.aedev/)
+aedev init
 
-# 4. Open the dashboard
-open http://localhost:8423                # or http://localhost:8423/status-board
+# 4. Start the aedev daemon (port 7247) — control plane + dashboard
+aedev daemon start
+open http://localhost:7247
 
-# 5. Kick off a task
-claude247 start --repo my-repo --goal "refactor the auth middleware"
+# 5. Submit a mission via the control plane (two-step approval)
+aedev intake "refactor the auth middleware in repo my-repo"
+aedev mission list              # find the mission id
+aedev mission approve <id>      # explicit approval — no self-approve
 
-# 6. Anytime, anywhere — read-only watchdog
-claude247 status-board --plain            # text dashboard for phones
-claude247 watchdog --plain                # same command, friendlier alias
-claude247 status-board --json             # machine-readable
+# 6. Inspect status / tasks via the control plane
+aedev status --plain
+aedev task list
+
+# 7. Read-only watchdog (Python kernel) — phone-friendly
+claude247 status-board --plain
+claude247 watchdog --plain
+claude247 status-board --json
 claude247 status-board --write-md M22_WATCHDOG_DASHBOARD.md
 ```
+
+During the parity window, some kernel-level operations are still invoked
+directly via `claude247` (worker launch, validator orchestration, GitHub
+PR creation). The `@aedev/claude247-bridge` package routes `aedev` missions
+through the Python kernel automatically — see
+[ADR-0009](docs/adr/0009-aedev-as-primary-control-plane.md) and
+[`docs/aedev-prototype-status.md`](docs/aedev-prototype-status.md).
 
 ## Live watchdog dashboard
 
@@ -157,37 +177,33 @@ dispatcher T0; pass `--t0 2026-05-24T21:46Z` to override.
 
 ---
 
-## Experimental: TypeScript `aedev` prototype
-
-> ⚠️ **Not production-ready.** The Docker runner and Claude Code adapter are
-> placeholder stubs — they throw `ExperimentalFeatureError`.  Do not use
-> `aedev` to manage real repos until all gates in
-> [`docs/aedev-prototype-status.md`](docs/aedev-prototype-status.md) are green.
+## Working on the TypeScript control plane (`aedev`)
 
 ```bash
-# Install TypeScript packages (Node.js ≥ 20, pnpm ≥ 9 required)
+# Install dependencies (Node.js ≥ 20, pnpm ≥ 10 required)
 pnpm install
 
 # Run all tests
 pnpm test
 
-# Type-check
+# Type-check across the workspace
 pnpm typecheck
 
 # Lint
 pnpm lint
 
-# Start the prototype daemon (port 7247) — serves UI + REST API
-# No real workers will run; mock runner is used for testing.
-cd packages/daemon && pnpm start
+# Opt-in real subprocess smoke tests (require `claude` and/or Docker on PATH)
+AEDEV_SMOKE_CLAUDE=1 pnpm test --filter @aedev/runner
+AEDEV_SMOKE_DOCKER=1 pnpm test --filter @aedev/runner
 
-# Open prototype dashboard
-open http://localhost:7248
+# Start the daemon (port 7247) — serves the dashboard + REST API
+cd packages/daemon && pnpm start
+open http://localhost:7247
 ```
 
-Architecture decisions for `aedev`: [`docs/adr/`](docs/adr/) (ADR-0001 through ADR-0008).
+Architecture decisions for `aedev`: [`docs/adr/`](docs/adr/) (ADR-0001 through ADR-0009).
 
-Migration plan: [`docs/aedev-prototype-status.md`](docs/aedev-prototype-status.md).
+TS runtime parity gates: [`docs/aedev-prototype-status.md`](docs/aedev-prototype-status.md).
 
 ---
 
