@@ -120,6 +120,15 @@ importers:
         specifier: ^5.0.0
         version: 5.8.5
 
+  packages/event-log:
+    dependencies:
+      ulid:
+        specifier: ^2.3.0
+        version: 2.4.0
+      zod:
+        specifier: ^3.0.0
+        version: 3.25.76
+
   packages/github:
     dependencies:
       '@aedev/core':
