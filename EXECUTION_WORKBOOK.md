@@ -15,18 +15,21 @@ schema_version: 1
 version_target: v2.2.0
 current_part: I            # I = v2.1 基座 · II = v2.2 Agent Mesh
 current_stage: A           # A B C D E G F1 F2 F3 H I J L M K | M1 M2 M3 M4 K2
-current_substage: A.0      # 子阶段编号 (见 §3)
-last_updated_utc: 2026-05-26T00:00:00Z
-last_session_id: null
-total_sessions: 0
+current_substage: A.exit   # A.0–A.4 shipped; awaiting L2 reviewer in next session
+last_updated_utc: 2026-05-26T09:40:00Z
+last_session_id: s_0001
+total_sessions: 1
 weeks_elapsed: 0
 weeks_remaining: 16
 open_holds: 0
 blocked_on: null
 next_action: |
-  Stage A.0 — 建立基线：在 v1.0.0 GA tag 上拉 v2-foundation 分支，
-  确认 pnpm 工作区 typecheck + test 绿，cz commitizen 配置在位，
-  然后进入 A.1 (数据库迁移脚本生成)。
+  Next session = L2 reviewer of Stage A. Boot in reviewer mode: do NOT
+  read evidence/stage-A/L1-acceptance — read source + event log only.
+  Run the acceptance suite plus the §3 Stage A L2 injection (delete the
+  SQLite file, rebuild views by reducing event_log, byte-compare). Sample
+  3 events and trace via causation_id. Write docs/reviews/stage-A-<date>.md.
+  If clean, advance §0 to current_stage: B and queue Stage B SessionProbe work.
 sla:
   daemon_recovery_p95_sec: 90
   approval_e2e_p95_min: 5
@@ -554,6 +557,39 @@ ApprovalGateway: ntfy → 操作员手机
 - next_action: <见 §0>
 - notes: <一两句>
 ```
+
+### s_0001 — 2026-05-26T09:40:00Z — ~1.5 h
+
+- stage_in: A.0 → stage_out: A.exit (A.1–A.4 all shipped)
+- l1: 4/4 · l2: not_run · l3: not_run
+- commits:
+  - `1e5a861` [A.0] workbook persist
+  - `18b078f` [A.1] event-log package (11 tests)
+  - `9cde92e` [A.2] migration v3 event_log table (6 tests)
+  - `fc2ece7` [A.3] daemon skeleton dirs (8 placeholders)
+  - `300b73a` [A.4] ADR-0010 + dispatch spike + CLAUDE.md banner
+- adrs: ADR-0010
+- holds_opened: 0 · holds_resolved: 0
+- next_action: see §0 next_action — Stage A L2 reviewer pass.
+- notes:
+    - Workbook persisted to repo root so future sessions can read §0.
+    - Branched `v2-foundation` from `converge/product-spine` HEAD (NOT
+      from literal v1.0.0 tag — that tag predates the pnpm/TS workspace
+      that Stage A.0's boot check requires; deviation documented at the
+      top of the s_0001 session).
+    - `@aedev/event-log` shipped (workbook said `@claude247/event-log`;
+      kept namespace consistent with rest of workspace — full rationale
+      in `evidence/stage-A/L1-acceptance/notes.md`).
+    - New daemon subsystem dir `approval-v2/` (not `approval/`) to avoid
+      TS module-resolution collision with the existing `approval.ts` flat
+      file. Will be renamed in Stage D when legacy approval is retired.
+    - Migration v3 adds `event_log` table additively; v1 `events` table
+      preserved intact per GROUND RULE 4.
+    - Stage A acceptance specifically scoped (event-log + migrations +
+      typecheck + ADR/spike cross-ref) — 17/17 tests + clean typecheck.
+    - Full-suite `pnpm test` has a pre-existing flake: 3 subprocess tests
+      timeout under heavy parallel load, pass in isolation. Flagged for
+      follow-up; not a Stage A regression.
 
 #### s_0001 — placeholder (会话尚未开始)
 
