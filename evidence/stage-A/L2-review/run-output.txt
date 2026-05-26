@@ -1,0 +1,12 @@
+[l2] working dir: /var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/l2-stage-a-JOCGaB
+[l2] backup  dir: /var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/l2-stage-a-bk-BnLNes
+[l2] appended 10 events
+[l2] S1.total = 10, kinds = 10
+[l2] shard files on disk: ["events-2026-05.ndjson"]
+[l2] sEmpty.total = 0 (expect 0)
+[l2] S1 byte-equal S2 ? true
+[l2] causation traces:
+  evt_01KSHVBK1WJKJ4A3QERVMKVWK7 → chain depth 1 → root evt_01KSHVBK1WJKJ4A3QERVMKVWK7 (causation_id=null, terminates_null=true)
+  evt_01KSHVBK1Y69XNKR9HAGFM5GRG → chain depth 6 → root evt_01KSHVBK1WJKJ4A3QERVMKVWK7 (causation_id=null, terminates_null=true)
+  evt_01KSHVBK1ZSCDCC09SFJFQDJZB → chain depth 10 → root evt_01KSHVBK1WJKJ4A3QERVMKVWK7 (causation_id=null, terminates_null=true)
+[l2] PASS — log is source-of-truth, restoration byte-equal, all 3 chains root at null.
