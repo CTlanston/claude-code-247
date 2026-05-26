@@ -82,6 +82,8 @@ export interface ReleaseRequest {
   productionDeployEnabled?: boolean
   /** Required for production deploy.  Output build dir. */
   outputDir?: string
+  /** Safety allowlist: this pipeline may revert only merge SHAs created by the current E2E/run. */
+  ownedMergeShas?: string[]
 }
 
 export interface ReleaseResult {
@@ -129,6 +131,11 @@ export class ReleasePipeline {
 
     if (req.decision !== 'AUTO_MERGE') {
       result.notes.push(`Merge decision was ${req.decision}; release pipeline is a no-op.`)
+      return result
+    }
+
+    if (req.ownedMergeShas && !req.ownedMergeShas.includes(req.mergeSha)) {
+      result.notes.push(`Merge ${req.mergeSha} is not owned by this run — refusing deploy/revert.`)
       return result
     }
 
@@ -266,7 +273,7 @@ export class ShellGitClient implements GitClient {
     await execFileAsync('git', ['revert', '--no-edit', '-m', '1', mergeSha], { cwd: this.cwd, timeout: 30_000 })
     if (reason) {
       // Amend the revert commit message with the supplied reason.
-      await execFileAsync('git', ['commit', '--amend', '-m', `revert ${mergeSha}\n\n${reason}`, '--no-edit'], { cwd: this.cwd, timeout: 5000 })
+      await execFileAsync('git', ['commit', '--amend', '-m', `revert ${mergeSha}\n\n${reason}`], { cwd: this.cwd, timeout: 5000 })
     }
     return this.resolveSha('HEAD')
   }

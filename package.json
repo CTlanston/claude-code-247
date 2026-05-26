@@ -8,19 +8,31 @@
     "pnpm": ">=10"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["better-sqlite3", "esbuild"]
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "esbuild"
+    ]
   },
   "scripts": {
     "build": "pnpm -r build",
     "test": "vitest run",
     "test:smoke": "AEDEV_SMOKE_CLAUDE=1 AEDEV_SMOKE_DOCKER=1 AEDEV_SMOKE_CLAUDE247=1 AEDEV_SMOKE_GEMINI=1 AEDEV_SMOKE_OPENAI=1 vitest run --testTimeout 180000",
+    "test:e2e:sandbox": "tsx scripts/e2e-sandbox.ts",
+    "test:hermus:mission": "tsx scripts/hermus-mission-smoke.ts",
     "typecheck": "pnpm -r typecheck",
     "lint": "eslint .",
     "format": "prettier --write ."
   },
+  "dependencies": {
+    "@aedev/core": "workspace:*",
+    "@aedev/daemon": "workspace:*",
+    "@aedev/qa": "workspace:*",
+    "@aedev/validators": "workspace:*"
+  },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
     "eslint": "^9.0.0",
+    "playwright": "^1.60.0",
     "prettier": "^3.0.0",
     "tsx": "^4.0.0",
     "typescript": "^5.0.0",

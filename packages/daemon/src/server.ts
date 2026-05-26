@@ -11,6 +11,7 @@ import { registerIntakeRoutes } from './routes/intake.js'
 import { registerGitHubRoutes } from './routes/github.js'
 import { registerSseRoutes } from './routes/sse.js'
 import { registerMemoryRoutes } from './routes/memory.js'
+import { MissionRunner } from './mission-runner.js'
 
 export function createServer(
   db: AedevDb,
@@ -28,5 +29,13 @@ export function createServer(
   registerSseRoutes(app, db)
   registerMemoryRoutes(app, db)
   app.get('/approvals', async () => ({ approvals: db.listApprovals() }))
+  app.post<{ Params: { id: string } }>('/missions/:id/run', async (req, reply) => {
+    try {
+      const runner = new MissionRunner(db, { stateDir })
+      return await runner.runMission(req.params.id)
+    } catch (e) {
+      return reply.code(400).send({ error: (e as Error).message })
+    }
+  })
   return app
 }

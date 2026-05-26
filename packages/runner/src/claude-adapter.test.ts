@@ -128,6 +128,35 @@ describe('ClaudeCodeAdapter — real subprocess', () => {
     }
   })
 
+  it('defaults to local_claude_code even when ANTHROPIC_API_KEY is present', async () => {
+    const probe = join(tmpRoot, 'probe-claude-default-auth.sh')
+    writeFileSync(
+      probe,
+      [
+        '#!/bin/sh',
+        'cat > /dev/null',
+        `if [ -z "$ANTHROPIC_API_KEY" ]; then`,
+        `  echo '{"result":"default-local","is_error":false,"usage":{"input_tokens":0,"output_tokens":0}}'`,
+        `else`,
+        `  echo '{"result":"silent-api-fallback","is_error":false,"usage":{"input_tokens":0,"output_tokens":0}}'`,
+        `fi`,
+      ].join('\n') + '\n',
+    )
+    chmodSync(probe, 0o755)
+
+    const original = process.env['ANTHROPIC_API_KEY']
+    process.env['ANTHROPIC_API_KEY'] = 'must-not-leak-into-default-mode'
+    try {
+      const adapter = new ClaudeCodeAdapter({ claudeBin: probe })
+      const result = await adapter.run('p', tmpRoot)
+      expect(result.transcript).toBe('default-local')
+      expect(result.authMode).toBe('local_claude_code')
+    } finally {
+      if (original === undefined) delete process.env['ANTHROPIC_API_KEY']
+      else process.env['ANTHROPIC_API_KEY'] = original
+    }
+  })
+
   it('passes ANTHROPIC_API_KEY through in anthropic_api auth mode', async () => {
     const probe = join(tmpRoot, 'probe-claude-2.sh')
     writeFileSync(

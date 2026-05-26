@@ -11,6 +11,7 @@ export type DaemonState = 'starting' | 'running' | 'stopping' | 'stopped'
 export { Daemon } from './daemon.js'
 export { createServer } from './server.js'
 export { HeartbeatService } from './heartbeat.js'
+export { IntakeService } from './intake.js'
 export { DailySummaryGenerator } from './daily-summary.js'
 export type { DailySummaryOptions, DailySummaryStats } from './daily-summary.js'
 export { ReleasePipeline, ShellGitClient } from './release-pipeline.js'
@@ -30,6 +31,8 @@ export type {
   InterruptionPolicyOptions,
 } from './interruption-policy.js'
 export { ProductMemory } from './product-memory.js'
+export { MissionRunner } from './mission-runner.js'
+export type { MissionRunOptions, MissionRunResult } from './mission-runner.js'
 export type { ProductMemoryCategory, RecordOptions } from './product-memory.js'
 export type {
   PremiumDebuggerOptions,

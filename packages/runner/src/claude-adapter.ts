@@ -22,6 +22,7 @@ export interface ClaudeRunOptions {
   allowedTools?: string[]
   permissionMode?: string
   timeoutMs?: number
+  /** Defaults to local subscription auth. API mode must be explicit. */
   authMode?: ClaudeAuthMode
   extraArgs?: string[]
 }
@@ -78,8 +79,7 @@ export class ClaudeCodeAdapter {
     const systemPrompt = options.systemPrompt ?? ''
     const permissionMode = options.permissionMode ?? DEFAULT_PERMISSION_MODE
     const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
-    const authMode: ClaudeAuthMode =
-      options.authMode ?? (process.env['ANTHROPIC_API_KEY'] ? 'anthropic_api' : 'local_claude_code')
+    const authMode: ClaudeAuthMode = options.authMode ?? 'local_claude_code'
 
     const argv: string[] = [
       '--print', '--output-format', 'json',
@@ -97,6 +97,8 @@ export class ClaudeCodeAdapter {
     if (authMode === 'local_claude_code') {
       delete env['ANTHROPIC_API_KEY']
       delete env['ANTHROPIC_BASE_URL']
+      delete env['ANTHROPIC_AUTH_TOKEN']
+      delete env['ANTHROPIC_API_URL']
     }
 
     const start = Date.now()

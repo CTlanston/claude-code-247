@@ -25,6 +25,15 @@ export function registerIntakeRoutes(app: FastifyInstance, db: AedevDb, stateDir
     }
   })
 
+  app.post<{ Params: { id: string } }>('/missions/:id/request-approval', async (req, reply) => {
+    try {
+      const mission = intake.requestApproval(req.params.id)
+      return mission
+    } catch (e) {
+      return reply.code(400).send({ error: (e as Error).message })
+    }
+  })
+
   app.get<{ Params: { id: string } }>('/missions/:id/can-execute', async (req) => ({
     canExecute: intake.canExecute(req.params.id),
   }))

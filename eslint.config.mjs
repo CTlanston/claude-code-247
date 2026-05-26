@@ -9,6 +9,7 @@ export default tseslint.config(
       '**/dist/**',
       '**/node_modules/**',
       '**/.venv/**',
+      '**/.review-venv/**',
       'eslint.config.mjs',
       'vitest.config.ts',
       'apps/dashboard/dist/**',

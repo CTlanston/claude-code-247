@@ -40,12 +40,31 @@ export interface BrowserQAResult {
 }
 
 const LAYOUT_OVERLAP_SCRIPT = `
-  // Naive overlap probe: returns elements whose bounding boxes overlap by ≥ 50%.
+  // Minimal overlap probe: returns visible elements whose bounding boxes overlap by ≥ 50%.
   (() => {
     const elements = Array.from(document.body.querySelectorAll('*'))
       .filter((e) => e instanceof HTMLElement && e.offsetWidth > 0 && e.offsetHeight > 0)
-    // Return an empty overlap list — real implementation would compute pairs.
-    return { overlaps: [] }
+      .map((e) => {
+        const r = e.getBoundingClientRect()
+        return { el: e, tag: e.tagName.toLowerCase(), id: e.id || '', cls: String(e.className || '').slice(0, 48), left: r.left, top: r.top, right: r.right, bottom: r.bottom, area: Math.max(0, r.width * r.height) }
+      })
+      .filter((r) => r.area > 400 && r.right > 0 && r.bottom > 0 && r.left < window.innerWidth && r.top < window.innerHeight)
+    const overlaps = []
+    const label = (r) => r.id ? '#' + r.id : r.cls ? r.tag + '.' + r.cls.split(/\\s+/).filter(Boolean).join('.') : r.tag
+    for (let i = 0; i < elements.length; i++) {
+      for (let j = i + 1; j < elements.length; j++) {
+        const a = elements[i], b = elements[j]
+        if (a.el.contains(b.el) || b.el.contains(a.el)) continue
+        const x = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left))
+        const y = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top))
+        const area = x * y
+        if (area <= 0) continue
+        const ratio = area / Math.min(a.area, b.area)
+        if (ratio >= 0.5) overlaps.push({ a: label(a), b: label(b), ratio })
+        if (overlaps.length >= 20) return { overlaps }
+      }
+    }
+    return { overlaps }
   })()
 `
 

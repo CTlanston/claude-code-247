@@ -88,6 +88,27 @@ describe('ReleasePipeline — no-op cases', () => {
     expect(result.reverted).toBe(false)
     expect(result.notes[0]).toMatch(/disabled/i)
   })
+
+  it('refuses to deploy or revert a merge not owned by the current run', async () => {
+    const git = fakeGit()
+    let deployed = false
+    const pipeline = new ReleasePipeline(git, async () => {
+      deployed = true
+      return { url: 'https://prod', meta: {} }
+    }, { incidentsDir })
+    const result = await pipeline.release({
+      mission: makeMission(),
+      decision: 'AUTO_MERGE',
+      mergeSha: 'merge-from-someone-else',
+      ownedMergeShas: ['merge-owned-by-this-run'],
+      productionDeployEnabled: true,
+      outputDir: '/tmp/build',
+    })
+    expect(deployed).toBe(false)
+    expect(result.reverted).toBe(false)
+    expect(git.reverted).toEqual([])
+    expect(result.notes[0]).toMatch(/not owned/)
+  })
 })
 
 describe('ReleasePipeline — happy path', () => {

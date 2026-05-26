@@ -22,4 +22,44 @@ export function registerMissionCommand(program: Command): void {
       console.log(res.ok ? `Mission ${action}d` : `Error: ${res.status}`)
     })
   }
+
+  cmd.command('request-approval <id>').action(async (id: string) => {
+    const res = await fetch(`${DAEMON_URL}/missions/${id}/request-approval`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}',
+    }).catch(() => null)
+    if (!res) { console.error('daemon not running'); process.exit(1) }
+    const body = await res.json() as Record<string, unknown>
+    if (!res.ok) { console.error('Error:', body['error']); process.exit(1) }
+    console.log(`Mission ${id} is pending approval`)
+  })
+
+  cmd.command('approve <id>').option('--by <operator>', 'Approver identity', 'operator').action(async (id: string, opts: { by: string }) => {
+    const req = await fetch(`${DAEMON_URL}/missions/${id}/request-approval`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}',
+    }).catch(() => null)
+    if (!req) { console.error('daemon not running'); process.exit(1) }
+    if (!req.ok && req.status !== 400) {
+      const body = await req.json() as Record<string, unknown>
+      console.error('Error:', body['error']); process.exit(1)
+    }
+    const res = await fetch(`${DAEMON_URL}/missions/${id}/approve`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ by: opts.by }),
+    }).catch(() => null)
+    if (!res) { console.error('daemon not running'); process.exit(1) }
+    const body = await res.json() as Record<string, unknown>
+    if (!res.ok) { console.error('Error:', body['error']); process.exit(1) }
+    console.log(`Mission ${id} approved`)
+  })
+
+  cmd.command('run <id>').description('Run an approved mission through the aedev spine').action(async (id: string) => {
+    const res = await fetch(`${DAEMON_URL}/missions/${id}/run`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}',
+    }).catch(() => null)
+    if (!res) { console.error('daemon not running'); process.exit(1) }
+    const body = await res.json() as Record<string, unknown>
+    if (!res.ok) { console.error('Error:', body['error']); process.exit(1) }
+    console.log(`Mission ${id} run completed: ${body['status']}`)
+    console.log(`Evidence: ${body['evidenceDir']}`)
+  })
 }
