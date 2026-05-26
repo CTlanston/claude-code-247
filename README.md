@@ -5,8 +5,21 @@
 > workers across every repo in your registry, opens draft PRs on GitHub,
 > runs external validators, scores risk, and merges low-risk changes
 > automatically — gated by your phone if anything bigger.
+>
+> **v1.0.0 GA shipped 2026-05-25** (with an owner-waived 24h soak gate).
+> **v2.0 is in design** — a TypeScript-only redesign that closes the
+> production-grade gaps (subscription session health, quota model,
+> closed-loop approval, push-time security, long-task resume, cross-platform
+> install, chaos resilience). The full plan lives in
+> [**V2_ARCHITECTURE.md**](V2_ARCHITECTURE.md) — read this first if you're
+> picking up the project.
 
-## ⚡ Architecture at a glance — dual kernel, single product
+## ⚡ Architecture today (v1.0.0) — dual kernel, single product
+
+> The dual-kernel layout below is the **current** state as of v1.0.0 GA.
+> v2.0 collapses it to a single TypeScript control plane and removes the
+> Python tree entirely. See [V2_ARCHITECTURE.md](V2_ARCHITECTURE.md) for
+> the target architecture and the stage-by-stage plan.
 
 `claude-code-247` is one product OS with two cooperating kernels:
 
@@ -23,7 +36,8 @@ This dual-kernel design is recorded in
 continues to drive worker execution and validator orchestration until the
 TypeScript runtime reaches parity (see
 [`docs/aedev-prototype-status.md`](docs/aedev-prototype-status.md) for the
-parity gate list).
+parity gate list). Both ADRs will be superseded by **ADR-0010** in Stage A of
+the v2.0 plan.
 
 ## What you get
 
@@ -142,9 +156,9 @@ claude247 status-board --plain
 The watchdog reads `M20_SOAK_RESULT.md` to auto-discover the
 dispatcher T0; pass `--t0 2026-05-24T21:46Z` to override.
 
-## Status (Python `claude247` — production)
+## Status
 
-- **`v1.0.0` GA — released 2026-05-25.**
+- **`v1.0.0` GA — released 2026-05-25** (Python `claude247` kernel).
 - The first GA release. See [RELEASE_NOTES_GA.md](RELEASE_NOTES_GA.md)
   for the full notes, [GA_GATE.md](GA_GATE.md) for the 19-gate GA
   contract, and [M22_GA_DECISION_REPORT.md](M22_GA_DECISION_REPORT.md)
@@ -156,8 +170,21 @@ dispatcher T0; pass `--t0 2026-05-24T21:46Z` to override.
   the watchdog dashboard will auto-flip `soak.result` to `PASS` or
   `FAIL` once wall-clock crosses `2026-05-25T21:46Z`.
 - Pre-release history (`alpha.0` → `beta.2`) preserved on GitHub.
+- **`v2.0` design is locked** — single TypeScript daemon, Python
+  removed, HOLD as first-class state, closed-loop approval (Claude
+  Dispatch + Tailscale), push-time security gate, resumable moves,
+  cross-platform supervisor, chaos drills, real 24h+ soak. Plan and
+  acceptance gates in [V2_ARCHITECTURE.md](V2_ARCHITECTURE.md).
+  Estimated ~7 focused weeks of execution.
 
-## Documentation (Python `claude247`)
+## Documentation
+
+**v2.0 (in design):**
+
+- [**V2_ARCHITECTURE.md**](V2_ARCHITECTURE.md) — full v2.0 architecture and
+  stage-by-stage implementation plan (start here)
+
+**v1.0.0 (current GA):**
 
 - [RELEASE_NOTES_GA.md](RELEASE_NOTES_GA.md) — v1.0.0 release notes
 - [GA_GATE.md](GA_GATE.md) — 19-gate GA contract + owner-waiver policy
@@ -165,7 +192,7 @@ dispatcher T0; pass `--t0 2026-05-24T21:46Z` to override.
 - [M20_SOAK_RESULT.md](M20_SOAK_RESULT.md) — soak observation + waiver record
 - [DEFINITION_OF_DONE.md](DEFINITION_OF_DONE.md) — DoD checklist
 - [CHANGELOG.md](CHANGELOG.md) — release history
-- `docs/ARCHITECTURE.md` — module map and data flow
+- `docs/ARCHITECTURE.md` — module map and data flow (v1.0.0)
 - `docs/INSTALL.md` — full install + uninstall + doctor
 - `docs/REMOTE_DISPATCH.md` — phone / Remote / Dispatch operating guide
 - `docs/SECURITY.md` — secret hygiene, forbidden paths, approval flow
