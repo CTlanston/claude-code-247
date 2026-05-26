@@ -13,15 +13,4 @@ export function registerIntakeCommand(program: Command): void {
     console.log(`\nReview the PRD, then run: aedev mission approve ${body.missionId}`)
   })
 
-  // extend mission command with approve
-  const missionCmd = program.commands.find((c) => c.name() === 'mission')
-  if (missionCmd) {
-    missionCmd.command('approve <id>').action(async (id: string) => {
-      const res = await fetch(`${DAEMON_URL}/missions/${id}/approve`, {
-        method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}',
-      }).catch(() => null)
-      if (!res) { console.error('daemon not running'); process.exit(1) }
-      console.log(res.ok ? `Mission ${id} approved` : `Error: ${res.status}`)
-    })
-  }
 }

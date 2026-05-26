@@ -13,6 +13,7 @@
   "dependencies": {
     "@aedev/core": "workspace:*",
     "@aedev/github": "workspace:*",
+    "@aedev/runner": "workspace:*",
     "@fastify/cors": "^10.0.0",
     "fastify": "^5.0.0"
   }

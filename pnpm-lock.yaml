@@ -7,6 +7,19 @@ settings:
 importers:
 
   .:
+    dependencies:
+      '@aedev/core':
+        specifier: workspace:*
+        version: link:packages/core
+      '@aedev/daemon':
+        specifier: workspace:*
+        version: link:packages/daemon
+      '@aedev/qa':
+        specifier: workspace:*
+        version: link:packages/qa
+      '@aedev/validators':
+        specifier: workspace:*
+        version: link:packages/validators
     devDependencies:
       '@eslint/js':
         specifier: ^9.0.0
@@ -14,6 +27,9 @@ importers:
       eslint:
         specifier: ^9.0.0
         version: 9.39.4
+      playwright:
+        specifier: ^1.60.0
+        version: 1.60.0
       prettier:
         specifier: ^3.0.0
         version: 3.8.3
@@ -52,6 +68,12 @@ importers:
         specifier: ^5.4.0
         version: 5.4.21(@types/node@25.9.1)
 
+  packages/claude247-bridge:
+    dependencies:
+      '@aedev/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/cli:
     dependencies:
       '@aedev/core':
@@ -88,6 +110,9 @@ importers:
       '@aedev/github':
         specifier: workspace:*
         version: link:../github
+      '@aedev/runner':
+        specifier: workspace:*
+        version: link:../runner
       '@fastify/cors':
         specifier: ^10.0.0
         version: 10.1.0
@@ -104,8 +129,23 @@ importers:
         specifier: ^21.0.0
         version: 21.1.1
 
+  packages/preview:
+    dependencies:
+      '@aedev/core':
+        specifier: workspace:*
+        version: link:../core
+
+  packages/qa:
+    dependencies:
+      '@aedev/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/runner:
     dependencies:
+      '@aedev/claude247-bridge':
+        specifier: workspace:*
+        version: link:../claude247-bridge
       '@aedev/core':
         specifier: workspace:*
         version: link:../core
@@ -1417,6 +1457,11 @@ packages:
   fs-constants@1.0.0:
     resolution: {integrity: sha512-y6OAwoSIf7FyjMIv94u+b5rdheZEjzR63GTyZJm5qh4Bi+2YgwLCcI/fPFZkL5PSixOt6ZNKm+w+Hfp/Bciwow==}
 
+  fsevents@2.3.2:
+    resolution: {integrity: sha512-xiqMQR4xAeHTuB9uWm+fFRcIOgKBMiOBP+eXiyT7jsgVCq1bkVygt00oASowB7EdtpOHaaPgKt812P9ab+DDKA==}
+    engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
+    os: [darwin]
+
   fsevents@2.3.3:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
@@ -1644,6 +1689,16 @@ packages:
 
   pino@10.3.1:
     resolution: {integrity: sha512-r34yH/GlQpKZbU1BvFFqOjhISRo1MNx1tWYsYvmj6KIRHSPMT2+yHOEb1SG6NMvRoHRF0a07kCOox/9yakl1vg==}
+    hasBin: true
+
+  playwright-core@1.60.0:
+    resolution: {integrity: sha512-9bW6zvX/m0lEbgTKJ6YppOKx8H3VOPBMOCFh2irXFOT4BbHgrx5hPjwJYLT40Lu+4qtD36qKc/Hn56StUW57IA==}
+    engines: {node: '>=18'}
+    hasBin: true
+
+  playwright@1.60.0:
+    resolution: {integrity: sha512-hheHdokM8cdqCb0lcE3s+zT4t4W+vvjpGxsZlDnikarzx8tSzMebh3UiFtgqwFwnTnjYQcsyMF8ei2mCO/tpeA==}
+    engines: {node: '>=18'}
     hasBin: true
 
   postcss@8.5.15:
@@ -3234,6 +3289,9 @@ snapshots:
 
   fs-constants@1.0.0: {}
 
+  fsevents@2.3.2:
+    optional: true
+
   fsevents@2.3.3:
     optional: true
 
@@ -3427,6 +3485,14 @@ snapshots:
       safe-stable-stringify: 2.5.0
       sonic-boom: 4.2.1
       thread-stream: 4.2.0
+
+  playwright-core@1.60.0: {}
+
+  playwright@1.60.0:
+    dependencies:
+      playwright-core: 1.60.0
+    optionalDependencies:
+      fsevents: 2.3.2
 
   postcss@8.5.15:
     dependencies:

@@ -1,23 +1,27 @@
-# aedev TypeScript Prototype — Status
+# aedev TypeScript Runtime — Parity Status Against the Python `claude247` Kernel
 
-> **This document is the authoritative record of what the TypeScript `aedev`
-> prototype has completed, what is still a placeholder, and what must be
-> finished before TypeScript can replace the Python production system.**
+> Authoritative record of TypeScript runtime parity against the Python
+> `claude247` execution kernel.  Per
+> [ADR-0009](adr/0009-aedev-as-primary-control-plane.md), `aedev` is the
+> primary control plane and Python `claude247` is the compatibility
+> execution kernel during the parity window.  This document tracks the
+> gates the TypeScript runtime must clear before the bridge can be retired.
 >
 > Updated: 2026-05-25
 
 ---
 
-## Production vs. Prototype
+## Dual-kernel architecture
 
-| System | Status | Quick start |
-|--------|--------|-------------|
-| Python `claude247` | **GA (v1.0.0)** | `make install && claude247 doctor` |
-| TypeScript `aedev` | **Experimental prototype** | `pnpm install && aedev init` |
+| Layer | Implementation | Role |
+|-------|---------------|------|
+| **Control plane** | TypeScript `aedev` (pnpm monorepo) | Primary entry point — CLI, Fastify daemon, dashboard, state machine, mission flow, approvals, memory, risk policy, evidence bundle. |
+| **Execution kernel** | Python `claude247` v1.0.0 GA | Mature Docker worker runtime, headless `claude --print`, Gemini + OpenAI judges, GitHub PR creation.  Invoked by `aedev` during the parity window. |
+| **Bridge** | `@aedev/claude247-bridge` | Subprocess interop with `claude247` CLI: `Claude247Bridge.enqueue/listTasks/getTask/readEvidence` + `Claude247BridgeRunner` (implements `RunnerInterface`).  Selectable via `RunnerConfig.mode === 'claude247-bridge'`. |
 
 ---
 
-## What is implemented and tested
+## What the TypeScript control plane implements natively
 
 | Component | File(s) | Tests passing |
 |-----------|---------|---------------|
@@ -48,25 +52,24 @@
 
 ---
 
-## What is a placeholder (throws `ExperimentalFeatureError` or returns stub)
+## What currently delegates to the Python kernel via the bridge
 
-| Component | Current behaviour | Required for production |
-|-----------|-------------------|------------------------|
-| `DockerRunner.run()` | Throws `ExperimentalFeatureError` | Real Docker container launch + tty capture |
-| `ClaudeCodeAdapter.run()` | Throws `ExperimentalFeatureError` | Real `claude` subprocess invocation |
-| `GeminiValidator` | Returns `inconclusive` | Real Gemini 2.5 Pro API call + structured verdict |
-| `OpenAIValidator` | Returns `inconclusive` | Real OpenAI-compatible API call + structured verdict |
-| `WorktreeManager` wiring | Not connected to `RunnerManager` | `RunnerManager` must create/clean worktrees |
-| `LeadAgent.generatePrdTemplate()` | Returns static markdown template | Optional: real Claude call for PRD generation |
-| GitHub sync (`/github/sync`) | Creates PR via Octokit (real API) | Requires `AEDEV_GITHUB_TOKEN` set |
-| `aedev github import-issue` | Imports issue via Octokit (real API) | Requires `AEDEV_GITHUB_TOKEN` set |
+| Component | TypeScript status | Delegates to | Bridge gate |
+|-----------|-------------------|--------------|-------------|
+| `DockerRunner.run()` | Real container launch with mounts + timeout + evidence capture (Phase 2 landed) | Production worker logic still routed to Python `runner/worker.py` via bridge | Gate 5 / Gate 10 |
+| `ClaudeCodeAdapter.run()` | Real `claude --print` subprocess (Phase 2 landed) | Mirrors Python `runner/claude_cli.py` shape | Gate 6 |
+| `GeminiValidator` | Real REST adapter against `generativelanguage.googleapis.com` (no SDK).  Returns `inconclusive` on any HTTP/parse error so merge stays blocked. | Python `validator/gemini_judge.py` available for cross-validation | Gate 7 |
+| `OpenAIValidator` | Real REST adapter against `/v1/chat/completions` with `response_format: json_object`.  Supports `AEDEV_OPENAI_BASE_URL` override for OpenAI-compatible proxies. | Python `validator/openai_judge.py` available for cross-validation | Gate 7 |
+| GitHub sync (`aedev github sync`) | Real Octokit calls (requires `AEDEV_GITHUB_TOKEN`) | Python `orchestrator/github_client.py` for parity scenarios | Gate 8 |
+| Mission → worker dispatch | Routed via `@aedev/claude247-bridge` | Python orchestrator dispatch loop | Gate 10 |
 
 ---
 
-## What must be completed before TypeScript can replace Python
+## Parity gates
 
-All nine verification gates below must turn green in a single end-to-end
-smoke run before the migration PR may be opened.
+All ten gates below must turn green before the bridge can be retired.  Per
+ADR-0009, the bridge remains in tree for one full minor-version cycle after
+parity as a rollback path.
 
 | # | Gate | Status |
 |---|------|--------|
@@ -74,44 +77,68 @@ smoke run before the migration PR may be opened.
 | 2 | `pnpm test` — all unit tests pass | ✅ |
 | 3 | `pnpm typecheck` — zero type errors | ✅ |
 | 4 | `pnpm lint` — zero lint errors | ✅ |
-| 5 | Docker worker real smoke: `DockerRunner.run()` completes a real task | ❌ not implemented |
-| 6 | Claude Code adapter real smoke: `ClaudeCodeAdapter.run()` executes a prompt | ❌ not implemented |
-| 7 | Dual-validator smoke: Gemini + OpenAI both return real verdicts for a sample diff | ❌ not implemented |
-| 8 | GitHub PR dry-run: `aedev github sync` creates a draft PR without merging | ❌ requires token |
-| 9 | Human approval gate: no mission can execute without `requestApproval()` + explicit `approveMission()` | ✅ enforced by tests |
+| 5 | `DockerRunner.run()` executes a real container, captures stdout/stderr/exit-code, enforces timeout, writes evidence | ✅ landed (Phase 2) |
+| 6 | `ClaudeCodeAdapter.run()` invokes `claude --print` via stdin, parses JSON, strips API key in subscription mode | ✅ landed (Phase 2) |
+| 7 | `GeminiValidator` and `OpenAIValidator` return real verdicts for a sample evidence bundle | ✅ landed (Phase 4) |
+| 8 | `aedev github sync` creates a real draft PR against a test repo | ⏳ requires `AEDEV_GITHUB_TOKEN` to verify |
+| 9 | Approval gate enforced: no mission executes without `requestApproval()` + distinct `approveMission()` | ✅ enforced by tests |
+| 10 | `@aedev/claude247-bridge` routes an `aedev` mission through the Python kernel and surfaces evidence in `aedev`'s SQLite | ✅ landed (Phase 3) |
 
-Gates 1–4 and 9 are currently passing.  Gates 5–8 are not.
+Gates 1–7, 9, 10 are passing.  Gate 8 (real GitHub PR end-to-end) remains token-dependent.  Phases 4–10 of the migration plan are landed at MVP scope:
+
+| Phase | What landed |
+|-------|-------------|
+| 4 | Real Gemini + OpenAI REST validators (no SDK), evidence-only, inconclusive-on-error |
+| 5 | Architect/Designer/Builder/QA/Reviewer/Release role pipeline, task graph, DailySummaryGenerator |
+| 6 | @aedev/qa with BrowserQA + MockBrowserDriver, optional Playwright wiring, screenshot/preview merge gates |
+| 7 | @aedev/preview adapters for Cloudflare Pages (default), Vercel, GitHub Pages (static-only); secret-grant pause on missing token |
+| 8 | ReleasePipeline: deploy → healthcheck → direct git revert + incident report on failure |
+| 9 | PremiumDebugger with failure-signature hashing and 5 circuit breakers (credentials, forbidden path, same-signature streak, no-diff streak, missing debuggerFn) |
+| 10 | MissionScheduler (event-table-backed, survives restart), InterruptionPolicy (7 reason types), ProductMemory (4 typed categories) |
+
+**Phase 2 verification (unit + opt-in smoke):**
+
+```bash
+pnpm test                # unit tests, all green — uses fake binaries in temp dir
+AEDEV_SMOKE_CLAUDE=1 pnpm test --filter @aedev/runner   # real `claude --print` round-trip
+AEDEV_SMOKE_DOCKER=1 pnpm test --filter @aedev/runner   # real container against alpine:3.20
+pnpm test:smoke          # both smoke groups at once
+```
 
 ---
 
 ## Invariants that must remain true forever (enforced by tests)
 
-1. **No auto-merge without dual validators.** `MergePolicy.decide()` never
-   returns `AUTO_MERGE` if `validatorResults.length < 2`, if any result is
-   `fail`, or if any result is `inconclusive`.
+1. **No auto-merge without dual real validators.**  `MergePolicy.decide()`
+   never returns `AUTO_MERGE` if `validatorResults.length < 2`, if any result
+   is `fail`, or if any result is `inconclusive`.  Stub validators count as
+   `inconclusive`.
 
-2. **No self-approval.** `IntakeService.approveMission()` throws if no
-   pending approval record exists (i.e. `requestApproval()` was never called).
-   Creating and approving in the same call is not possible.
+2. **No self-approval.**  `IntakeService.approveMission()` throws if no
+   pending approval record exists (i.e. `requestApproval()` was never
+   called).  Creating and approving in the same call is not possible.
 
-3. **Placeholder runners throw typed errors.** `DockerRunner.run()` and
-   `ClaudeCodeAdapter.run()` throw `ExperimentalFeatureError` (never generic
-   `Error`) so callers and tests can assert on the class.
+3. **Typed `ExperimentalFeatureError`.**  The class survives as a marker for
+   *unconfigured optional adapters* (e.g. a runner that is not selected by
+   the active runner mode).  It must not be thrown on a configured happy
+   path.
 
-4. **Secret pattern guard.** `AedevDb.insertMemoryItem()` throws if content
+4. **Secret pattern guard.**  `AedevDb.insertMemoryItem()` throws if content
    contains `PASSWORD=`, `TOKEN=`, `SECRET=`, or `API_KEY=`.
 
-5. **State machine rejects invalid transitions.** `validateTaskTransition()`
+5. **State machine rejects invalid transitions.**  `validateTaskTransition()`
    and `validateMissionTransition()` throw on invalid status transitions.
+
+6. **Sensitive lane stays sensitive.**  Auth, payment, security, and
+   deployment changes require stronger tests, dual validator PASS, preview
+   evidence, rollback plan, and no secret-scan hits — even when the bridge
+   delegates the actual execution to the Python kernel.
 
 ---
 
-## Migration checklist (when all 9 gates are green)
+## Bridge retirement criteria
 
-- [ ] Open migration PR titled `feat(prod): promote TypeScript aedev to production`
-- [ ] PR is reviewed under medium-risk policy (human approval required)
-- [ ] Python `claude247` CLI is deprecated with a redirect message
-- [ ] `make install` is updated to install `aedev` alongside or instead of `claude247`
-- [ ] README quick start switches to `aedev` commands
-- [ ] ADR-0008 status updated to "superseded by migration PR"
-- [ ] This document updated to "✅ completed — see migration PR"
+When all ten gates above are green, open a dedicated ADR to retire
+`@aedev/claude247-bridge`.  Retirement is itself a medium-risk change
+requiring human approval.  Even after retirement, Python `claude247`
+remains in tree as the historical v1.0.0 GA release; it is not deleted.

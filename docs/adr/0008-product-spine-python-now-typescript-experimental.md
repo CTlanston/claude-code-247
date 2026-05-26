@@ -1,8 +1,18 @@
 # ADR-0008: Product Spine — Python `claude247` is Production, TypeScript `aedev` is Experimental
 
-**Status:** Accepted  
-**Date:** 2026-05-25  
+**Status:** Superseded by [ADR-0009](0009-aedev-as-primary-control-plane.md) (2026-05-25)
+**Date:** 2026-05-25
 **Supersedes:** (none — first explicit product-spine record)
+
+---
+
+> **Superseded by ADR-0009 on 2026-05-25.** ADR-0008 captured the moment the
+> repo split into a production Python product and an experimental TypeScript
+> prototype. That framing has since been replaced by a dual-kernel design
+> where `aedev` is the primary control plane and Python `claude247` is a
+> compatibility execution kernel. See
+> [ADR-0009](0009-aedev-as-primary-control-plane.md) for the current position.
+> The text below is preserved unchanged as the historical record.
 
 ---
 

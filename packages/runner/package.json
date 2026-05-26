@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@aedev/core": "workspace:*"
+    "@aedev/core": "workspace:*",
+    "@aedev/claude247-bridge": "workspace:*"
   }
 }

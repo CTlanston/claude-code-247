@@ -1,0 +1,16 @@
+{
+  "name": "@aedev/claude247-bridge",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aedev/core": "workspace:*"
+  }
+}
