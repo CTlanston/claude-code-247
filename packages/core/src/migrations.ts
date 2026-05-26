@@ -150,6 +150,27 @@ CREATE TABLE IF NOT EXISTS events (
 );
 `
 
+// v3 introduces the v2.1 event_log table — single append-only ledger that
+// will become the source of truth (see ADR-0010). The legacy `events` table
+// is preserved unchanged per GROUND RULE 4 (schema dual-compatibility); a
+// later migration will demote it to a view computed from event_log.
+const V3_EVENT_LOG_SQL = `
+CREATE TABLE IF NOT EXISTS event_log (
+  id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL,
+  ts TEXT NOT NULL,
+  actor TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  idempotency TEXT NOT NULL UNIQUE,
+  payload TEXT NOT NULL DEFAULT '{}',
+  causation_id TEXT,
+  correlation_id TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_event_log_task_ts ON event_log(task_id, ts);
+CREATE INDEX IF NOT EXISTS idx_event_log_kind ON event_log(kind);
+CREATE INDEX IF NOT EXISTS idx_event_log_causation ON event_log(causation_id);
+`
+
 export const MIGRATIONS: Migration[] = [
   { version: 1, name: 'initial-schema', up: INITIAL_SQL },
   { version: 2, name: 'add-github-fields', up: `
@@ -157,6 +178,7 @@ export const MIGRATIONS: Migration[] = [
   ALTER TABLE missions ADD COLUMN github_pr_url TEXT;
   ALTER TABLE missions ADD COLUMN github_pr_number INTEGER;
 ` },
+  { version: 3, name: 'event-log-v2', up: V3_EVENT_LOG_SQL },
 ]
 
 export function runMigrations(db: Database.Database): void {
