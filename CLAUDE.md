@@ -1,5 +1,12 @@
 # CLAUDE.md — repository-level guidance for `claude-code-247`
 
+> **v2.1 banner — TS-only · event-sourced · three-plane.**
+> The v2-foundation branch and beyond run on the architecture in
+> [ADR-0010](docs/adr/0010-three-plane-event-sourced.md): a TypeScript-only
+> daemon, an append-only NDJSON event log as source of truth, and three
+> planes (daemon · workers · operator). Every session must read
+> [EXECUTION_WORKBOOK.md §0](EXECUTION_WORKBOOK.md) before any write.
+
 > This file is auto-loaded by Claude Code when it operates inside this repo.
 > It is **not** an instruction from a user; treat it as repository policy.
 
