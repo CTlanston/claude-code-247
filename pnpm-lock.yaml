@@ -83,6 +83,12 @@ importers:
         specifier: ^13.0.0
         version: 13.1.0
 
+  packages/cli-robust:
+    dependencies:
+      '@aedev/event-log':
+        specifier: workspace:*
+        version: link:../event-log
+
   packages/core:
     dependencies:
       better-sqlite3:
