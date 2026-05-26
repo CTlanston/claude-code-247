@@ -22,17 +22,18 @@ export function shardFileForTs(dir: string, ts: string): string {
 
 export interface AppenderOpts {
   dir: string
-  /** Optional: a cap on how many recent events to scan for idempotency on init. */
-  idemScanLimit?: number
 }
 
 /**
  * NDJSON appender with idempotency guard. Single-process safe; uses an
- * in-memory set seeded from the current shard on construction so a restart
- * still rejects duplicate idempotency keys for that month.
+ * in-memory set seeded from every monthly shard on construction so a
+ * restart still rejects duplicate idempotency keys for that month and
+ * every prior month on disk.
  *
- * Cross-month duplicate detection is the reducer's job (a key collision
- * across months is a strong correctness signal — we let it surface).
+ * Cross-process duplicate detection is NOT the appender's responsibility
+ * — the in-memory set is per-process. Stage B introduces a daemon-side
+ * single-writer or per-task lock to close that gap before workers begin
+ * writing the log directly.
  */
 export class NdjsonAppender {
   private readonly dir: string
