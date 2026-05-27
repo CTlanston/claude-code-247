@@ -26,17 +26,17 @@
 
 ## Signature
 
-Prepared by Codex; Lanston signature required.
+Lanston, 2026-05-27T  01:39
 
 ## What I just did (record of action)
 
 - [x] `mesh_enabled: true` observed in `/Users/lanston/.claude-code-247/config.yaml`
 - [x] launch-smoke executed on `main` commit f86531d and wrote the smoke artifact above
-- [ ] Lanston confirmed real phone/Tailscale + ntfy approval tap
-- [ ] Lanston confirmed HOLD resolution from phone
-- [ ] RoadmapAgent launchd job started
-- [ ] cost_per_pr_usd_7d gauge < $1 (baseline, no missions yet)
-- [ ] Alert routes synthetic-tripped today within 60s (per L2.2)
+- [ ] Lanston confirmed real phone/Tailscale + ntfy approval tap — BLOCKED; no live pending approval entrypoint found
+- [ ] Lanston confirmed HOLD resolution from phone — BLOCKED; no live pending HOLD entrypoint found
+- [ ] RoadmapAgent launchd job started — BLOCKED/NEEDS DECISION; no standalone launchd job found
+- [ ] cost_per_pr_usd_7d gauge < $1 (baseline, no missions yet) — NOT MEASURED
+- [ ] Alert routes synthetic-tripped today within 60s (per L2.2) — NOT RUN
 
 ## Notes
 
@@ -48,6 +48,56 @@ resolution, RoadmapAgent launchd cadence, or real telemetry event slice.
 
 Codex fixed the harness timer cleanup first so the smoke command exits
 normally after producing evidence.
+
+## Local host checks performed by Codex
+
+- Daemon status: `curl -sf http://127.0.0.1:7247/status` returned
+  `{"status":"running","version":"0.0.1",...}` at 2026-05-27T20:40Z.
+- Daemon queues: `/approvals`, `/missions`, `/tasks`, and `/repos` all
+  returned empty arrays at 2026-05-27T20:41Z.
+- launchd: `com.claude247.daemon` is loaded and running.
+- launchd: no `roadmap` or `roadmap-agent` job appears in
+  `launchctl list`.
+- Config: `/Users/lanston/.claude-code-247/config.yaml` contains
+  `mesh_enabled: true`.
+- Legacy phone/dashboard path is not currently healthy:
+  - `com.claude247.orchestrator` and `com.claude247.dispatcher` logs show
+    `.venv/bin/claude247` failing with `ModuleNotFoundError: gateway`.
+  - Legacy dashboard `/status-board.json` returns HTTP 500 with
+    `sqlite3.OperationalError: unable to open database file`.
+
+## Real phone approval verification
+
+- Result: BLOCKED
+- Reason: no live pending approval exists in the TS daemon (`/approvals`
+  returned `[]`), and the legacy `claude247 approve-merge` phone path is
+  currently broken after the Python cutover (`ModuleNotFoundError:
+  gateway` in launchd logs).
+- Required operator follow-up: use or build a healthy real approval
+  entrypoint, then record request emitted UTC, phone received UTC,
+  approve tapped UTC, decision received UTC, and event id.
+
+## Real phone HOLD resolution verification
+
+- Result: BLOCKED
+- Reason: no live pending HOLD exists in the TS daemon, and no safe current
+  dashboard/CLI endpoint was found for creating a HOLD that can be
+  resolved from phone.
+- Required operator follow-up: create a safe real HOLD injection or wait
+  for the next genuine HOLD, resolve from phone, then record created UTC,
+  notification received UTC, resolved UTC, and event id.
+
+## RoadmapAgent cadence
+
+- Result: NEEDS DECISION
+- `launchctl list | grep -E "claude247|roadmap"` showed daemon,
+  rollback-drill, orchestrator, backup, dispatcher, and dashboard jobs,
+  but no standalone RoadmapAgent job.
+- Repo search found RoadmapAgent package/tests and soak harness usage, but
+  no dedicated launchd plist.
+- Decision needed: either document RoadmapAgent cadence as daemon-owned, or
+  add/install a dedicated RoadmapAgent launchd job before claiming this
+  L0 checklist item complete.
 
 ## What I will check tomorrow
 

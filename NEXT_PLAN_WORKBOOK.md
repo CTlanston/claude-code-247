@@ -27,14 +27,15 @@ next_action: |
   Phase L0 smoke harness has run 7/7 LAUNCH_AUTHORIZED on main commit f86531d
   and evidence is in evidence/launch/smoke-2026-05-27T20-33-55-220Z.{json,md}.
   Codex also prepared evidence/launch/operator-launch-signoff.md and
-  evidence/launch/day-1.md.
+  day-1 through day-7 L1 journal files.
 
-  Operator-only confirmations remain before L0 L3 is truly complete:
-    - Lanston signs operator-launch-signoff.md after reading ADR-0015 §2.
-    - Lanston confirms the real phone/Tailscale + ntfy approval tap.
-    - Lanston confirms a real HOLD resolution from phone.
-    - RoadmapAgent cadence is either installed as launchd or documented as
-      daemon-owned cadence.
+  Current blocker: true phone/operator paths are not yet healthy enough to
+  claim L0 L3 PASS. TS daemon /status is running, but /approvals, /missions,
+  /tasks, and /repos are empty; legacy claude247 launchd jobs fail with
+  ModuleNotFoundError: gateway; legacy dashboard /status-board.json returns
+  HTTP 500. Next: decide RoadmapAgent cadence (daemon-owned vs launchd),
+  restore/build a healthy phone approval + HOLD resolution entrypoint, then
+  have Lanston confirm the two real phone actions in operator-launch-signoff.md.
 risk_acknowledgements:
   # The operator has explicitly accepted these trade-offs vs. a long soak.
   - "Rare failure modes (month-boundary, real CLI version bump, sustained quota near-ceiling) may surface in flight; recovery is the operator's responsibility."
@@ -321,6 +322,10 @@ v2.3 scope decided OR operator declares maintenance mode.
   - The current real-mode CLI still binds to `syntheticChecks()`. Do not
     treat the smoke artifact as proof of a true phone tap or real HOLD
     resolution until Lanston confirms those operator-only actions.
+  - Follow-up local checks found no pending TS daemon approvals/missions/tasks,
+    no standalone RoadmapAgent launchd job, and unhealthy legacy Python
+    launchd jobs after the F3 cutover. L0 remains blocked on a healthy real
+    phone/operator path.
 
 #### s_0001 — placeholder (not yet started)
 
