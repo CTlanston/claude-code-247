@@ -68,6 +68,12 @@ importers:
         specifier: ^5.4.0
         version: 5.4.21(@types/node@25.9.1)
 
+  packages/approval-v2:
+    dependencies:
+      '@aedev/event-log':
+        specifier: workspace:*
+        version: link:../event-log
+
   packages/claude247-bridge:
     dependencies:
       '@aedev/core':
