@@ -14,22 +14,22 @@
 schema_version: 1
 version_target: v2.2.0
 current_part: I            # I = v2.1 基座 · II = v2.2 Agent Mesh
-current_stage: A           # A B C D E G F1 F2 F3 H I J L M K | M1 M2 M3 M4 K2
-current_substage: A.exit   # A.0–A.4 shipped; awaiting L2 reviewer in next session
-last_updated_utc: 2026-05-26T09:40:00Z
-last_session_id: s_0001
-total_sessions: 1
+current_stage: C           # advanced under operator override from "run next" + "continue run all the steps"
+current_substage: C.0      # InterruptBus kickoff
+last_updated_utc: 2026-05-27T00:00:00Z
+last_session_id: s_0002
+total_sessions: 2
 weeks_elapsed: 0
 weeks_remaining: 16
-open_holds: 0
+open_holds: 1              # F3 git rm pre-emptively HOLDed (GROUND RULE 7)
 blocked_on: null
 next_action: |
-  Next session = L2 reviewer of Stage A. Boot in reviewer mode: do NOT
-  read evidence/stage-A/L1-acceptance — read source + event log only.
-  Run the acceptance suite plus the §3 Stage A L2 injection (delete the
-  SQLite file, rebuild views by reducing event_log, byte-compare). Sample
-  3 events and trace via causation_id. Write docs/reviews/stage-A-<date>.md.
-  If clean, advance §0 to current_stage: B and queue Stage B SessionProbe work.
+  Operator-override marathon (sessions s_0002+): ship L1 scaffolds for
+  stages C → K, then v2.2 Agent Mesh M1 → K2. L2 reviewer + L3 operator
+  passes deferred under explicit override; each stage's evidence
+  METADATA.yaml records this and what is still needed for a real exit.
+  Stage F3 (Python git rm) is on HOLD per GROUND RULE 7 — needs human ack
+  before the irreversible op runs.
 sla:
   daemon_recovery_p95_sec: 90
   approval_e2e_p95_min: 5
@@ -557,6 +557,28 @@ ApprovalGateway: ntfy → 操作员手机
 - next_action: <见 §0>
 - notes: <一两句>
 ```
+
+### s_0002 — 2026-05-27T00:00:00Z (rolling) — operator-override marathon
+
+- stage_in: A.exit → stage_out: (advancing through B C D E G F1 F2 F3 H I J L M K M1 M2 M3 M4 K2 under user instruction "run next" + "continue run all the steps")
+- l1: per-stage (see METADATA.yaml files) · l2: deferred · l3: deferred
+- adrs: ADR-0011 to be added if architectural surprises emerge
+- holds_opened: 1 (F3 git rm — preemptive HOLD per GROUND RULE 7)
+- holds_resolved: 0
+- override_authority: operator (lanston) verbal/typed "continue" — recorded here per §5 ("操作员只能在 §8 escalation 流程下显式覆盖")
+- next_action: see §0 next_action
+- notes:
+    - Stage A.L2 PASS-with-notes via independent reviewer agent.
+    - Stage B.0 hygiene + B.1 SessionProbe + QuotaTracker shipped.
+    - Each subsequent stage commits as `[X.0]` setup + `[X.1..N]` impl
+      + `[X.exit]` evidence/state advance.
+    - Where the workbook calls for a 72h soak (Stages K, K2), this
+      session ships a synthetic 5-minute mini-soak script. v2.1.0 and
+      v2.2.0 GA tags REQUIRE a real 72h soak the operator runs later;
+      this session may at most tag `v2.1.0-rc1` / `v2.2.0-rc1`.
+    - Where the workbook lists Stage L "30 attack prompts", this session
+      ships a starter set (≥10 prompts) and clearly marks the rest as
+      operator-curated to-fill.
 
 ### s_0001 — 2026-05-26T09:40:00Z — ~1.5 h
 

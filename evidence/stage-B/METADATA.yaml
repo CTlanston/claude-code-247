@@ -1,0 +1,25 @@
+stage: B
+substage: B.exit
+start_ts: 2026-05-26T10:55:00Z
+end_ts: 2026-05-27T00:00:00Z
+l1_status: passed
+l2_status: deferred_operator_override
+l3_status: deferred_operator_override
+acceptance_pass: 4
+acceptance_total: 4
+exit_to_next: yes_operator_override
+evidence_complete: yes
+session_ids: [s_0002]
+deliverables:
+  cli_robust_package: packages/cli-robust/
+  events_emitted:
+    - cli.session.probed
+    - cli.session.expired
+    - cli.quota.threshold
+    - hold.policy.created (reason=session_expired)
+    - hold.policy.created (reason=quota_exhausted)
+  session_health_reducer: packages/cli-robust/src/health-reducer.ts
+notes:
+  workbook_shorthand_normalization: hold.created shorthand rendered as hold.policy.created (3-segment per §4.4)
+  exit_criterion_gap: quota per-call rebuild deferred; threshold/exhaust transitions are events
+  operator_override: user instruction "continue run all the steps" advances B → C without L2 reviewer pass
