@@ -16,17 +16,25 @@ parent_completion: stage-class complete (20/20 L1+L2+L3 pass, v2.2.0 on main)
 plan_version: NEXT-2
 operating_mode: launch-fast               # vs. soak-first
 current_phase: L0                         # L0 L1 L2 L3
-current_substage: L0.0
-last_updated_utc: 2026-05-27T00:00:00Z
-last_session_id: null
-total_sessions: 0
+current_substage: L0.L3-operator-confirmation-required
+last_updated_utc: 2026-05-27T20:34:09Z
+last_session_id: next_s0001
+total_sessions: 1
 weeks_remaining_next: 5                   # was 12, now 5
 open_holds: 0
 blocked_on: null
 next_action: |
-  Phase L0.0 — wire and run the 30-minute smoke harness
-  (scripts/launch-smoke.ts). If 7/7 checks pass on a clean boot, flip the
-  launch switch in §3 L1 the same day. Do not wait for a multi-day soak.
+  Phase L0 smoke harness has run 7/7 LAUNCH_AUTHORIZED on main commit f86531d
+  and evidence is in evidence/launch/smoke-2026-05-27T20-33-55-220Z.{json,md}.
+  Codex also prepared evidence/launch/operator-launch-signoff.md and
+  evidence/launch/day-1.md.
+
+  Operator-only confirmations remain before L0 L3 is truly complete:
+    - Lanston signs operator-launch-signoff.md after reading ADR-0015 §2.
+    - Lanston confirms the real phone/Tailscale + ntfy approval tap.
+    - Lanston confirms a real HOLD resolution from phone.
+    - RoadmapAgent cadence is either installed as launchd or documented as
+      daemon-owned cadence.
 risk_acknowledgements:
   # The operator has explicitly accepted these trade-offs vs. a long soak.
   - "Rare failure modes (month-boundary, real CLI version bump, sustained quota near-ceiling) may surface in flight; recovery is the operator's responsibility."
@@ -297,6 +305,23 @@ v2.3 scope decided OR operator declares maintenance mode.
 
 ## §8 · SESSION LOG (append-only, **newest on top**)
 
+#### next_s0001 — 2026-05-27T20:34:09Z — L0 smoke evidence prepared
+
+- phase_in: L0.0 → phase_out: L0.L3-operator-confirmation-required
+- l1: launch-smoke 7/7 LAUNCH_AUTHORIZED on main commit f86531d
+- l2: not_run
+- l3: prepared only; Lanston signature required
+- evidence:
+  - `evidence/launch/smoke-2026-05-27T20-33-55-220Z.json`
+  - `evidence/launch/operator-launch-signoff.md`
+  - `evidence/launch/day-1.md`
+- notes:
+  - Codex fixed launch-smoke timeout cleanup before the final smoke run so
+    the CLI exits normally after writing artifacts.
+  - The current real-mode CLI still binds to `syntheticChecks()`. Do not
+    treat the smoke artifact as proof of a true phone tap or real HOLD
+    resolution until Lanston confirms those operator-only actions.
+
 #### s_0001 — placeholder (not yet started)
 
 - phase_in: — → phase_out: —
@@ -312,6 +337,7 @@ v2.3 scope decided OR operator declares maintenance mode.
 |---|---|---|---|
 | 2026-05-27 | NEXT-1.0 | Initial 12-week soak-first plan (P0–P3) | architect |
 | 2026-05-27 | NEXT-2.0 | **Rewrite to launch-fast: 30-min smoke + same-day launch + 7d live fire. Trade-offs documented in §2.** Operator-directed. | architect |
+| 2026-05-27 | NEXT-2.1 | L0 smoke evidence prepared; launch-smoke timer cleanup; operator signoff/day-1 files prepared without forging Lanston signature. | codex |
 
 ---
 

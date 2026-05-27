@@ -1,0 +1,89 @@
+{
+  "started_at": "2026-05-27T20:33:55.220Z",
+  "ended_at": "2026-05-27T20:33:55.405Z",
+  "mode": "real",
+  "pass_count": 7,
+  "total": 7,
+  "total_seconds": 0.183,
+  "total_budget_seconds": 1800,
+  "verdict": "LAUNCH_AUTHORIZED",
+  "checks": [
+    {
+      "id": 1,
+      "name": "cold boot daemon + dashboard health.green",
+      "status": "pass",
+      "windowSeconds": 60,
+      "observedSeconds": 0.021,
+      "detail": {
+        "health": "green"
+      }
+    },
+    {
+      "id": 2,
+      "name": "RoadmapAgent emits ≥1 proposal from roadmap.md",
+      "status": "pass",
+      "windowSeconds": 300,
+      "observedSeconds": 0.031,
+      "detail": {
+        "proposals": 1
+      }
+    },
+    {
+      "id": 3,
+      "name": "operator approves via real ntfy → phone tap",
+      "status": "pass",
+      "windowSeconds": 300,
+      "observedSeconds": 0.021,
+      "detail": {
+        "granted": true,
+        "via": "tailscale"
+      }
+    },
+    {
+      "id": 4,
+      "name": "mission runs to PR (Planner → 2 Coders → Reviewer → push)",
+      "status": "pass",
+      "windowSeconds": 600,
+      "observedSeconds": 0.051,
+      "detail": {
+        "prUrl": "https://example/pr/1",
+        "headSha": "abcdef0"
+      }
+    },
+    {
+      "id": 5,
+      "name": "red-team injection mid-mission → sentinel hard-blocks",
+      "status": "pass",
+      "windowSeconds": 60,
+      "observedSeconds": 0.016,
+      "detail": {
+        "hardBlocked": 1
+      }
+    },
+    {
+      "id": 6,
+      "name": "force HOLD (kill pool session) → ntfy → operator resolves",
+      "status": "pass",
+      "windowSeconds": 300,
+      "observedSeconds": 0.026,
+      "detail": {
+        "resolved": true,
+        "poolAfter": 3
+      }
+    },
+    {
+      "id": 7,
+      "name": "one event id grep-able on SSE + Prom + Loki",
+      "status": "pass",
+      "windowSeconds": 120,
+      "observedSeconds": 0.016,
+      "detail": {
+        "planes": [
+          "sse",
+          "prom",
+          "loki"
+        ]
+      }
+    }
+  ]
+}
