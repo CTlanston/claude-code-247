@@ -1,0 +1,8 @@
+stage: M1
+substage: M1.exit
+l1_status: passed
+l2_status: deferred_operator_override
+l3_status: deferred_operator_override
+acceptance_pass: 22
+acceptance_total: 22
+session_ids: [s_0002]
