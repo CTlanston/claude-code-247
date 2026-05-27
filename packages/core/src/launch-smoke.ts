@@ -93,12 +93,20 @@ export class SmokeHarness {
       try {
         // Race the check against its window.
         const timeoutMs = check.windowSeconds * 1000
-        const winner = await Promise.race([
-          check.run().then((r) => ({ winner: 'check' as const, r })),
-          new Promise<{ winner: 'timeout' }>((res) =>
-            setTimeout(() => res({ winner: 'timeout' }), timeoutMs),
-          ),
-        ])
+        let timeout: ReturnType<typeof setTimeout> | undefined
+        let winner: { winner: 'check', r: { detail?: Record<string, unknown> } } | { winner: 'timeout' }
+        try {
+          winner = await Promise.race([
+            check.run().then((r) => ({ winner: 'check' as const, r })),
+            new Promise<{ winner: 'timeout' }>((res) => {
+              timeout = setTimeout(() => res({ winner: 'timeout' }), timeoutMs)
+            }),
+          ])
+        } finally {
+          if (timeout) {
+            clearTimeout(timeout)
+          }
+        }
         observed = (performance.now() - t0) / 1000
         if (winner.winner === 'timeout') {
           status = 'window_exceeded'
