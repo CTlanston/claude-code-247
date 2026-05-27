@@ -76,7 +76,7 @@ describe('interrupt-bus · open/resolve cycle (Stage C L1)', () => {
     const svc = new InterruptService({ log, holdsMdPath: md })
     await svc.open({ taskId: 'task_c', reason: 'validator_disagreement' })
     const text = await fs.readFile(md, 'utf8')
-    expect(text).toMatch(/HOLD OPEN  validator_disagreement/)
+    expect(text).toMatch(/HOLD OPEN {2}validator_disagreement/)
   })
 
   it('case 5: resolve flips status to resolved and appends holds.md', async () => {

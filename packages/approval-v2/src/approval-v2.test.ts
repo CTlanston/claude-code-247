@@ -18,11 +18,6 @@ async function mkLog() {
   return { dir, log: new FileEventLog({ dir }) }
 }
 
-function mkClock(start = Date.UTC(2026, 4, 27, 12, 0, 0)) {
-  let t = start
-  return { now: () => new Date(t), advance: (ms: number) => { t += ms } }
-}
-
 describe('approval-v2 · token (Stage D L1)', () => {
   const signer = new TokenSigner(SECRET)
   const verifier = new TokenVerifier(SECRET)

@@ -145,8 +145,8 @@ async function main(): Promise<void> {
   const eventsTotal = events.length
 
   // reducer consistency: session_health byte-equal across two reads
-  const view1 = await log.reduce('task_soak', { lastOkTs: null, lastExpiredTs: null, status: 'unknown', probes: 0 } as ReturnType<typeof reduceHealth>, (s, e) => ({ ...s }))
-  const view2 = await log.reduce('task_soak', { lastOkTs: null, lastExpiredTs: null, status: 'unknown', probes: 0 } as ReturnType<typeof reduceHealth>, (s, e) => ({ ...s }))
+  const view1 = await log.reduce('task_soak', { lastOkTs: null, lastExpiredTs: null, status: 'unknown', probes: 0 } as ReturnType<typeof reduceHealth>, (s) => ({ ...s }))
+  const view2 = await log.reduce('task_soak', { lastOkTs: null, lastExpiredTs: null, status: 'unknown', probes: 0 } as ReturnType<typeof reduceHealth>, (s) => ({ ...s }))
   void view1; void view2
   const healthV1 = reduceHealth(events.filter((e) => e.task_id === 'task_soak'))
   const healthV2 = reduceHealth(events.filter((e) => e.task_id === 'task_soak'))
