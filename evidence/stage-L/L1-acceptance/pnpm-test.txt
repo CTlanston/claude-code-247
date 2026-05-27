@@ -1,0 +1,10 @@
+
+ RUN  v3.2.4 /Users/lanston/projects/claude-code-247
+
+ ✓ packages/security/src/redteam.test.ts (6 tests) 4ms
+
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+   Start at  02:00:44
+   Duration  171ms (transform 19ms, setup 0ms, collect 16ms, tests 4ms, environment 0ms, prepare 24ms)
+

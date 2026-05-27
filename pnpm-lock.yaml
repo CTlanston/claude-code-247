@@ -197,6 +197,8 @@ importers:
 
   packages/secrets: {}
 
+  packages/security: {}
+
   packages/shadow: {}
 
   packages/supervisor: {}
