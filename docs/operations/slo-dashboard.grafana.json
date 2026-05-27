@@ -1,0 +1,148 @@
+{
+  "$schema": "https://grafana.com/docs/grafana/latest/dashboards/json-model/",
+  "title": "claude-code-247 · SLO dashboard (NEXT-2 launch-fast)",
+  "tags": ["claude-code-247", "slo", "launch-fast"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-7d", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "cost_per_pr_usd_7d (GR12 critical line)",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 5, "w": 8, "x": 0, "y": 0 },
+      "targets": [{ "expr": "cost_per_pr_usd_7d", "refId": "A" }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 12 },
+              { "color": "red", "value": 15 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "daemon_uptime_pct_7d (target ≥ 99.0)",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 5, "w": 8, "x": 8, "y": 0 },
+      "targets": [{ "expr": "daemon_uptime_pct_7d", "refId": "A" }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 98 },
+              { "color": "green", "value": 99 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "autonomous_pr_success_rate_7d (target ≥ 0.5)",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 0 },
+      "targets": [{ "expr": "autonomous_pr_success_rate_7d", "refId": "A" }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 0.4 },
+              { "color": "green", "value": 0.5 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "sentinel_false_block_rate_7d (target ≤ 0.05)",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 5, "w": 8, "x": 0, "y": 5 },
+      "targets": [{ "expr": "sentinel_false_block_rate_7d", "refId": "A" }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.05 },
+              { "color": "red", "value": 0.1 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "hold_mttr_p95_min_7d (target ≤ 30 min)",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 5, "w": 8, "x": 8, "y": 5 },
+      "targets": [{ "expr": "hold_mttr_p95_min_7d", "refId": "A" }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "m",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 20 },
+              { "color": "red", "value": 30 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "cost_total_usd (window total)",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 5 },
+      "targets": [{ "expr": "cost_total_usd", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "currencyUSD" } }
+    },
+    {
+      "id": 7,
+      "title": "Recent HOLDs (open + resolved last 7d)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 10 },
+      "targets": [
+        { "expr": "holds_open", "refId": "A", "legendFormat": "open" },
+        { "expr": "rate(events_total{kind=\"hold.policy.created\"}[1h])", "refId": "B", "legendFormat": "create rate/h" },
+        { "expr": "rate(events_total{kind=\"hold.policy.resolved\"}[1h])", "refId": "C", "legendFormat": "resolve rate/h" }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Events by kind (last hour)",
+      "type": "barchart",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 10 },
+      "targets": [
+        { "expr": "rate(events_total[1h])", "refId": "A", "legendFormat": "{{kind}}" }
+      ]
+    }
+  ]
+}

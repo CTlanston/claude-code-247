@@ -31,17 +31,18 @@ const ALL_REASONS: HoldReason[] = [
   'production_incident',
   'forbidden_path_push',
   'sentinel_rejected',
+  'cost_cap_breached',
 ]
 
 describe('interrupt-bus · policy table (Stage C L1)', () => {
-  it('case 1: all 7 reasons have an explicit policy', () => {
+  it('case 1: all 8 reasons have an explicit policy', () => {
     for (const r of ALL_REASONS) {
       const p = policyFor(r)
       expect(p).toBeDefined()
       expect(typeof p.ttlMs).toBe('number')
       expect(['retry-3', 'drop', 'escalate', 'halt']).toContain(p.onTimeout)
     }
-    expect(Object.keys(HOLD_POLICIES).length).toBe(7)
+    expect(Object.keys(HOLD_POLICIES).length).toBe(8)
   })
 
   it('case 2: halt-class reasons (secret_grant, production, forbidden_path) have infinite ttl', () => {
@@ -52,7 +53,7 @@ describe('interrupt-bus · policy table (Stage C L1)', () => {
 })
 
 describe('interrupt-bus · open/resolve cycle (Stage C L1)', () => {
-  it('case 3: opening each of 7 reasons emits an event with payload.reason + appears in repo snapshot', async () => {
+  it('case 3: opening each of 8 reasons emits an event with payload.reason + appears in repo snapshot', async () => {
     const { log, md } = await mkLog()
     const svc = new InterruptService({ log, holdsMdPath: md })
     const repo = new HoldRepository(log)
@@ -68,7 +69,7 @@ describe('interrupt-bus · open/resolve cycle (Stage C L1)', () => {
       expect(holds[0].reason).toBe(ALL_REASONS[i])
       expect(holds[0].status).toBe('open')
     }
-    expect(ids.length).toBe(7)
+    expect(ids.length).toBe(8)
   })
 
   it('case 4: holds.md is written for every hold open', async () => {
