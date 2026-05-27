@@ -29,7 +29,7 @@ export class LokiEmitter {
   emit(event: Event): void {
     const line: LokiLine = {
       stream: { actor: event.actor, kind: event.kind },
-      values: [[event.ts, JSON.stringify({ id: event.id, ...event })]],
+      values: [[event.ts, JSON.stringify({ ...event, id: event.id })]],
     }
     for (const s of this.sinks) s(line)
   }

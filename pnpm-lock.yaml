@@ -131,6 +131,9 @@ importers:
       '@aedev/core':
         specifier: workspace:*
         version: link:../core
+      '@aedev/event-log':
+        specifier: workspace:*
+        version: link:../event-log
       '@aedev/github':
         specifier: workspace:*
         version: link:../github
