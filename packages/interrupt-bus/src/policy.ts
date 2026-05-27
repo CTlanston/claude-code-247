@@ -9,6 +9,7 @@ export type HoldReason =
   | 'forbidden_path_push'
   | 'sentinel_rejected'
   | 'cost_cap_breached'    // NEXT_PLAN_WORKBOOK §1 GR12 — daemon-side hard cost cap
+  | 'roadmap_scan_overflow' // CC_RESTORE_SPEC T3 — RoadmapAgent emitted > max_proposals_per_tick
 
 export type OnTimeout = 'retry-3' | 'drop' | 'escalate' | 'halt'
 
@@ -30,6 +31,7 @@ export const HOLD_POLICIES: Record<HoldReason, HoldPolicy> = {
   forbidden_path_push:    { ttlMs: Infinity, onTimeout: 'halt'    },
   sentinel_rejected:      { ttlMs: 15 * MIN, onTimeout: 'escalate' },
   cost_cap_breached:      { ttlMs: Infinity, onTimeout: 'halt'    },
+  roadmap_scan_overflow:  { ttlMs: Infinity, onTimeout: 'halt'    },
 }
 
 export function policyFor(reason: HoldReason): HoldPolicy {
