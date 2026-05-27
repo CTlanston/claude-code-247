@@ -193,6 +193,8 @@ importers:
 
   packages/shadow: {}
 
+  packages/supervisor: {}
+
   packages/validators:
     dependencies:
       '@aedev/core':
