@@ -219,7 +219,14 @@ importers:
 
   packages/secrets: {}
 
-  packages/security: {}
+  packages/security:
+    dependencies:
+      '@aedev/event-log':
+        specifier: workspace:*
+        version: link:../event-log
+      '@aedev/sentinel':
+        specifier: workspace:*
+        version: link:../sentinel
 
   packages/sentinel:
     dependencies:
