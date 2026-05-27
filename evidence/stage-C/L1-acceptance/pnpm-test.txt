@@ -1,0 +1,10 @@
+
+ RUN  v3.2.4 /Users/lanston/projects/claude-code-247
+
+ ✓ packages/interrupt-bus/src/interrupt-bus.test.ts (9 tests) 14ms
+
+ Test Files  1 passed (1)
+      Tests  9 passed (9)
+   Start at  01:40:04
+   Duration  233ms (transform 51ms, setup 0ms, collect 71ms, tests 14ms, environment 0ms, prepare 44ms)
+
