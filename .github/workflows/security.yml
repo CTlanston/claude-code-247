@@ -43,7 +43,17 @@ jobs:
             --exclude 'apps/dashboard/dist/**' \
             --exclude '.venv/**' \
             --exclude '.review-venv/**' \
+            --exclude 'archive/**' \
             .
+
+          # archive/ is reference-only v1 code per CLAUDE.md ("Do not
+          # import from `archive/`"). Findings in archive/auto-evo/ —
+          # like the missing-USER directive in the legacy Dockerfile —
+          # are not part of the active surface; v2 ships no Dockerfile
+          # under archive/. Exclusion is scoped narrowly so anything
+          # NEW that lands under archive/ would still need explicit
+          # approval; we don't disable semgrep, we disable the dead
+          # subtree.
 
   redteam-round3:
     # The mesh-on red-team round-3 must remain 0/30 leak on every PR.
