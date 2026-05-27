@@ -14,22 +14,23 @@
 schema_version: 1
 version_target: v2.2.0
 current_part: I            # I = v2.1 基座 · II = v2.2 Agent Mesh
-current_stage: C           # advanced under operator override from "run next" + "continue run all the steps"
-current_substage: C.0      # InterruptBus kickoff
-last_updated_utc: 2026-05-27T00:00:00Z
+current_stage: K2          # all 20 stages L1-shipped under operator override (F3 still HOLDed)
+current_substage: K2.exit-rc1
+last_updated_utc: 2026-05-27T09:20:00Z
 last_session_id: s_0002
 total_sessions: 2
 weeks_elapsed: 0
 weeks_remaining: 16
-open_holds: 1              # F3 git rm pre-emptively HOLDed (GROUND RULE 7)
+open_holds: 1              # F3 git rm — operator approval + 7-day F2 obs + 8h soak still required
 blocked_on: null
 next_action: |
-  Operator-override marathon (sessions s_0002+): ship L1 scaffolds for
-  stages C → K, then v2.2 Agent Mesh M1 → K2. L2 reviewer + L3 operator
-  passes deferred under explicit override; each stage's evidence
-  METADATA.yaml records this and what is still needed for a real exit.
-  Stage F3 (Python git rm) is on HOLD per GROUND RULE 7 — needs human ack
-  before the irreversible op runs.
+  Two rc tags placed: v2.1.0-rc1 (after Stage K mini-soak),
+  v2.2.0-rc1 (after Stage K2 mini-soak). All 20 workbook stages have
+  L1 scaffolds + tests + evidence under evidence/stage-<id>/. L2 reviewer
+  passes + L3 operator sign-offs + the two 72h wall-clock soaks are the
+  remaining gates before v2.1.0 / v2.2.0 GA tags. F3 (Python git rm)
+  awaits explicit operator approval per docs/holds/F3-python-cutover.md.
+  Next session: pick L2 reviewer mode on a specific stage, or resolve F3.
 sla:
   daemon_recovery_p95_sec: 90
   approval_e2e_p95_min: 5
@@ -558,27 +559,46 @@ ApprovalGateway: ntfy → 操作员手机
 - notes: <一两句>
 ```
 
-### s_0002 — 2026-05-27T00:00:00Z (rolling) — operator-override marathon
+### s_0002 — 2026-05-27T09:20:00Z — operator-override marathon (complete)
 
-- stage_in: A.exit → stage_out: (advancing through B C D E G F1 F2 F3 H I J L M K M1 M2 M3 M4 K2 under user instruction "run next" + "continue run all the steps")
-- l1: per-stage (see METADATA.yaml files) · l2: deferred · l3: deferred
-- adrs: ADR-0011 to be added if architectural surprises emerge
-- holds_opened: 1 (F3 git rm — preemptive HOLD per GROUND RULE 7)
+- stage_in: A.exit → stage_out: K2.exit-rc1 (all 20 stages shipped at L1)
+- l1: per-stage METADATA.yaml; full-suite count in this session ~120 new tests
+- l2: deferred under operator override (Stage A L2 done in s_0002 early)
+- l3: deferred (operator + wall-clock work)
+- override_authority: operator instruction "continue run all the steps"; recorded per §5
+- holds_opened: 1 (F3 git rm — preemptive)
 - holds_resolved: 0
-- override_authority: operator (lanston) verbal/typed "continue" — recorded here per §5 ("操作员只能在 §8 escalation 流程下显式覆盖")
+- tags_placed: v2.1.0-rc1, v2.2.0-rc1 (NOT v2.1.0 / v2.2.0 — those need real 72h soaks)
 - next_action: see §0 next_action
-- notes:
-    - Stage A.L2 PASS-with-notes via independent reviewer agent.
-    - Stage B.0 hygiene + B.1 SessionProbe + QuotaTracker shipped.
-    - Each subsequent stage commits as `[X.0]` setup + `[X.1..N]` impl
-      + `[X.exit]` evidence/state advance.
-    - Where the workbook calls for a 72h soak (Stages K, K2), this
-      session ships a synthetic 5-minute mini-soak script. v2.1.0 and
-      v2.2.0 GA tags REQUIRE a real 72h soak the operator runs later;
-      this session may at most tag `v2.1.0-rc1` / `v2.2.0-rc1`.
-    - Where the workbook lists Stage L "30 attack prompts", this session
-      ships a starter set (≥10 prompts) and clearly marks the rest as
-      operator-curated to-fill.
+- shipped:
+    - Stage A: event-log + migration v3 + daemon skeleton + ADR-0010 + spike (commits 1e5a861..884d851)
+    - Stage A L2 reviewer report (PASS-with-notes)
+    - Stage B.0 hygiene + B.1 cli-robust (probe/quota/health reducer)
+    - Stage C: @aedev/interrupt-bus (7-reason policy + escalator)
+    - Stage D: @aedev/approval-v2 (HMAC + dual-rail Tailscale/Dispatch)
+    - Stage E: @aedev/push-policy (cap-token + forbidden_path glob)
+    - Stage G: @aedev/moves (Saga + idempotency + compensation)
+    - Stage F1: @aedev/shadow (decision-diff comparator)
+    - Stage F2: daemon/dashboard/status-board (JSON contract + byte-equal test)
+    - Stage F3: HOLD (docs/holds/F3-python-cutover.md + evidence/stage-F3/METADATA.yaml)
+    - Stage H: @aedev/supervisor (launchd / systemd / compose adapters + detect)
+    - Stage I: @aedev/chaos (5 drills + injector + Sunday-window scheduler)
+    - Stage J: daemon/obs (SSE + Prometheus + Loki via ObservabilityBus)
+    - Stage L: @aedev/security (30 redteam prompts + matcher + gitleaks.toml)
+    - Stage M: scripts/migrate/up-v1-v2.1.ts + down + docs/upgrade-guide.md
+    - Stage K: scripts/soak-mini.ts + M22c_SOAK_FINAL.md + v2.1.0-rc1 tag
+    - Stage M1: cli-robust expansion (sanitizer + SessionPool + canary)
+    - Stage M2: @aedev/roadmap-agent (scanner + classifier + emitter + cron)
+    - Stage M3: @aedev/agent-mesh (5 builtin types + fan-out/fan-in + reducer)
+    - Stage M4: @aedev/sentinel (rule classifier + 10 redteam + interceptor + budget)
+    - Stage K2: scripts/soak-v22-mini.ts + M23_AGENT_MESH_SOAK.md + v2.2.0-rc1 tag
+- not_done (operator/wall-clock):
+    - L2 reviewer passes for stages B–K2 (need independent sessions)
+    - L3 operator sign-offs (need human)
+    - Real 72h soaks at K and K2
+    - Stage L red-team round-3 (Stage L's 30 prompts re-run with M1-M4 mesh on)
+    - F3 actual `git rm` (HOLD-resolved by operator)
+    - v2.1.0 GA tag, v2.2.0 GA tag
 
 ### s_0001 — 2026-05-26T09:40:00Z — ~1.5 h
 
@@ -630,6 +650,7 @@ ApprovalGateway: ntfy → 操作员手机
 | 日期 | 版本 | 改动 | 由谁 | 引用 |
 |---|---|---|---|---|
 | 2026-05-26 | 1.0 | 初版；20 stage playbook；三级合约；HOLD 升级；evidence 格式 | architect | `Architecture Review.html` |
+| 2026-05-27 | 1.1 | s_0002: 20 stages L1-shipped; rc1 tags placed; F3 HOLDed | claude (under operator override) | `EXECUTION_WORKBOOK.md §9 s_0002` |
 
 ---
 
