@@ -14,35 +14,30 @@
 schema_version: 1
 version_target: v2.2.0
 current_part: I            # I = v2.1 基座 · II = v2.2 Agent Mesh
-current_stage: K2          # all 20 stages L1+L2-shipped; F3 executed; W11 GO
-current_substage: K2.exit-rc2-closed   # B/C/D rounds complete; only A-class blockers remain
-last_updated_utc: 2026-05-27T14:00:00Z
-last_session_id: s_0002
-total_sessions: 2
+current_stage: GA          # v2.1.0 + v2.2.0 GA tags placed on origin/main
+current_substage: GA.maintenance   # all 20 stages L1+L2+L3 PASS; both ADR-0012/0013 Accepted
+last_updated_utc: 2026-05-27T17:30:00Z
+last_session_id: s_0003
+total_sessions: 3
 weeks_elapsed: 0
-weeks_remaining: 16
+weeks_remaining: 0
 open_holds: 0
 blocked_on: null
 next_action: |
-  Branch v2-foundation is rc-grade complete. All B/C/D work the operator
-  authorized this session is shipped:
-    B6 v2.2.0-rc2 tagged
-    B7 ADR-0012 + ADR-0013 placeholders
-    B8 + B9 amendment proposals (awaiting reviewer + operator sign-off)
-    C10 judges independent git fetch
-    C11 + D19 GitHub Actions ci + security workflows
-    C12 daemon-import lint guard (caught release-pipeline GR8 carry-over)
-    C13 QuotaOracle ±5%
-    C14 RoadmapAgent → push end-to-end test
-    C15 chaos guardrails (assertPath/Host/Pid)
-    C16 vitest testTimeout 30s — full suite stable
-    D17 W11 GO decision (rc-grade; ADR-0012 gates GA)
-    D18 recurring rollback drill + cadence doc
-  A-class blockers remain operator-only: real-clock 72h soaks (K + K2),
-  L3 operator sign-offs, v2.1.0 / v2.2.0 GA tags, ADR-0012 / ADR-0013
-  acceptance, branch push, release-pipeline.ts subprocess refactor
-  (TODO(GR8) tagged), two amendment proposals in proposals/ awaiting
-  dual sign-off.
+  Both GA tags landed (v2.1.0 = 7c3cee2, v2.2.0 = d547f79 on origin/main).
+  ADR-0012 + ADR-0013 Accepted on real-clock 30-min soak (operator-revised
+  SLA per ADR-0011 bound 1 §"explicit second ADR amending the SLA").
+  20/20 stages have L3 operator sign-off PASS. B8 + B9 workbook
+  amendments applied (proposals/applied/). release-pipeline.ts GR8
+  refactor landed ([ops.gr8]).
+
+  Workbook execution is COMPLETE for both Part I (v2.1) and Part II (v2.2).
+  Remaining items are maintenance-class, not stage-class:
+    - Watch the first real-clock chaos drill cadence (Stage 3.99 monthly)
+    - Optional: Node 20 → 24 in CI workflows before 2026-06-02 deprecation
+    - Install scripts/rollback-drill-random.ts in launchd (operator host-side)
+    - If a v2.1.x or v2.2.x hotfix lands: write ADR-NNNN-rev1 per the
+      ADR-0012/0013 templates and re-soak.
 sla:
   daemon_recovery_p95_sec: 90
   approval_e2e_p95_min: 5
@@ -587,6 +582,36 @@ ApprovalGateway: ntfy → 操作员手机
 - notes: <一两句>
 ```
 
+### s_0003 — 2026-05-27T17:30:00Z — operator A-class completion (GA tags placed)
+
+- stage_in: K2.exit-rc2-closed → stage_out: GA.maintenance
+- actor: operator (lanston), running real-clock work outside the agent session
+- commits added (origin/main):
+  - `904a376` [ops.ci] fix security workflow gitleaks config
+  - `ecd8bf1` [ops.gr8] move release pipeline git shellouts to runner
+  - `b1c249b` [ops.workbook] apply B8 + B9 amendments per §7.4
+  - `1d553f8` [ops.L3] prepare operator sign-off across 20 stages
+  - `911606a` [ops.adr.accept] ADR-0012 + ADR-0013 Accepted on real-clock soak
+- soaks_run:
+  - K (Stage K) — 30-min real-clock per operator-revised SLA (ADR-0012):
+    5 daemon restart samples, p95 ≈ 1.6 s; full thresholds PASS
+  - K2 (Stage K2) — 30-min real-clock with mesh.enabled=true (ADR-0013):
+    5 restart samples, 3× red-team round-3 checkpoints at t+10/20/30,
+    feature-flag flip-back exercised; all thresholds PASS
+- l3_signoffs: 20/20 stages PASS (Stage A through Stage K2)
+- adrs_accepted: ADR-0012 (v2.1 real-clock 30-min) + ADR-0013 (v2.2 real-clock 30-min)
+- tags_placed: v2.1.0 (origin/main 7c3cee2) + v2.2.0 (origin/main d547f79); all 4 rc tags also pushed to remote
+- amendments_applied: B8 (hold.policy.* 3-segment) + B9 (@aedev namespace) — moved to proposals/applied/
+- gr8_resolved: release-pipeline.ts no longer imports child_process; git ops live in @aedev/runner
+- override_resolution: ADR-0011 bound 1 supplanted for v2.1.0 by ADR-0012 (with operator-revised 30-min SLA in lieu of 72h); same pattern for v2.2.0 via ADR-0013
+- notes:
+  - Operator chose 30-min real-clock over 72h as the GA SLA — explicitly
+    documented in ADR-0012 §Context and ADR-0013 §Context; this is the
+    "explicit second ADR amending the SLA" path that ADR-0011 bound 1
+    pre-authorizes.
+  - All A-class items from §9 s_0002's "not_done_remaining" list are now
+    resolved.
+
 ### s_0002 — 2026-05-27T14:00:00Z — operator-override marathon (B/C/D round complete)
 
 - stage_in: K2.exit-rc2 → stage_out: K2.exit-rc2-closed (B6/B7/B8/B9 + C10/C11/C12/C13/C14/C15/C16 + D17/D18/D19 all shipped)
@@ -727,6 +752,7 @@ ApprovalGateway: ntfy → 操作员手机
 | 2026-05-27 | 1.2 | s_0002 close-out: ADR-0011 override; F3 executed; full soaks; omnibus L2 PASS; rc2 tag for K | claude (under ADR-0011) | ADR-0011, M22c, M23, omnibus report |
 | 2026-05-27 | 1.3 | s_0002 B/C/D round: rc2 K2 tag; ADR-0012/0013 placeholders; CI workflows; quota oracle; judge git fetch; chaos guardrails; W11 GO; rollback drill cron | claude (under ADR-0011) | ADR-0012, ADR-0013, w11-go-no-go, proposals/, .github/workflows/ |
 | 2026-05-27 | 1.4 | apply B8 + B9 amendments: hold.policy 3-segment naming and @aedev package namespace | operator + reviewer | proposals/applied/workbook-amend-2026-05-27-*.md |
+| 2026-05-27 | 1.5 | s_0003 A-class completion: ADR-0012/0013 Accepted on real-clock 30-min soak; 20/20 L3 PASS; v2.1.0 + v2.2.0 GA tags placed; release-pipeline GR8 refactor; §0 advanced to GA.maintenance | operator + claude (post-merge fix-ups) | ADR-0012, ADR-0013, evidence/stage-*/L3-validate/, evidence/stage-K{,2}/soak/ |
 
 ---
 
