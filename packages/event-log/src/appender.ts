@@ -37,7 +37,8 @@ export interface AppenderOpts {
  */
 export class NdjsonAppender {
   private readonly dir: string
-  private seen = new Set<string>()
+  /** idempotency -> original event id, so dedupe returns the first id. */
+  private seen = new Map<string, EventId>()
   private hydrated = false
 
   constructor(opts: AppenderOpts) {
@@ -75,13 +76,14 @@ export class NdjsonAppender {
       correlation_id: input.correlation_id ?? input.task_id,
     })
 
-    if (this.seen.has(event.idempotency)) {
-      return { id: event.id, deduped: true }
+    const prior = this.seen.get(event.idempotency)
+    if (prior) {
+      return { id: prior, deduped: true }
     }
 
     const file = shardFileForTs(this.dir, event.ts)
     await fs.appendFile(file, JSON.stringify(event) + '\n', 'utf8')
-    this.seen.add(event.idempotency)
+    this.seen.set(event.idempotency, event.id)
     return { id: event.id, deduped: false }
   }
 
@@ -102,7 +104,9 @@ export class NdjsonAppender {
         if (!line) continue
         try {
           const obj = JSON.parse(line) as Event
-          if (obj.idempotency) this.seen.add(obj.idempotency)
+          if (obj.idempotency && !this.seen.has(obj.idempotency)) {
+            this.seen.set(obj.idempotency, obj.id)
+          }
         } catch {
           // skip malformed line
         }
