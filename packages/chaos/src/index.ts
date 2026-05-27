@@ -11,3 +11,11 @@ export {
   type SqliteLockArgs,
   type DropNetworkArgs,
 } from './real-effects.js'
+export {
+  DEFAULT_GUARDRAILS,
+  GuardrailViolation,
+  assertPathAllowed,
+  assertHostAllowed,
+  assertPidAllowed,
+  type ChaosGuardrails,
+} from './guardrails.js'
