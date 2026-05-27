@@ -1,6 +1,5 @@
-/** Tests for scripts/launch-smoke.ts orchestrator. Lives in @aedev/core
- *  because the harness imports from node:perf_hooks + node:fs only —
- *  no workspace deps. */
+/** Tests for the SmokeHarness library. The CLI shim lives at
+ *  scripts/launch-smoke.ts; this exercises the harness itself. */
 import { describe, it, expect } from 'vitest'
 import { promises as fs } from 'node:fs'
 import * as path from 'node:path'
@@ -8,7 +7,7 @@ import * as os from 'node:os'
 import {
   SmokeHarness, renderMarkdown, syntheticChecks,
   type SmokeCheck, type SmokeReport,
-} from '../../../scripts/launch-smoke.js'
+} from './launch-smoke.js'
 
 async function tmpDir(): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), 'launch-smoke-'))
