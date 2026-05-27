@@ -48,15 +48,15 @@ export class ProposalEmitter {
       task_id: taskId,
       ts: this.now().toISOString(),
       actor: this.actor,
-      kind: 'roadmap.scan.summary',
+      kind: 'cli.scan.summary',
       payload: summary,
-      idempotency_source: `${taskId}|roadmap.scan.summary|${summary.source}|${this.now().toISOString()}`,
+      idempotency_source: `${taskId}|cli.scan.summary|${summary.source}|${this.now().toISOString()}`,
     })
   }
 
   /** CC_RESTORE_SPEC T3 — when more eligible candidates than the cap,
    *  emit a HOLD-class event so the operator triages the rest. */
-  async overflowHold(taskId: string, detail: { source: string; candidates: number; eligible: number; emitted: number; overflow: number; cap: number }): Promise<void> {
+  async overflowHold(taskId: string, detail: { source: string; candidates: number; eligible: number; emitted: number; overflow: number; cap: number; outOfScope?: boolean }): Promise<void> {
     await this.log.append({
       task_id: taskId,
       ts: this.now().toISOString(),

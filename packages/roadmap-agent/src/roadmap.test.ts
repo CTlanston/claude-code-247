@@ -84,7 +84,7 @@ describe('roadmap-agent · cron + emitter (Stage M2 L1)', () => {
     const tmp = path.join(os.tmpdir(), 'rmtmp-' + Date.now() + '.md')
     await fs.writeFile(tmp, ROADMAP, 'utf8')
     const emitter = new ProposalEmitter({ log })
-    const { emitted } = await runOnce({ roadmapPath: tmp, taskId: 'task_m2', emitter })
+    const { emitted } = await runOnce({ roadmapPath: tmp, taskId: 'task_m2', emitter, scopePaths: [tmp] })
     expect(emitted).toBeGreaterThanOrEqual(3)
     const kinds = (await toArray(log.read('task_m2'))).map((e) => e.kind)
     expect(kinds).toContain('roadmap.scan.started')
