@@ -1,0 +1,12 @@
+stage: F3
+substage: F3.holded
+l1_status: not_run
+l2_status: not_run
+l3_status: not_run
+acceptance_pass: 0
+acceptance_total: 0
+session_ids: [s_0002]
+notes:
+  hold_open: true
+  hold_doc: docs/holds/F3-python-cutover.md
+  rationale: GROUND RULE 7 — git rm of Python tree is irreversible; needs operator L3 + completed F2 7-day observation + 8h soak.
