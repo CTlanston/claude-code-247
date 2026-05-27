@@ -68,6 +68,31 @@ importers:
         specifier: ^5.4.0
         version: 5.4.21(@types/node@25.9.1)
 
+  packages/agent-mesh:
+    dependencies:
+      '@aedev/event-log':
+        specifier: workspace:*
+        version: link:../event-log
+
+  packages/approval-v2:
+    dependencies:
+      '@aedev/event-log':
+        specifier: workspace:*
+        version: link:../event-log
+
+  packages/chaos:
+    dependencies:
+      '@aedev/event-log':
+        specifier: workspace:*
+        version: link:../event-log
+      better-sqlite3:
+        specifier: ^11.0.0
+        version: 11.10.0
+    devDependencies:
+      '@types/better-sqlite3':
+        specifier: ^7.6.0
+        version: 7.6.13
+
   packages/claude247-bridge:
     dependencies:
       '@aedev/core':
@@ -82,6 +107,12 @@ importers:
       commander:
         specifier: ^13.0.0
         version: 13.1.0
+
+  packages/cli-robust:
+    dependencies:
+      '@aedev/event-log':
+        specifier: workspace:*
+        version: link:../event-log
 
   packages/core:
     dependencies:
@@ -107,6 +138,9 @@ importers:
       '@aedev/core':
         specifier: workspace:*
         version: link:../core
+      '@aedev/event-log':
+        specifier: workspace:*
+        version: link:../event-log
       '@aedev/github':
         specifier: workspace:*
         version: link:../github
@@ -120,6 +154,15 @@ importers:
         specifier: ^5.0.0
         version: 5.8.5
 
+  packages/event-log:
+    dependencies:
+      ulid:
+        specifier: ^2.3.0
+        version: 2.4.0
+      zod:
+        specifier: ^3.0.0
+        version: 3.25.76
+
   packages/github:
     dependencies:
       '@aedev/core':
@@ -129,17 +172,50 @@ importers:
         specifier: ^21.0.0
         version: 21.1.1
 
+  packages/interrupt-bus:
+    dependencies:
+      '@aedev/event-log':
+        specifier: workspace:*
+        version: link:../event-log
+
+  packages/moves:
+    dependencies:
+      '@aedev/event-log':
+        specifier: workspace:*
+        version: link:../event-log
+
   packages/preview:
     dependencies:
       '@aedev/core':
         specifier: workspace:*
         version: link:../core
 
+  packages/push-policy:
+    dependencies:
+      '@aedev/event-log':
+        specifier: workspace:*
+        version: link:../event-log
+
   packages/qa:
     dependencies:
       '@aedev/core':
         specifier: workspace:*
         version: link:../core
+
+  packages/roadmap-agent:
+    dependencies:
+      '@aedev/agent-mesh':
+        specifier: workspace:*
+        version: link:../agent-mesh
+      '@aedev/approval-v2':
+        specifier: workspace:*
+        version: link:../approval-v2
+      '@aedev/event-log':
+        specifier: workspace:*
+        version: link:../event-log
+      '@aedev/push-policy':
+        specifier: workspace:*
+        version: link:../push-policy
 
   packages/runner:
     dependencies:
@@ -151,6 +227,25 @@ importers:
         version: link:../core
 
   packages/secrets: {}
+
+  packages/security:
+    dependencies:
+      '@aedev/event-log':
+        specifier: workspace:*
+        version: link:../event-log
+      '@aedev/sentinel':
+        specifier: workspace:*
+        version: link:../sentinel
+
+  packages/sentinel:
+    dependencies:
+      '@aedev/event-log':
+        specifier: workspace:*
+        version: link:../event-log
+
+  packages/shadow: {}
+
+  packages/supervisor: {}
 
   packages/validators:
     dependencies:

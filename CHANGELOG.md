@@ -3,6 +3,37 @@
 All notable changes to `claude-code-247` are recorded here.
 Pre-1.0 releases are pre-release on GitHub.
 
+## [v2.1.0-rc1] — 2026-05-27 — TypeScript-only control plane (Stage F3 cutover)
+
+### BREAKING
+
+- **Removed the Python v1 implementation tree.** Per workbook §3 Stage F3
+  and ADR-0011, `git rm -r orchestrator/ gateway/ runner/ validator/
+  dashboard/ memory/ tests/ pyproject.toml Makefile` plus the four
+  per-subsystem launchd plist templates. The TS daemon at
+  `packages/daemon/` is now the sole entry point.
+- **Single launchd plist.** Old: `com.claude247.{dashboard, orchestrator,
+  dispatcher, backup}`. New: `com.claude247.daemon` (template at
+  `scripts/launchd/com.claude247.daemon.plist.tpl`).
+- **Dashboard port flipped to 7247** (Fastify, TS) from 8423 (Flask,
+  Python). The Stage F2 JSON contract is byte-equal modulo `generated_at`.
+
+### Added
+
+- All v2.1 packages: `@aedev/event-log`, `cli-robust`, `interrupt-bus`,
+  `approval-v2`, `push-policy`, `moves`, `shadow`, `supervisor`,
+  `chaos`, `security`.
+- All v2.2 packages: `cli-robust` (sanitizer + pool + canary),
+  `roadmap-agent`, `agent-mesh`, `sentinel`.
+- Migration v3: `event_log` SQLite table (additively; v1 `events` table
+  preserved per GROUND RULE 4).
+
+### Operator notes
+
+- Recovery from F3 requires reverting commit
+  `[F3.1] python: cutover` and re-installing the v1 venv. Backup of
+  the Python tree exists in git history (this commit's parent).
+
 ## [v1.0.0] — 2026-05-25 — GA release with explicit owner soak waiver
 
 First GA release. See [RELEASE_NOTES_GA.md](RELEASE_NOTES_GA.md) for

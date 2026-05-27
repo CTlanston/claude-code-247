@@ -1,0 +1,8 @@
+stage: G
+substage: G.exit
+l1_status: passed
+l2_status: deferred_operator_override
+l3_status: deferred_operator_override
+acceptance_pass: 7
+acceptance_total: 7
+session_ids: [s_0002]

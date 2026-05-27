@@ -1,0 +1,9 @@
+{
+  "events_total": 16,
+  "roadmap_proposals_emitted": 5,
+  "fanout_concurrent_coders": 5,
+  "sentinel_hardblocks": 1,
+  "sanitizer_redactions": 4,
+  "pool_min_observed": 2,
+  "reducer_consistency": "1.00"
+}

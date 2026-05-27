@@ -1,0 +1,11 @@
+stage: L
+substage: L.exit
+l1_status: passed
+l2_status: deferred_operator_override
+l3_status: deferred_operator_override
+acceptance_pass: 6
+acceptance_total: 6
+session_ids: [s_0002]
+notes:
+  redteam_prompts: 30 shipped (workbook target met)
+  static_scan_wired: gitleaks.toml stub; CI integration is operator-curated

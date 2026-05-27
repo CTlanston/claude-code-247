@@ -1,0 +1,10 @@
+
+ RUN  v3.2.4 /Users/lanston/projects/claude-code-247
+
+ ✓ packages/roadmap-agent/src/roadmap.test.ts (8 tests) 6ms
+
+ Test Files  1 passed (1)
+      Tests  8 passed (8)
+   Start at  02:12:51
+   Duration  198ms (transform 35ms, setup 0ms, collect 49ms, tests 6ms, environment 0ms, prepare 39ms)
+

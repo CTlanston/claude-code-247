@@ -1,0 +1,15 @@
+{
+  "started_at": "2026-05-27T10:11:09.051Z",
+  "ended_at": "2026-05-27T10:11:10.500Z",
+  "ticks": 200,
+  "events_total": 377,
+  "moves_completed": 13,
+  "interrupts_injected": 20,
+  "interrupts_auto_resolved": 20,
+  "push_rejections": 16,
+  "push_allowances": 16,
+  "chaos_drills_fired": 10,
+  "daemon_restart_count": 8,
+  "daemon_restart_recovery_ms_p95": 6,
+  "reducer_consistency": "1.00"
+}

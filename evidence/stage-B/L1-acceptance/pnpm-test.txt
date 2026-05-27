@@ -1,0 +1,10 @@
+
+ RUN  v3.2.4 /Users/lanston/projects/claude-code-247
+
+ ✓ packages/cli-robust/src/probe.test.ts (11 tests) 18ms
+
+ Test Files  1 passed (1)
+      Tests  11 passed (11)
+   Start at  11:03:32
+   Duration  212ms (transform 45ms, setup 0ms, collect 59ms, tests 18ms, environment 0ms, prepare 28ms)
+

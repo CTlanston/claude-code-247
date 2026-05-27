@@ -1,0 +1,39 @@
+# Stage L — gitleaks config stub. The intent is that CI runs `gitleaks
+# detect --config packages/security/redteam/gitleaks.toml` against every
+# PR. This config exists so the binding is in version control; tuning
+# the patterns is operator-curated work.
+
+title = "aedev secret leak scan"
+
+[allowlist]
+  description = "Files we deliberately do not scan"
+  paths = [
+    '''\.test\.ts$''',
+    '''evidence/.*\.txt$''',
+    '''packages/security/redteam/prompts\.json$''',
+    '''packages/approval-v2/src/.*test.*''',
+  ]
+
+[[rules]]
+  id = "aws-access-key"
+  description = "AWS access key id"
+  regex = '''AKIA[0-9A-Z]{16}'''
+  tags = ["aws"]
+
+[[rules]]
+  id = "anthropic-api-key"
+  description = "Anthropic API key"
+  regex = '''sk-ant-[A-Za-z0-9_-]{40,}'''
+  tags = ["anthropic"]
+
+[[rules]]
+  id = "github-pat"
+  description = "GitHub personal access token"
+  regex = '''ghp_[A-Za-z0-9]{36,}'''
+  tags = ["github"]
+
+[[rules]]
+  id = "private-key-pem"
+  description = "Private key PEM block"
+  regex = '''-----BEGIN ((RSA|EC|OPENSSH|DSA) )?PRIVATE KEY-----'''
+  tags = ["pem"]

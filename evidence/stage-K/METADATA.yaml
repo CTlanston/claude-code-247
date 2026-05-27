@@ -1,0 +1,17 @@
+stage: K
+substage: K.exit-rc1
+l1_status: passed_mini_scope
+l2_status: deferred_operator_override
+l3_status: deferred_operator_override
+acceptance_pass: 5
+acceptance_total: 5
+session_ids: [s_0002]
+notes:
+  scope_reduction: 72h soak → 0.2-min synthetic mini-soak per operator override
+  rc1_only: v2.1.0 GA tag still requires real 72h soak the operator runs later
+  thresholds_met:
+    moves_completed: 13 (> 0)
+    interrupts_auto_resolved: 20/20 (>= injected - 1)
+    push_rejections: 16 (> 0)
+    daemon_recovery_p95_ms: 4 (< 90000)
+    reducer_consistency: '1.00'

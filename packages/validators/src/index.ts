@@ -15,3 +15,12 @@ export type { GeminiValidatorOptions } from './gemini-validator.js'
 export { OpenAIValidator } from './openai-validator.js'
 export type { OpenAIValidatorOptions } from './openai-validator.js'
 export { buildEvidencePrompt, parseVerdictPayload } from './evidence-prompt.js'
+export {
+  DefaultIndependentJudgeContextBuilder,
+  StaticGitDiffFetcher,
+  type GitDiffSpec,
+  type GitDiffResult,
+  type GitDiffFetcher,
+  type IndependentJudgeContext,
+  type IndependentJudgeContextBuilder,
+} from './git-fetch-context.js'

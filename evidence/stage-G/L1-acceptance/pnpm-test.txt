@@ -1,0 +1,10 @@
+
+ RUN  v3.2.4 /Users/lanston/projects/claude-code-247
+
+ ✓ packages/moves/src/saga.test.ts (7 tests) 22ms
+
+ Test Files  1 passed (1)
+      Tests  7 passed (7)
+   Start at  01:49:03
+   Duration  219ms (transform 41ms, setup 0ms, collect 54ms, tests 22ms, environment 0ms, prepare 29ms)
+

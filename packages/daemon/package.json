@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@aedev/core": "workspace:*",
+    "@aedev/event-log": "workspace:*",
     "@aedev/github": "workspace:*",
     "@aedev/runner": "workspace:*",
     "@fastify/cors": "^10.0.0",

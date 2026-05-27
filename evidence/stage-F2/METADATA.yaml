@@ -1,0 +1,10 @@
+stage: F2
+substage: F2.exit
+l1_status: passed
+l2_status: deferred_operator_override
+l3_status: deferred_operator_override
+acceptance_pass: 5
+acceptance_total: 5
+session_ids: [s_0002]
+notes:
+  scope_reduction: status-board JSON shape locked + byte-equal test shipped; Fastify static server wiring + dual-port (8423 old + 7247 new) deferred to runtime test

@@ -1,0 +1,18 @@
+stage: F3
+substage: F3.executed
+l1_status: passed_operator_approved
+l2_status: passed_omnibus
+l3_status: passed_operator
+acceptance_pass: 1
+acceptance_total: 1
+session_ids: [s_0002]
+notes:
+  hold_open: false
+  hold_resolved_doc: docs/holds/F3-python-cutover.md
+  resolution_authority: ADR-0011 bound 3 (operator typed "F3批准了" on 2026-05-27)
+  cutover_commit: '[F3.1] python: cutover — remove v1 Python tree'
+  l3_compression_note: |
+    Workbook §3 Stage F3 L3 mandates a 7-day post-F2 observation
+    window before the irreversible cutover. ADR-0011 bound 2
+    compresses this to 1 day per operator directive. Real 7-day
+    observation remains a precondition for v2.1.0 GA.

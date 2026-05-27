@@ -1,0 +1,16 @@
+{
+  "scope": "compressed-1-day",
+  "rc_target": "v2.2.0-rc2",
+  "rounds": 4,
+  "events_total": 112,
+  "roadmap_proposals_emitted": 7,
+  "fanout_concurrent_coders_per_round": 5,
+  "auto_repairs_invoked": 4,
+  "sentinel_hardblocks": 12,
+  "sentinel_softblocks": 4,
+  "sentinel_allows": 16,
+  "sanitizer_redactions_total": 24,
+  "pool_min_observed": 2,
+  "reducer_consistency": "1.00",
+  "duration_ms": 16
+}

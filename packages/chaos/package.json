@@ -1,0 +1,15 @@
+{
+  "name": "@aedev/chaos",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "build": "tsc", "typecheck": "tsc --noEmit" },
+  "dependencies": {
+    "@aedev/event-log": "workspace:*",
+    "better-sqlite3": "^11.0.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.0"
+  }
+}

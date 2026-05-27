@@ -193,6 +193,7 @@ describe('DockerRunner — real subprocess (fake docker)', () => {
   })
 })
 
+// allow-skip: env-gated smoke runner — only fires under AEDEV_SMOKE_DOCKER=1
 const smokeRunner = process.env['AEDEV_SMOKE_DOCKER'] === '1' ? describe : describe.skip
 
 smokeRunner('DockerRunner — smoke against real Docker (opt-in)', () => {

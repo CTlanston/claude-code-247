@@ -1,0 +1,29 @@
+
+> aedev@0.0.1 typecheck /Users/lanston/projects/claude-code-247
+> pnpm -r typecheck
+
+Scope: 12 of 13 workspace projects
+apps/dashboard typecheck$ tsc --noEmit
+packages/core typecheck$ tsc --noEmit
+packages/event-log typecheck$ tsc --noEmit
+packages/secrets typecheck$ tsc --noEmit
+packages/secrets typecheck: Done
+packages/event-log typecheck: Done
+packages/core typecheck: Done
+apps/dashboard typecheck: Done
+packages/claude247-bridge typecheck$ tsc --noEmit
+packages/github typecheck$ tsc --noEmit
+packages/cli typecheck$ tsc --noEmit
+packages/preview typecheck$ tsc --noEmit
+packages/preview typecheck: Done
+packages/qa typecheck$ tsc --noEmit
+packages/claude247-bridge typecheck: Done
+packages/validators typecheck$ tsc --noEmit
+packages/cli typecheck: Done
+packages/github typecheck: Done
+packages/qa typecheck: Done
+packages/validators typecheck: Done
+packages/runner typecheck$ tsc --noEmit
+packages/runner typecheck: Done
+packages/daemon typecheck$ tsc --noEmit
+packages/daemon typecheck: Done

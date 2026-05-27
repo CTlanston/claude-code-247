@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-restricted-imports -- TODO(GR8): release-pipeline runs `git` shellouts inside the daemon process; pre-v2.1 carry-over. Migration plan: move git ops into a worker subprocess (or inject a GitClient) before v2.1.0 GA. ADR-0011 open-items.
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { mkdirSync, writeFileSync } from 'fs'
