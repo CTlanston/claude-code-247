@@ -112,6 +112,7 @@ describe('OpenAIValidator', () => {
   })
 })
 
+// allow-skip: env-gated smoke runner — only fires under AEDEV_SMOKE_OPENAI=1
 const smoke = process.env['AEDEV_SMOKE_OPENAI'] === '1' ? describe : describe.skip
 
 smoke('OpenAIValidator — smoke against real OpenAI (opt-in)', () => {

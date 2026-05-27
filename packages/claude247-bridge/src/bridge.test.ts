@@ -139,6 +139,7 @@ describe('Claude247Bridge — subprocess interop', () => {
   })
 })
 
+// allow-skip: env-gated smoke runner — only fires under AEDEV_SMOKE_CLAUDE247=1
 const smokeRunner = process.env['AEDEV_SMOKE_CLAUDE247'] === '1' ? describe : describe.skip
 
 smokeRunner('Claude247Bridge — smoke against real claude247 CLI (opt-in)', () => {

@@ -1,0 +1,36 @@
+name: ci
+
+on:
+  push:
+    branches: [main, v2-foundation]
+  pull_request:
+    branches: [main, v2-foundation]
+
+jobs:
+  typecheck-lint-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: typecheck
+        run: pnpm typecheck
+
+      - name: lint
+        run: pnpm lint
+
+      - name: no .only / .skip in test files (workbook §4.1)
+        run: bash scripts/ci/no-only-skip.sh
+
+      - name: test
+        run: pnpm vitest run

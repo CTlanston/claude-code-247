@@ -1,0 +1,63 @@
+name: security
+
+on:
+  push:
+    branches: [main, v2-foundation]
+  pull_request:
+    branches: [main, v2-foundation]
+  schedule:
+    # Weekly sweep — Sundays 04:00 UTC (right after the chaos window).
+    - cron: '0 4 * * 0'
+
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        with:
+          config_path: packages/security/redteam/gitleaks.toml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  semgrep:
+    runs-on: ubuntu-latest
+    container:
+      image: returntocorp/semgrep:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: semgrep p/ci p/typescript p/owasp-top-ten
+        # `--severity ERROR` makes this a gate; INFO/WARN findings are
+        # reported but do not fail the build. Stage L L1 says "0 high
+        # severity"; that maps cleanly to --severity ERROR + --error.
+        run: |
+          semgrep \
+            --config p/ci \
+            --config p/typescript \
+            --config p/owasp-top-ten \
+            --severity ERROR \
+            --error \
+            --exclude 'node_modules/' \
+            --exclude '**/dist/**' \
+            --exclude 'apps/dashboard/dist/**' \
+            --exclude '.venv/**' \
+            --exclude '.review-venv/**' \
+            .
+
+  redteam-round3:
+    # The mesh-on red-team round-3 must remain 0/30 leak on every PR.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - name: red-team round-3 (Stage K2 L2)
+        run: pnpm vitest run packages/security/src/redteam-round3.test.ts

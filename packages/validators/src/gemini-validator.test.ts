@@ -113,6 +113,7 @@ describe('GeminiValidator', () => {
   })
 })
 
+// allow-skip: env-gated smoke runner — only fires under AEDEV_SMOKE_GEMINI=1
 const smoke = process.env['AEDEV_SMOKE_GEMINI'] === '1' ? describe : describe.skip
 
 smoke('GeminiValidator — smoke against real Gemini (opt-in)', () => {

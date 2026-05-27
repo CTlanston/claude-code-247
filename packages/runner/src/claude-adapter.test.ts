@@ -199,6 +199,7 @@ describe('ClaudeCodeAdapter — real subprocess', () => {
   })
 })
 
+// allow-skip: env-gated smoke runner — only fires under AEDEV_SMOKE_CLAUDE=1
 const smokeRunner = process.env['AEDEV_SMOKE_CLAUDE'] === '1' ? describe : describe.skip
 
 smokeRunner('ClaudeCodeAdapter — smoke against real `claude` CLI (opt-in)', () => {
