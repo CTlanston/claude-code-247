@@ -1,0 +1,24 @@
+{
+  "started_at": "2026-05-27T21:38:02.925Z",
+  "ended_at": "2026-05-27T21:38:25.412Z",
+  "mode": "ntfy-phone-reply",
+  "topic": "claude-code-247-auto-evo",
+  "task_id": "operator_ntfy_reply_20260527213802925",
+  "event_dir": "/Users/lanston/.claude-code-247/aedev-daemon/events",
+  "approval": {
+    "result": "PASS",
+    "approval_id": "appr_mpol5g6m_shduw6",
+    "decision": "approve",
+    "via": "tailscale",
+    "started_at": "2026-05-27T21:38:02.926Z",
+    "ended_at": "2026-05-27T21:38:14.392Z"
+  },
+  "hold": {
+    "result": "PASS",
+    "hold_id": "evt_01KSNNZCQSR6VYH9X66VNCPQZP",
+    "reply_time": "2026-05-27T21:38:17.000Z",
+    "started_at": "2026-05-27T21:38:14.392Z",
+    "ended_at": "2026-05-27T21:38:25.412Z"
+  },
+  "verdict": "PASS"
+}

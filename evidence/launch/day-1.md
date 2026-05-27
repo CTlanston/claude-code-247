@@ -20,6 +20,11 @@ Follow-up at 2026-05-27T20:50Z: Codex added a TS-side local operator
 action check and a RoadmapAgent launchd job. Both ran successfully.
 Physical phone tap is still not independently proven.
 
+Follow-up at 2026-05-27T21:38Z: Lanston completed the real iOS ntfy
+browser-action loop for both `Send APPROVE` and `Send RESOLVE`. The
+latest evidence is
+`evidence/launch/operator-phone-ntfy-reply-check-2026-05-27T21-38-02-925Z.json`.
+
 ## Missions completed end-to-end
 
 0 real live-fire missions recorded by Codex in this journal. The TS
@@ -28,7 +33,9 @@ daemon reported no missions.
 ## Holds that fired
 
 One synthetic L0 operator HOLD check was created and resolved through the
-new local operator callback harness. No genuine live-fire HOLD occurred.
+new local operator callback harness. A second L0 operator HOLD check was
+resolved from Lanston's phone through ntfy browser actions. No genuine
+live-fire HOLD occurred.
 
 ## Cost so far (running 7d)
 
@@ -36,15 +43,14 @@ Not measured from a live cost-meter gauge in this session.
 
 ## Phone notifications received
 
-Not confirmed as physical phone notifications. Local operator approval
-and HOLD callback were verified on this Mac.
+Confirmed. The iOS ntfy app received the approval and HOLD notifications,
+and Lanston completed both phone actions through ntfy browser callbacks.
 
 ## Tomorrow's intent
 
 Let RoadmapAgent run on its hourly launchd cadence and watch for the
-first real proposal/mission. If physical-phone proof is still required,
-repeat the approval/HOLD check manually from the phone-facing surface.
+first real proposal/mission.
 
 ## Trust delta
 
-= local operator paths are healthy; physical phone path still unproven.
+= local operator paths are healthy; physical phone ntfy action path is proven.

@@ -16,10 +16,10 @@ parent_completion: stage-class complete (20/20 L1+L2+L3 pass, v2.2.0 on main)
 plan_version: NEXT-2
 operating_mode: launch-fast               # vs. soak-first
 current_phase: L0                         # L0 L1 L2 L3
-current_substage: L0.L3-operator-confirmation-required
-last_updated_utc: 2026-05-27T20:34:09Z
-last_session_id: next_s0001
-total_sessions: 1
+current_substage: L1.live-fire-day-1-ready
+last_updated_utc: 2026-05-27T21:38:25Z
+last_session_id: next_s0002
+total_sessions: 2
 weeks_remaining_next: 5                   # was 12, now 5
 open_holds: 0
 blocked_on: null
@@ -33,8 +33,10 @@ next_action: |
   passed. Local operator approval + HOLD resolution entrypoints now pass via
   scripts/operator-l0-action-check.ts --auto, with evidence under
   evidence/launch/operator-l0-action-check-2026-05-27T20-49-34-659Z.*.
-  Caveat: this proves a local operator callback path on the Mac, not an
-  independently verified physical phone tap.
+  Physical phone ntfy approval + HOLD resolution also pass via
+  scripts/operator-phone-ntfy-reply-check.ts, with latest evidence under
+  evidence/launch/operator-phone-ntfy-reply-check-2026-05-27T21-38-02-925Z.*.
+  Next: begin L1 live-fire missions and keep filling day journals.
 risk_acknowledgements:
   # The operator has explicitly accepted these trade-offs vs. a long soak.
   - "Rare failure modes (month-boundary, real CLI version bump, sustained quota near-ceiling) may surface in flight; recovery is the operator's responsibility."
@@ -331,6 +333,26 @@ v2.3 scope decided OR operator declares maintenance mode.
     installed/runs hourly. Physical phone tap remains a caveat, not proven
     by the local callback harness.
 
+#### next_s0002 — 2026-05-27T21:38:25Z — physical phone ntfy loop verified
+
+- phase_in: L0.L3-operator-confirmation-required → phase_out: L1.live-fire-day-1-ready
+- l1: iOS ntfy approval and HOLD browser-action callbacks completed
+- l2: `pnpm typecheck` clean after adding the phone reply harness
+- l3: Lanston physically tapped `Send APPROVE` and `Send RESOLVE`
+- evidence:
+  - `evidence/launch/operator-phone-ntfy-reply-check-2026-05-27T21-33-04-076Z.json`
+  - `evidence/launch/operator-phone-ntfy-reply-check-2026-05-27T21-38-02-925Z.json`
+  - `evidence/launch/operator-launch-signoff.md`
+  - `evidence/launch/day-1.md`
+- notes:
+  - The original direct phone-to-Mac URL path failed because the phone could
+    not reach the Mac listener on port 7262. The accepted path uses ntfy
+    browser actions to publish approval and resolve codes back to the same
+    topic, which proves real iOS notification delivery and operator action
+    without depending on LAN/Tailscale reachability.
+  - Safari displaying the ntfy JSON response is expected; it is the successful
+    publish response from ntfy.
+
 #### s_0001 — placeholder (not yet started)
 
 - phase_in: — → phase_out: —
@@ -347,6 +369,7 @@ v2.3 scope decided OR operator declares maintenance mode.
 | 2026-05-27 | NEXT-1.0 | Initial 12-week soak-first plan (P0–P3) | architect |
 | 2026-05-27 | NEXT-2.0 | **Rewrite to launch-fast: 30-min smoke + same-day launch + 7d live fire. Trade-offs documented in §2.** Operator-directed. | architect |
 | 2026-05-27 | NEXT-2.1 | L0 smoke evidence prepared; launch-smoke timer cleanup; operator signoff/day-1 files prepared without forging Lanston signature. | codex |
+| 2026-05-27 | NEXT-2.2 | Physical phone ntfy approval + HOLD resolution loop verified; L1 live-fire ready. | codex |
 
 ---
 

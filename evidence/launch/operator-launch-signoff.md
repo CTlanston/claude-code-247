@@ -34,6 +34,8 @@ Lanston, 2026-05-27T  01:39
 - [x] launch-smoke executed on `main` commit f86531d and wrote the smoke artifact above
 - [x] Local operator approval action verified via `scripts/operator-l0-action-check.ts --auto`
 - [x] Local operator HOLD resolution verified via `scripts/operator-l0-action-check.ts --auto`
+- [x] Physical phone ntfy approval verified via browser action callback
+- [x] Physical phone ntfy HOLD resolution verified via browser action callback
 - [x] RoadmapAgent launchd job installed and run once successfully
 - [ ] cost_per_pr_usd_7d gauge < $1 (baseline, no missions yet) — NOT MEASURED
 - [ ] Alert routes synthetic-tripped today within 60s (per L2.2) — NOT RUN
@@ -68,7 +70,20 @@ normally after producing evidence.
 
 ## Operator approval verification
 
-- Result: PASS for local operator callback; physical phone tap not proven.
+- Result: PASS for physical phone ntfy browser callback.
+- Evidence:
+  `evidence/launch/operator-phone-ntfy-reply-check-2026-05-27T21-38-02-925Z.json`
+- Request emitted (UTC): 2026-05-27T21:38:02.926Z
+- Decision received (UTC): 2026-05-27T21:38:14.392Z
+- Approval id: `appr_mpol5g6m_shduw6`
+- Result detail: the operator tapped the iOS ntfy `Send APPROVE`
+  browser action; ntfy published the approval code back to the topic, and
+  the TS approval path recorded an `approve` decision into
+  `/Users/lanston/.claude-code-247/aedev-daemon/events`.
+
+## Local operator approval fallback
+
+- Result: PASS for local operator callback.
 - Evidence:
   `evidence/launch/operator-l0-action-check-2026-05-27T20-49-34-659Z.json`
 - Request emitted (UTC): 2026-05-27T20:49:34.659Z
@@ -76,12 +91,23 @@ normally after producing evidence.
 - Approval id: `appr_mpojf45g_euh3ng`
 - Result detail: approval decision `approve`, via `tailscale` transport
   interface, recorded into `/Users/lanston/.claude-code-247/aedev-daemon/events`.
-- Caveat: this was an automated local callback on the Mac, not an
-  independently verified physical phone tap.
 
 ## Operator HOLD resolution verification
 
-- Result: PASS for local operator callback; physical phone tap not proven.
+- Result: PASS for physical phone ntfy browser callback.
+- Evidence:
+  `evidence/launch/operator-phone-ntfy-reply-check-2026-05-27T21-38-02-925Z.json`
+- HOLD created (UTC): 2026-05-27T21:38:14.392Z
+- HOLD resolved (UTC): 2026-05-27T21:38:25.412Z
+- HOLD id: `evt_01KSNNZCQSR6VYH9X66VNCPQZP`
+- Result detail: the operator tapped the iOS ntfy `Send RESOLVE`
+  browser action; ntfy published the resolve code back to the topic, and
+  `hold.policy.created` plus `hold.policy.resolved` were recorded into
+  `/Users/lanston/.claude-code-247/aedev-daemon/events`.
+
+## Local operator HOLD fallback
+
+- Result: PASS for local operator callback.
 - Evidence:
   `evidence/launch/operator-l0-action-check-2026-05-27T20-49-34-659Z.json`
 - HOLD created (UTC): 2026-05-27T20:49:34.808Z
@@ -90,8 +116,6 @@ normally after producing evidence.
 - Result detail: `hold.policy.created` and `hold.policy.resolved` were
   recorded into `/Users/lanston/.claude-code-247/aedev-daemon/events`, and
   the mirror was appended to `/Users/lanston/.claude-code-247/logs/holds.md`.
-- Caveat: this was an automated local callback on the Mac, not an
-  independently verified physical phone tap.
 
 ## RoadmapAgent cadence
 
@@ -111,5 +135,4 @@ normally after producing evidence.
 
 - Confirm RoadmapAgent is either installed as a launchd job or explicitly
   documented as daemon-owned cadence.
-- Record the first true phone approval + HOLD resolution with timestamps.
 - Start `evidence/launch/day-1.md` once real missions are running.
