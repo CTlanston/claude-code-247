@@ -2,9 +2,10 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { AedevDb, type Mission, type RunResult, type Task } from '@aedev/core'
+import { AedevDb, type Mission, type RunResult, type Task, type ValidatorResult } from '@aedev/core'
 import { IntakeService } from './intake.js'
-import { MissionRunner } from './mission-runner.js'
+import { MemoryGitClient, MissionRunner, type MissionValidator } from './mission-runner.js'
+import { ReleasePipeline, type DeployFn } from './release-pipeline.js'
 import type { RolePipeline } from './roles/role-pipeline.js'
 
 let db: AedevDb
@@ -34,8 +35,8 @@ afterEach(() => {
   rmSync(stateDir, { recursive: true, force: true })
 })
 
-function approveMission() {
-  const mission = intake.createMissionCandidate(repoId, 'Add a verified product increment')
+function approveMission(description = 'Add a verified product increment') {
+  const mission = intake.createMissionCandidate(repoId, description)
   intake.requestApproval(mission.id)
   return intake.approveMission(mission.id, 'operator')
 }
@@ -44,67 +45,207 @@ function fakeRolePipeline(): RolePipeline {
   return {
     async run(_mission: Mission, evidenceDir: string) {
       writeFileSync(join(evidenceDir, 'plan.md'), '# Plan\n\nImplement the requested increment.\n')
+      writeFileSync(join(evidenceDir, 'tasks.json'), JSON.stringify({ specs: [{ ref: 'core', title: 't', prompt: 'p' }] }))
       return { outputs: [], evidenceDir }
     },
   } as unknown as RolePipeline
 }
 
-describe('MissionRunner', () => {
-  it('runs an approved mission, writes evidence, and stores done status', async () => {
-    const mission = approveMission()
-    const taskEvidenceDir = join(stateDir, 'task-evidence')
-    mkdirSync(taskEvidenceDir, { recursive: true })
-    writeFileSync(join(taskEvidenceDir, 'diff-summary.md'), '# Diff Summary\n\nChanged app code.\n')
-    writeFileSync(join(taskEvidenceDir, 'test-summary.md'), '# Test Summary\n\nTests passed.\n')
+function fakeRunner(opts: { taskEvidenceDir: string; exitCode?: number; throwError?: string }) {
+  return {
+    async runTask(task: Task): Promise<RunResult> {
+      if (opts.throwError) throw new Error(opts.throwError)
+      return {
+        runId: `run-${task.id}`,
+        taskId: task.id,
+        exitCode: opts.exitCode ?? 0,
+        evidenceDir: opts.taskEvidenceDir,
+        durationMs: 25,
+      }
+    },
+  }
+}
+
+function fakeValidator(name: 'gemini' | 'openai' | 'mock', verdict: 'pass' | 'fail' | 'inconclusive'): MissionValidator {
+  return {
+    async validate(taskId: string): Promise<ValidatorResult> {
+      return {
+        id: `${name}-${taskId}`, taskId, runId: `${name}-run`, validator: name,
+        verdict, summary: `${name} stub: ${verdict}`, createdAt: new Date().toISOString(),
+      }
+    },
+  }
+}
+
+function makeTaskEvidence(diffSummary = '# Diff Summary\n\nChanged app code.\n'): string {
+  const dir = join(stateDir, 'task-evidence')
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'diff-summary.md'), diffSummary)
+  writeFileSync(join(dir, 'test-summary.md'), '# Test Summary\n\nTests passed.\n')
+  writeFileSync(join(dir, 'done-report.md'), '# Done\n\nDone.\n')
+  return dir
+}
+
+describe('MissionRunner — workbook end-to-end glue', () => {
+  it('AUTO_MERGE when dual validators pass + low risk (non-UI mission)', async () => {
+    const mission = approveMission('Refactor the auth utility (no UI)')
+    const taskEvidenceDir = makeTaskEvidence()
     const runner = new MissionRunner(db, {
       stateDir,
       rolePipeline: fakeRolePipeline(),
-      runner: {
-        async runTask(task: Task): Promise<RunResult> {
-          return {
-            runId: 'run-1',
-            taskId: task.id,
-            exitCode: 0,
-            evidenceDir: taskEvidenceDir,
-            durationMs: 25,
-          }
-        },
-      },
+      runner: fakeRunner({ taskEvidenceDir }),
+      validators: [fakeValidator('gemini', 'pass'), fakeValidator('openai', 'pass')],
+      requiresUi: false,
     })
 
     const result = await runner.runMission(mission.id)
-
+    expect(result.mergeDecision).toBe('AUTO_MERGE')
     expect(result.status).toBe('done')
+    expect(result.validatorResults).toHaveLength(2)
+    expect(result.riskLevel).toBe('low')
     expect(db.getMission(mission.id)?.status).toBe('done')
-    expect(existsSync(join(result.evidenceDir, 'prd.md'))).toBe(true)
-    expect(readFileSync(join(result.evidenceDir, 'diff-summary.md'), 'utf-8')).toContain('Changed app code')
-    expect(readFileSync(join(result.evidenceDir, 'test-summary.md'), 'utf-8')).toContain('Tests passed')
-    expect(existsSync(join(result.evidenceDir, 'done-report.md'))).toBe(true)
+    const summary = readFileSync(join(result.evidenceDir, 'workbook-summary.md'), 'utf-8')
+    expect(summary).toContain('AUTO_MERGE')
+    expect(summary).toContain('gemini: pass')
+    expect(summary).toContain('openai: pass')
   })
 
-  it('marks the mission failed and records the error when the worker throws', async () => {
+  it('WAITING when no validators are configured (safety default)', async () => {
     const mission = approveMission()
     const runner = new MissionRunner(db, {
       stateDir,
       rolePipeline: fakeRolePipeline(),
-      runner: {
-        async runTask(): Promise<RunResult> {
-          throw new Error('worker failed')
-        },
-      },
+      runner: fakeRunner({ taskEvidenceDir: makeTaskEvidence() }),
+      // no validators
     })
+    const result = await runner.runMission(mission.id)
+    expect(result.mergeDecision).toBe('WAITING')
+    expect(result.status).toBe('waiting')
+    expect(db.getMission(mission.id)?.status).toBe('paused')
+  })
 
+  it('BLOCKED when any validator returns fail', async () => {
+    const mission = approveMission()
+    const runner = new MissionRunner(db, {
+      stateDir,
+      rolePipeline: fakeRolePipeline(),
+      runner: fakeRunner({ taskEvidenceDir: makeTaskEvidence() }),
+      validators: [fakeValidator('gemini', 'pass'), fakeValidator('openai', 'fail')],
+      requiresUi: false,
+    })
+    const result = await runner.runMission(mission.id)
+    expect(result.mergeDecision).toBe('BLOCKED')
+    expect(result.status).toBe('blocked')
+  })
+
+  it('UI mission runs BrowserQA and reaches AUTO_MERGE when screenshots pass', async () => {
+    const mission = approveMission('Build a polished landing page UI')
+    const runner = new MissionRunner(db, {
+      stateDir,
+      rolePipeline: fakeRolePipeline(),
+      runner: fakeRunner({ taskEvidenceDir: makeTaskEvidence() }),
+      validators: [fakeValidator('gemini', 'pass'), fakeValidator('openai', 'pass')],
+      // requiresUi defaults to heuristic (mission title contains "landing page UI")
+    })
+    const result = await runner.runMission(mission.id)
+    expect(result.browserQAResult).toBeDefined()
+    expect(result.browserQAResult?.screenshots.length).toBeGreaterThan(0)
+    expect(result.mergeDecision).toBe('AUTO_MERGE')
+    expect(existsSync(join(result.evidenceDir, 'screenshot-desktop.png'))).toBe(true)
+    expect(existsSync(join(result.evidenceDir, 'screenshot-report.md'))).toBe(true)
+  })
+
+  it('ReleasePipeline runs on AUTO_MERGE when productionDeployEnabled', async () => {
+    const mission = approveMission('Refactor backend (no UI)')
+    const git = new MemoryGitClient()
+    const deployFn: DeployFn = async () => ({ url: 'https://prod.example/deploy', meta: {} })
+    const releasePipeline = new ReleasePipeline(git, deployFn, { incidentsDir: join(stateDir, 'incidents') })
+    const runner = new MissionRunner(db, {
+      stateDir,
+      rolePipeline: fakeRolePipeline(),
+      runner: fakeRunner({ taskEvidenceDir: makeTaskEvidence() }),
+      validators: [fakeValidator('gemini', 'pass'), fakeValidator('openai', 'pass')],
+      releasePipeline,
+      productionDeployEnabled: true,
+      requiresUi: false,
+    })
+    const result = await runner.runMission(mission.id)
+    expect(result.mergeDecision).toBe('AUTO_MERGE')
+    expect(result.releaseResult).toBeDefined()
+    expect(result.releaseResult?.deployUrl).toBe('https://prod.example/deploy')
+    expect(git.reverts).toHaveLength(0)
+  })
+
+  it('ReleasePipeline reverts when healthcheck fails', async () => {
+    const mission = approveMission('Backend release with healthcheck')
+    const git = new MemoryGitClient()
+    const deployFn: DeployFn = async () => ({ url: 'https://prod.example', meta: {} })
+    const releasePipeline = new ReleasePipeline(git, deployFn, { incidentsDir: join(stateDir, 'incidents') })
+    const runner = new MissionRunner(db, {
+      stateDir,
+      rolePipeline: fakeRolePipeline(),
+      runner: fakeRunner({ taskEvidenceDir: makeTaskEvidence() }),
+      validators: [fakeValidator('gemini', 'pass'), fakeValidator('openai', 'pass')],
+      releasePipeline,
+      productionDeployEnabled: true,
+      healthcheckUrl: 'https://prod.example/health',
+      requiresUi: false,
+    })
+    // Inject the failing healthcheck via a custom release pipeline result is hard;
+    // instead reuse the pattern by configuring a tiny window + always-failing fetch.
+    // Since MissionRunner takes the pipeline already constructed, we approximate
+    // by stubbing the pipeline's `release` method.
+    const originalRelease = releasePipeline.release.bind(releasePipeline)
+    releasePipeline.release = async (req) => {
+      const r = await originalRelease(req, {
+        fetchFn: (async () => new Response('', { status: 500 })) as typeof fetch,
+        sleepFn: async () => {},
+        intervalMs: 1,
+        totalTimeoutMs: 10,
+        consecutiveSuccessesRequired: 2,
+      })
+      return r
+    }
+    const result = await runner.runMission(mission.id)
+    expect(result.releaseResult?.reverted).toBe(true)
+    expect(git.reverts).toHaveLength(1)
+    expect(existsSync(result.releaseResult!.incidentPath!)).toBe(true)
+  })
+
+  it('Worker throw → status failed + run-error.txt recorded (unchanged path)', async () => {
+    const mission = approveMission()
+    const runner = new MissionRunner(db, {
+      stateDir,
+      rolePipeline: fakeRolePipeline(),
+      runner: fakeRunner({ taskEvidenceDir: makeTaskEvidence(), throwError: 'worker failed' }),
+    })
     await expect(runner.runMission(mission.id)).rejects.toThrow(/worker failed/)
     expect(db.getMission(mission.id)?.status).toBe('failed')
     const errorPath = join(stateDir, 'evidence', mission.id, 'run-error.txt')
     expect(readFileSync(errorPath, 'utf-8')).toContain('worker failed')
   })
 
-  it('refuses to run a non-approved mission', async () => {
+  it('refuses to run a non-approved mission (unchanged)', async () => {
     const mission = intake.createMissionCandidate(repoId, 'Do not run yet')
     const runner = new MissionRunner(db, { stateDir, rolePipeline: fakeRolePipeline() })
-
     await expect(runner.runMission(mission.id)).rejects.toThrow(/must be approved/)
     expect(db.getMission(mission.id)?.status).toBe('draft')
+  })
+
+  it('writes a workbook-summary.md with every gate that ran', async () => {
+    const mission = approveMission()
+    const runner = new MissionRunner(db, {
+      stateDir,
+      rolePipeline: fakeRolePipeline(),
+      runner: fakeRunner({ taskEvidenceDir: makeTaskEvidence() }),
+      validators: [fakeValidator('gemini', 'pass'), fakeValidator('openai', 'pass')],
+      requiresUi: false,
+    })
+    const result = await runner.runMission(mission.id)
+    const summary = readFileSync(join(result.evidenceDir, 'workbook-summary.md'), 'utf-8')
+    expect(summary).toContain('Mission:')
+    expect(summary).toContain('Risk:')
+    expect(summary).toContain('Validators')
+    expect(summary).toMatch(/Decision:[*\s]*AUTO_MERGE/)
   })
 })

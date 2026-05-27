@@ -32,8 +32,8 @@ export type {
   InterruptionPolicyOptions,
 } from './interruption-policy.js'
 export { ProductMemory } from './product-memory.js'
-export { MissionRunner } from './mission-runner.js'
-export type { MissionRunOptions, MissionRunResult } from './mission-runner.js'
+export { MissionRunner, MemoryGitClient, previewAdapterAsDeployFn } from './mission-runner.js'
+export type { MissionRunOptions, MissionRunResult, MissionValidator } from './mission-runner.js'
 export type { ProductMemoryCategory, RecordOptions } from './product-memory.js'
 export type {
   PremiumDebuggerOptions,
