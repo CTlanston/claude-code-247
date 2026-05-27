@@ -1,11 +1,7 @@
-// eslint-disable-next-line no-restricted-imports -- TODO(GR8): release-pipeline runs `git` shellouts inside the daemon process; pre-v2.1 carry-over. Migration plan: move git ops into a worker subprocess (or inject a GitClient) before v2.1.0 GA. ADR-0011 open-items.
-import { execFile } from 'child_process'
-import { promisify } from 'util'
 import { mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import type { Mission, MergePolicyDecision } from '@aedev/core'
-
-const execFileAsync = promisify(execFile)
+import type { GitClient } from '@aedev/runner'
 
 /**
  * Release pipeline orchestration for Phase 8 — wraps merge → deploy →
@@ -21,12 +17,7 @@ const execFileAsync = promisify(execFile)
  * fetchFn) so the same orchestration is testable without ever shelling
  * out to git or pushing a real container.
  */
-export interface GitClient {
-  /** Resolve the commit SHA of the named ref (e.g. 'main'). */
-  resolveSha(ref: string): Promise<string>
-  /** Run `git revert -m 1 <sha>` and return the new HEAD sha. */
-  revertMerge(mergeSha: string, opts?: { reason?: string }): Promise<string>
-}
+export type { GitClient } from '@aedev/runner'
 
 export interface DeployRequest {
   mission: Mission
@@ -257,25 +248,5 @@ async function runHealthcheck(url: string, opts: HealthcheckOptions): Promise<He
     passed: false,
     reason: `Healthcheck never reached ${consecutiveRequired} consecutive ${[...healthyStatuses].join('/')} responses within ${totalTimeoutMs}ms`,
     probes,
-  }
-}
-
-/** Default GitClient that shells out to `git`.  Tests inject a fake. */
-export class ShellGitClient implements GitClient {
-  constructor(private readonly cwd: string) {}
-
-  async resolveSha(ref: string): Promise<string> {
-    const { stdout } = await execFileAsync('git', ['rev-parse', ref], { cwd: this.cwd, timeout: 5000 })
-    return stdout.trim()
-  }
-
-  async revertMerge(mergeSha: string, opts?: { reason?: string }): Promise<string> {
-    const reason = opts?.reason ?? `revert merge ${mergeSha}`
-    await execFileAsync('git', ['revert', '--no-edit', '-m', '1', mergeSha], { cwd: this.cwd, timeout: 30_000 })
-    if (reason) {
-      // Amend the revert commit message with the supplied reason.
-      await execFileAsync('git', ['commit', '--amend', '-m', `revert ${mergeSha}\n\n${reason}`], { cwd: this.cwd, timeout: 5000 })
-    }
-    return this.resolveSha('HEAD')
   }
 }

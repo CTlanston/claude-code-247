@@ -17,3 +17,5 @@ export type {
 export type { DockerRunnerOptions } from './docker-runner.js'
 export { RunnerManager } from './runner-manager.js'
 export type { RunnerInterface } from './runner-interface.js'
+export { ChildProcessGitClient } from './git-client.js'
+export type { GitClient } from './git-client.js'
