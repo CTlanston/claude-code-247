@@ -153,9 +153,18 @@ importers:
       '@aedev/github':
         specifier: workspace:*
         version: link:../github
+      '@aedev/preview':
+        specifier: workspace:*
+        version: link:../preview
+      '@aedev/qa':
+        specifier: workspace:*
+        version: link:../qa
       '@aedev/runner':
         specifier: workspace:*
         version: link:../runner
+      '@aedev/validators':
+        specifier: workspace:*
+        version: link:../validators
       '@fastify/cors':
         specifier: ^10.0.0
         version: 10.1.0
