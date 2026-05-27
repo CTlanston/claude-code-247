@@ -211,6 +211,12 @@ importers:
 
   packages/security: {}
 
+  packages/sentinel:
+    dependencies:
+      '@aedev/event-log':
+        specifier: workspace:*
+        version: link:../event-log
+
   packages/shadow: {}
 
   packages/supervisor: {}
