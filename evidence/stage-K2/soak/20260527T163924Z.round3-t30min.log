@@ -1,0 +1,12 @@
+[K2] round3 t+30min start 2026-05-27T17:09:26Z
+
+ RUN  v3.2.4 /Users/lanston/projects/claude-code-247
+
+ ✓ packages/security/src/redteam-round3.test.ts (3 tests) 12ms
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Start at  10:09:27
+   Duration  288ms (transform 50ms, setup 0ms, collect 68ms, tests 12ms, environment 0ms, prepare 37ms)
+
+[K2] round3 t+30min end 2026-05-27T17:09:27Z

@@ -1,0 +1,38 @@
+[K] real-clock soak start 2026-05-27T16:07:16Z
+[K] commit b1c249b3f42bf47c82d5439df7c1e4f6d61b8d4b
+[K] initial status
+{"status":"running","version":"0.0.1","uptime":25,"lastHeartbeat":"2026-05-27T16:06:50.526Z"}
+[K] harness start 2026-05-27T16:07:16Z
+[K] event log @ /var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/soak-k-full-q5IzY4
+{
+  "scope": "compressed-1-day",
+  "thresholds": "all_met",
+  "started_at": "2026-05-27T16:07:16.662Z",
+  "ended_at": "2026-05-27T16:07:16.836Z",
+  "duration_ms": 175,
+  "ticks": 800,
+  "events_total": 1575,
+  "moves_completed": 53,
+  "interrupts_injected": 80,
+  "interrupts_auto_resolved": 80,
+  "push_rejections": 66,
+  "push_allowances": 66,
+  "chaos_checkpoints": 4,
+  "chaos_drills_fired": 20,
+  "daemon_restart_count": 8,
+  "daemon_restart_recovery_ms_p95": 4,
+  "reducer_consistency": "1.00"
+}
+[K] report → /Users/lanston/projects/claude-code-247/evidence/stage-K/L1-acceptance/soak-k-full-report.json
+[K] PASS (compressed 1-day)
+[K] harness end 2026-05-27T16:07:16Z
+daemon restarted 1 recovery_sec=1.602 at 2026-05-27T16:13:18Z
+daemon restarted 2 recovery_sec=1.597 at 2026-05-27T16:19:20Z
+daemon restarted 3 recovery_sec=1.581 at 2026-05-27T16:25:21Z
+daemon restarted 4 recovery_sec=1.601 at 2026-05-27T16:31:23Z
+daemon restarted 5 recovery_sec=1.595 at 2026-05-27T16:37:25Z
+[K] final status 2026-05-27T16:37:25Z
+{"status":"running","version":"0.0.1","uptime":0,"lastHeartbeat":"2026-05-27T16:37:24.979Z"}
+COMMAND   PID    USER   FD   TYPE            DEVICE SIZE/OFF NODE NAME
+node    74383 lanston   28u  IPv4 0x5ec0fb274aeee60      0t0  TCP 127.0.0.1:7247 (LISTEN)
+[K] real-clock soak end 2026-05-27T16:37:25Z

@@ -1,0 +1,156 @@
+[K] wall-clock soak start 2026-05-27T14:33:06Z
+[K] runtime=/tmp/claude-code-247-stage-K-aedev
+curl: (7) Failed to connect to 127.0.0.1 port 7247 after 0 ms: Couldn't connect to server
+aedev daemon running on port 7247
+{"status":"running","version":"0.0.1","uptime":0,"lastHeartbeat":"2026-05-27T14:33:07.324Z"}
+[K] daemon wrapper_pid=40463 listener_pid=40480 started 2026-05-27T14:33:07Z
+[K] checkpoint=0 at 2026-05-27T14:33:07Z
+[K] event log @ /var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/soak-k-full-UmNGmQ
+{
+  "scope": "compressed-1-day",
+  "thresholds": "all_met",
+  "started_at": "2026-05-27T14:33:08.261Z",
+  "ended_at": "2026-05-27T14:33:08.463Z",
+  "duration_ms": 203,
+  "ticks": 800,
+  "events_total": 1577,
+  "moves_completed": 53,
+  "interrupts_injected": 80,
+  "interrupts_auto_resolved": 80,
+  "push_rejections": 66,
+  "push_allowances": 66,
+  "chaos_checkpoints": 4,
+  "chaos_drills_fired": 20,
+  "daemon_restart_count": 8,
+  "daemon_restart_recovery_ms_p95": 4,
+  "reducer_consistency": "1.00"
+}
+[K] report â†’ /Users/lanston/projects/claude-code-247/evidence/stage-K/L1-acceptance/soak-k-full-report.json
+[K] PASS (compressed 1-day)
+[K] stopping listener pid=40480 2026-05-27T14:33:08Z
+curl: (7) Failed to connect to 127.0.0.1 port 7247 after 0 ms: Couldn't connect to server
+aedev daemon running on port 7247
+{"status":"running","version":"0.0.1","uptime":0,"lastHeartbeat":"2026-05-27T14:33:08.864Z"}
+[K] daemon wrapper_pid=40512 listener_pid=40529 started 2026-05-27T14:33:09Z
+daemon restarted checkpoint=0 count=1 at 2026-05-27T14:33:09Z
+[K] checkpoint=1 at 2026-05-27T14:40:09Z
+[K] event log @ /var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/soak-k-full-RA44RV
+{
+  "scope": "compressed-1-day",
+  "thresholds": "all_met",
+  "started_at": "2026-05-27T14:40:10.023Z",
+  "ended_at": "2026-05-27T14:40:10.206Z",
+  "duration_ms": 183,
+  "ticks": 800,
+  "events_total": 1580,
+  "moves_completed": 53,
+  "interrupts_injected": 80,
+  "interrupts_auto_resolved": 80,
+  "push_rejections": 66,
+  "push_allowances": 66,
+  "chaos_checkpoints": 4,
+  "chaos_drills_fired": 20,
+  "daemon_restart_count": 8,
+  "daemon_restart_recovery_ms_p95": 4,
+  "reducer_consistency": "1.00"
+}
+[K] report â†’ /Users/lanston/projects/claude-code-247/evidence/stage-K/L1-acceptance/soak-k-full-report.json
+[K] PASS (compressed 1-day)
+[K] stopping listener pid=40529 2026-05-27T14:40:10Z
+curl: (7) Failed to connect to 127.0.0.1 port 7247 after 0 ms: Couldn't connect to server
+aedev daemon running on port 7247
+{"status":"running","version":"0.0.1","uptime":0,"lastHeartbeat":"2026-05-27T14:40:10.628Z"}
+[K] daemon wrapper_pid=40784 listener_pid=40801 started 2026-05-27T14:40:11Z
+daemon restarted checkpoint=1 count=2 at 2026-05-27T14:40:11Z
+[K] checkpoint=2 at 2026-05-27T14:47:11Z
+[K] event log @ /var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/soak-k-full-EIFS76
+{
+  "scope": "compressed-1-day",
+  "thresholds": "all_met",
+  "started_at": "2026-05-27T14:47:11.758Z",
+  "ended_at": "2026-05-27T14:47:11.939Z",
+  "duration_ms": 181,
+  "ticks": 800,
+  "events_total": 1578,
+  "moves_completed": 53,
+  "interrupts_injected": 80,
+  "interrupts_auto_resolved": 80,
+  "push_rejections": 66,
+  "push_allowances": 66,
+  "chaos_checkpoints": 4,
+  "chaos_drills_fired": 20,
+  "daemon_restart_count": 8,
+  "daemon_restart_recovery_ms_p95": 4,
+  "reducer_consistency": "1.00"
+}
+[K] report â†’ /Users/lanston/projects/claude-code-247/evidence/stage-K/L1-acceptance/soak-k-full-report.json
+[K] PASS (compressed 1-day)
+[K] stopping listener pid=40801 2026-05-27T14:47:11Z
+curl: (7) Failed to connect to 127.0.0.1 port 7247 after 0 ms: Couldn't connect to server
+aedev daemon running on port 7247
+{"status":"running","version":"0.0.1","uptime":0,"lastHeartbeat":"2026-05-27T14:47:12.374Z"}
+[K] daemon wrapper_pid=41063 listener_pid=41080 started 2026-05-27T14:47:13Z
+daemon restarted checkpoint=2 count=3 at 2026-05-27T14:47:13Z
+[K] checkpoint=3 at 2026-05-27T14:54:13Z
+[K] event log @ /var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/soak-k-full-dbbDxq
+{
+  "scope": "compressed-1-day",
+  "thresholds": "all_met",
+  "started_at": "2026-05-27T14:54:13.531Z",
+  "ended_at": "2026-05-27T14:54:13.729Z",
+  "duration_ms": 199,
+  "ticks": 800,
+  "events_total": 1579,
+  "moves_completed": 53,
+  "interrupts_injected": 80,
+  "interrupts_auto_resolved": 80,
+  "push_rejections": 66,
+  "push_allowances": 66,
+  "chaos_checkpoints": 4,
+  "chaos_drills_fired": 20,
+  "daemon_restart_count": 8,
+  "daemon_restart_recovery_ms_p95": 4,
+  "reducer_consistency": "1.00"
+}
+[K] report â†’ /Users/lanston/projects/claude-code-247/evidence/stage-K/L1-acceptance/soak-k-full-report.json
+[K] PASS (compressed 1-day)
+[K] stopping listener pid=41080 2026-05-27T14:54:13Z
+curl: (7) Failed to connect to 127.0.0.1 port 7247 after 0 ms: Couldn't connect to server
+aedev daemon running on port 7247
+{"status":"running","version":"0.0.1","uptime":0,"lastHeartbeat":"2026-05-27T14:54:14.165Z"}
+[K] daemon wrapper_pid=41443 listener_pid=41460 started 2026-05-27T14:54:14Z
+daemon restarted checkpoint=3 count=4 at 2026-05-27T14:54:14Z
+[K] checkpoint=4 at 2026-05-27T15:01:14Z
+[K] event log @ /var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/soak-k-full-Sfjrtj
+{
+  "scope": "compressed-1-day",
+  "thresholds": "all_met",
+  "started_at": "2026-05-27T15:01:15.257Z",
+  "ended_at": "2026-05-27T15:01:15.435Z",
+  "duration_ms": 178,
+  "ticks": 800,
+  "events_total": 1579,
+  "moves_completed": 53,
+  "interrupts_injected": 80,
+  "interrupts_auto_resolved": 80,
+  "push_rejections": 66,
+  "push_allowances": 66,
+  "chaos_checkpoints": 4,
+  "chaos_drills_fired": 20,
+  "daemon_restart_count": 8,
+  "daemon_restart_recovery_ms_p95": 5,
+  "reducer_consistency": "1.00"
+}
+[K] report â†’ /Users/lanston/projects/claude-code-247/evidence/stage-K/L1-acceptance/soak-k-full-report.json
+[K] PASS (compressed 1-day)
+[K] final health 2026-05-27T15:01:15Z
+{"status":"running","version":"0.0.1","uptime":421,"lastHeartbeat":"2026-05-27T15:01:14.198Z"}
+41460 SN   /Users/lanston/Library/pnpm/nodejs/20.20.2/bin/node --require /Users/lanston/projects/claude-code-247/node_modules/.pnpm/tsx@4.22.3/node_modules/tsx/dist/preflight.cjs --import file:///Users/lanston/projects/claude-code-247/node_modules/.pnpm/tsx@4.22.3/node_modules/tsx/dist/loader.mjs packages/daemon/src/main.ts
+[K] daemon left running listener_pid=41460
+[K] wall-clock soak end 2026-05-27T15:01:15Z
+[K] extending wall-clock observation to satisfy >=30m 2026-05-27T15:01:39Z
+[K] extended final health 2026-05-27T15:03:54Z
+curl: (7) Failed to connect to 127.0.0.1 port 7247 after 0 ms: Couldn't connect to server
+
+ps: Invalid process id: $¾Š„\001€x¨°©Qò\001
+[K] extended wall-clock soak end 2026-05-27T15:03:54Z

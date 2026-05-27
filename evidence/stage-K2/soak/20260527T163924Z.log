@@ -1,0 +1,83 @@
+[K2] real-clock soak start 2026-05-27T16:39:24Z
+[K2] commit b1c249b3f42bf47c82d5439df7c1e4f6d61b8d4b
+[K2] mesh flag line
+12:daemon:
+13:  mesh_enabled: true
+[K2] initial status
+{"status":"running","version":"0.0.1","uptime":120,"lastHeartbeat":"2026-05-27T16:38:54.994Z"}
+[K2] harness start 2026-05-27T16:39:24Z
+[K2] event log @ /var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/soak-k2-full-thQwnD
+{
+  "scope": "compressed-1-day",
+  "rc_target": "v2.2.0-rc2",
+  "rounds": 4,
+  "events_total": 112,
+  "roadmap_proposals_emitted": 7,
+  "fanout_concurrent_coders_per_round": 5,
+  "auto_repairs_invoked": 4,
+  "sentinel_hardblocks": 12,
+  "sentinel_softblocks": 4,
+  "sentinel_allows": 16,
+  "sanitizer_redactions_total": 24,
+  "pool_min_observed": 2,
+  "reducer_consistency": "1.00",
+  "duration_ms": 20
+}
+[K2] report → /Users/lanston/projects/claude-code-247/evidence/stage-K2/L1-acceptance/soak-k2-full-report.json
+[K2] PASS (compressed 1-day)
+[K2] harness end 2026-05-27T16:39:25Z
+daemon restarted 1 recovery_sec=1.590 at 2026-05-27T16:45:26Z
+[K2] round3 t+10min start 2026-05-27T16:49:25Z
+
+ RUN  v3.2.4 /Users/lanston/projects/claude-code-247
+
+ ✓ packages/security/src/redteam-round3.test.ts (3 tests) 12ms
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Start at  09:49:25
+   Duration  230ms (transform 46ms, setup 0ms, collect 62ms, tests 12ms, environment 0ms, prepare 40ms)
+
+[K2] round3 t+10min end 2026-05-27T16:49:26Z
+daemon restarted 2 recovery_sec=1.593 at 2026-05-27T16:51:28Z
+daemon restarted 3 recovery_sec=1.593 at 2026-05-27T16:57:30Z
+[K2] round3 t+20min start 2026-05-27T16:59:26Z
+
+ RUN  v3.2.4 /Users/lanston/projects/claude-code-247
+
+ ✓ packages/security/src/redteam-round3.test.ts (3 tests) 12ms
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Start at  09:59:26
+   Duration  239ms (transform 48ms, setup 0ms, collect 67ms, tests 12ms, environment 0ms, prepare 35ms)
+
+[K2] round3 t+20min end 2026-05-27T16:59:26Z
+[K2] flip mesh_enabled=false start 2026-05-27T17:02:25Z
+12:daemon:
+13:  mesh_enabled: false
+{"status":"running","version":"0.0.1","uptime":0,"lastHeartbeat":"2026-05-27T17:02:26.843Z"}
+daemon restarted 4 recovery_sec=1.579 at 2026-05-27T17:03:31Z
+[K2] flip mesh_enabled=true start 2026-05-27T17:07:26Z
+12:daemon:
+13:  mesh_enabled: true
+{"status":"running","version":"0.0.1","uptime":0,"lastHeartbeat":"2026-05-27T17:07:28.481Z"}
+[K2] flip-back PASS 2026-05-27T17:07:28Z
+[K2] round3 t+30min start 2026-05-27T17:09:26Z
+
+ RUN  v3.2.4 /Users/lanston/projects/claude-code-247
+
+ ✓ packages/security/src/redteam-round3.test.ts (3 tests) 12ms
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Start at  10:09:27
+   Duration  288ms (transform 50ms, setup 0ms, collect 68ms, tests 12ms, environment 0ms, prepare 37ms)
+
+[K2] round3 t+30min end 2026-05-27T17:09:27Z
+daemon restarted 5 recovery_sec=1.596 at 2026-05-27T17:09:33Z
+[K2] final status 2026-05-27T17:09:33Z
+{"status":"running","version":"0.0.1","uptime":0,"lastHeartbeat":"2026-05-27T17:09:33.381Z"}
+COMMAND   PID    USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node    76309 lanston   28u  IPv4 0x658990db219bb4cf      0t0  TCP 127.0.0.1:7247 (LISTEN)
+[K2] real-clock soak end 2026-05-27T17:09:33Z

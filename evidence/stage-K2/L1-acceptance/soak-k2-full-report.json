@@ -12,5 +12,5 @@
   "sanitizer_redactions_total": 24,
   "pool_min_observed": 2,
   "reducer_consistency": "1.00",
-  "duration_ms": 16
+  "duration_ms": 20
 }

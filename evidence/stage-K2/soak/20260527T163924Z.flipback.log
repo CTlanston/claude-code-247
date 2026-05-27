@@ -1,0 +1,9 @@
+[K2] flip mesh_enabled=false start 2026-05-27T17:02:25Z
+12:daemon:
+13:  mesh_enabled: false
+{"status":"running","version":"0.0.1","uptime":0,"lastHeartbeat":"2026-05-27T17:02:26.843Z"}
+[K2] flip mesh_enabled=true start 2026-05-27T17:07:26Z
+12:daemon:
+13:  mesh_enabled: true
+{"status":"running","version":"0.0.1","uptime":0,"lastHeartbeat":"2026-05-27T17:07:28.481Z"}
+[K2] flip-back PASS 2026-05-27T17:07:28Z

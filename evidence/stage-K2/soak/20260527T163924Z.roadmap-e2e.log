@@ -1,0 +1,10 @@
+
+ RUN  v3.2.4 /Users/lanston/projects/claude-code-247
+
+ ✓ packages/roadmap-agent/src/e2e.test.ts (3 tests) 12ms
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Start at  10:11:10
+   Duration  398ms (transform 86ms, setup 0ms, collect 118ms, tests 12ms, environment 0ms, prepare 53ms)
+
