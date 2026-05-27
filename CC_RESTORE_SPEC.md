@@ -15,29 +15,39 @@ spec_version: RESTORE-1
 parent_workbooks: [EXECUTION_WORKBOOK.md, NEXT_PLAN_WORKBOOK.md]
 parent_tags: [v1.0.0, v2.2.0-rc2]
 operating_mode: launch-fast            # NEXT-2.0 preserved
-current_task: T1                       # T1 → T7 in §3
-last_updated_utc: 2026-05-27T00:00:00Z
-last_session_id: null
-total_sessions: 0
+current_task: T3.fix-1                 # T3 scanner.ts defense; awaiting operator merge of PR #8
+last_updated_utc: 2026-05-28T00:40:00Z
+last_session_id: f0ca9409-71b1-4ea1-8cdf-d14ebe4aea2a
+total_sessions: 1
 open_holds: 0
-blocked_on: null
+blocked_on: operator                   # see §0.1 below
 
 honesty_flags:
   # These are the audit's "claimed-but-not-real" findings.
   # Each must reach false before the corresponding task closes.
-  legacy_launchd_orphans_running: true        # T1
-  smoke_harness_uses_synthetic_checks: true   # T2 — admitted in operator-launch-signoff.md
-  roadmap_agent_proposal_flood: true          # T3 — 75 proposals in 1 tick
-  l1_journal_is_template_copies: true         # T4 — day-2..7 are byte-equal templates
-  k2_synthetic_one_day_only: true             # T5 — real 72h not run
-  l2_substages_not_started: true              # T6 — cost-meter exists, unwired
-  v2_2_0_ga_gate_open: true                   # T7 — formal decision pending
+  # Per GR15, a flag flips ONLY when both (a) the fix lands in main AND
+  # (b) the operator-side action listed below executes successfully.
+  legacy_launchd_orphans_running: true        # T1 — operator: run T1-launchd-purge-operator.sh
+  smoke_harness_uses_synthetic_checks: true   # T2 — real bindings shipped in PR #7; remains TRUE until a real-bindings smoke run is recorded
+  roadmap_agent_proposal_flood: true          # T3 — scanner fix in PR #8 (open, CI green); flips after merge + drain script run
+  l1_journal_is_template_copies: true         # T4 — operator: run T4-cleanup-stub-journals-operator.sh then live 7 real days
+  k2_synthetic_one_day_only: true             # T5 — operator: sign one of ADR-0013-revised-{pathA,pathB}.md
+  l2_substages_not_started: true              # T6 — cost-meter exists, unwired (blocked by GR13)
+  v2_2_0_ga_gate_open: true                   # T7 — formal decision pending (blocked by GR13)
 
 next_action: |
-  Task T1 — purge the legacy v1 launchd plists left behind by the F3
-  Python cutover. They are crash-looping with ModuleNotFoundError every
-  interval and contaminating any real telemetry. Do this before
-  touching anything else.
+  OPERATOR — three actions, in this exact order:
+    1. Inspect + merge PR #8 (https://github.com/CTlanston/claude-code-247/pull/8).
+       It carries the T3 scanner.ts scope+cap defense the 2026-05-28
+       audit demanded. CI is 4/4 green. Classifier blocks auto-merge
+       intentionally (prior PR #7 was auto-merged with a flawed scanner
+       and triggered this audit).
+    2. Run evidence/maintenance/T1-launchd-purge-operator.sh to clear
+       the 4 crash-looping legacy plists.
+    3. Run scripts/T3-drain-roadmap-flood.ts after #1 lands, then
+       observe one launchd tick and confirm ≤ 5 proposals.
+  Only after the above can T4 (live 7 days) start. Per GR13 no new
+  feature work runs in parallel.
 ```
 
 ---
