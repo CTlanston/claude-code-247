@@ -140,7 +140,7 @@ sla:
     reduce<S>(taskId: string, reducer: Reducer<S>): Promise<S>;
   }
   ```
-- **L1 Acceptance** `pnpm test --filter @claude247/event-log` 全绿；reducer 双向不变式 `events → state → events` 等价类单测 ≥ 5 用例；`pnpm typecheck` 绿；ADR-0010 与 spike 文件存在且互相引用。
+- **L1 Acceptance** `pnpm test --filter @aedev/event-log` 全绿；reducer 双向不变式 `events → state → events` 等价类单测 ≥ 5 用例；`pnpm typecheck` 绿；ADR-0010 与 spike 文件存在且互相引用。
 - **L2 Review** reviewer agent 独立跑一遍：删 SQLite 后由事件日志 reduce 出 view，与删前 snapshot 比对应一致。
 - **L3 Validate** 操作员人工读 ADR-0010 + spike 结论，确认默认 transport（Dispatch / Tailscale）选择。
 - **退出条件 → B** 上面三级全过，§0 切到 `current_stage: B`。
@@ -158,7 +158,7 @@ sla:
 ### Stage C — Interrupt = HOLD + SLA · 1.5w
 
 - **目标** HOLD 升级为带 policy 的 Interrupt；7 大中断原因接入。
-- **交付** `packages/interrupt-bus/src/{repository,service,policy,escalator}.ts`；事件 `hold.created / .resolved / .escalated / .dropped`；`~/.claude-code-247/logs/holds.md` 同步写。
+- **交付** `packages/interrupt-bus/src/{repository,service,policy,escalator}.ts`；事件 `hold.policy.{created, resolved, escalated, dropped, retried}` (3-segment per §4.4)；`~/.claude-code-247/logs/holds.md` 同步写。
 - **L1** 7 个原因各注入一次：表 view + holds.md + ntfy 三处一致；policy `{ttl, on_timeout}` 单测覆盖。
 - **L2** reviewer 注入 `session_expired` 然后等 ttl 过期 → 期望自动 retry 3 次后 drop；`secret_grant_request` 等 24h 不动 → 期望永停。
 - **L3** 操作员从手机解除一条 HOLD，task 5 分钟内续跑。
@@ -380,6 +380,22 @@ sla:
 - 同一 `idempotency` 在事件日志中至多 1 次。
 - 任意 event 可追溯到根因。
 - 删 SQLite → reduce 全部 events → state 与删前 byte-equal（除 generated_at 时间戳）。
+- Workspace package scope is `@aedev/*` (carried over from v1). The user-facing CLI binary name `claude247` is the brand; package names are internal.
+
+Canonical kinds:
+
+| Subsystem | Kinds | Source package |
+|---|---|---|
+| cli.session | `cli.session.probed`, `cli.session.expired` | @aedev/cli-robust |
+| cli.quota | `cli.quota.threshold` | @aedev/cli-robust |
+| hold.policy | `hold.policy.created`, `.resolved`, `.escalated`, `.dropped`, `.retried` | @aedev/interrupt-bus |
+| approval | `approval.request.emitted`, `approval.decision.received`, `approval.transport.failover` | @aedev/approval-v2 |
+| push.cap | `push.cap.requested`, `push.cap.allowed`, `push.cap.denied` | @aedev/push-policy |
+| move | `move.act.started`, `move.act.completed`, `move.act.failed`, `move.step.compensated`, `move.fsm.advanced` | @aedev/moves |
+| chaos.drill | `chaos.drill.injected`, `chaos.drill.cleaned` | @aedev/chaos |
+| agent | `agent.lifecycle.spawned`, `.exited`, `agent.subtask.split`, `.completed`, `.failed`, `agent.fan_in.resolved` | @aedev/agent-mesh |
+| roadmap | `roadmap.scan.started`, `roadmap.proposal.emitted` | @aedev/roadmap-agent |
+| sentinel | `sentinel.tool_call.classified`, `.hardblocked`, `.softblocked`, `sentinel.llm.reviewed` | @aedev/sentinel |
 
 ### 4.5 Idempotency 规范
 
@@ -614,7 +630,7 @@ ApprovalGateway: ntfy → 操作员手机
     - v2.1.0 / v2.2.0 GA tags (need ADR-0012 / ADR-0013 + real soaks)
     - Branch push (no operator authorization for git push)
     - Workbook §3 Stage C wording amendment to formalize hold.policy.* 3-segment naming
-    - @aedev vs @claude247 namespace decision
+    - @aedev package namespace decision
 
 #### s_0002 — 2026-05-27T09:20:00Z — operator-override marathon (initial)
 
@@ -676,7 +692,7 @@ ApprovalGateway: ntfy → 操作员手机
       from literal v1.0.0 tag — that tag predates the pnpm/TS workspace
       that Stage A.0's boot check requires; deviation documented at the
       top of the s_0001 session).
-    - `@aedev/event-log` shipped (workbook said `@claude247/event-log`;
+    - `@aedev/event-log` shipped (workbook has since been amended to use `@aedev/event-log`;
       kept namespace consistent with rest of workspace — full rationale
       in `evidence/stage-A/L1-acceptance/notes.md`).
     - New daemon subsystem dir `approval-v2/` (not `approval/`) to avoid
@@ -710,6 +726,7 @@ ApprovalGateway: ntfy → 操作员手机
 | 2026-05-27 | 1.1 | s_0002: 20 stages L1-shipped; rc1 tags placed; F3 HOLDed | claude (under operator override) | `EXECUTION_WORKBOOK.md §9 s_0002` |
 | 2026-05-27 | 1.2 | s_0002 close-out: ADR-0011 override; F3 executed; full soaks; omnibus L2 PASS; rc2 tag for K | claude (under ADR-0011) | ADR-0011, M22c, M23, omnibus report |
 | 2026-05-27 | 1.3 | s_0002 B/C/D round: rc2 K2 tag; ADR-0012/0013 placeholders; CI workflows; quota oracle; judge git fetch; chaos guardrails; W11 GO; rollback drill cron | claude (under ADR-0011) | ADR-0012, ADR-0013, w11-go-no-go, proposals/, .github/workflows/ |
+| 2026-05-27 | 1.4 | apply B8 + B9 amendments: hold.policy 3-segment naming and @aedev package namespace | operator + reviewer | proposals/applied/workbook-amend-2026-05-27-*.md |
 
 ---
 
