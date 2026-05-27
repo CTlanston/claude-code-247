@@ -186,6 +186,12 @@ importers:
         specifier: workspace:*
         version: link:../core
 
+  packages/roadmap-agent:
+    dependencies:
+      '@aedev/event-log':
+        specifier: workspace:*
+        version: link:../event-log
+
   packages/runner:
     dependencies:
       '@aedev/claude247-bridge':
