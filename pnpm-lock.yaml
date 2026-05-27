@@ -133,6 +133,15 @@ importers:
         specifier: ^7.6.0
         version: 7.6.13
 
+  packages/cost-meter:
+    dependencies:
+      '@aedev/event-log':
+        specifier: workspace:*
+        version: link:../event-log
+      '@aedev/interrupt-bus':
+        specifier: workspace:*
+        version: link:../interrupt-bus
+
   packages/daemon:
     dependencies:
       '@aedev/core':
