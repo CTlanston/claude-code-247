@@ -15,12 +15,12 @@ spec_version: RESTORE-1
 parent_workbooks: [EXECUTION_WORKBOOK.md, NEXT_PLAN_WORKBOOK.md]
 parent_tags: [v1.0.0, v2.2.0-rc2]
 operating_mode: launch-fast            # NEXT-2.0 preserved
-current_task: T3.fix-1                 # T3 scanner.ts defense; awaiting operator merge of PR #8
-last_updated_utc: 2026-05-28T00:40:00Z
+current_task: T1                       # PR #8 merged (b79f649); T1 launchd purge is now the gating operator action
+last_updated_utc: 2026-05-28T00:50:00Z
 last_session_id: f0ca9409-71b1-4ea1-8cdf-d14ebe4aea2a
 total_sessions: 1
 open_holds: 0
-blocked_on: operator                   # see §0.1 below
+blocked_on: operator                   # T1 launchd purge + T3 drain + T4/T5 operator actions
 
 honesty_flags:
   # These are the audit's "claimed-but-not-real" findings.
@@ -29,7 +29,7 @@ honesty_flags:
   # (b) the operator-side action listed below executes successfully.
   legacy_launchd_orphans_running: true        # T1 — operator: run T1-launchd-purge-operator.sh
   smoke_harness_uses_synthetic_checks: true   # T2 — real bindings shipped in PR #7; remains TRUE until a real-bindings smoke run is recorded
-  roadmap_agent_proposal_flood: true          # T3 — scanner fix in PR #8 (open, CI green); flips after merge + drain script run
+  roadmap_agent_proposal_flood: true          # T3 — scanner fix MERGED (PR #8 / b79f649). Real launchd tick 2026-05-27T23:49:46Z scanned 76, emitted 5 (evidence/launch/roadmap-agent-tick-2026-05-27T23-49-46-263Z.json) — cap HOLDS in production. Remains TRUE until operator drains the 75 already-queued proposals.
   l1_journal_is_template_copies: true         # T4 — operator: run T4-cleanup-stub-journals-operator.sh then live 7 real days
   k2_synthetic_one_day_only: true             # T5 — operator: sign one of ADR-0013-revised-{pathA,pathB}.md
   l2_substages_not_started: true              # T6 — cost-meter exists, unwired (blocked by GR13)
@@ -37,17 +37,17 @@ honesty_flags:
 
 next_action: |
   OPERATOR — three actions, in this exact order:
-    1. Inspect + merge PR #8 (https://github.com/CTlanston/claude-code-247/pull/8).
-       It carries the T3 scanner.ts scope+cap defense the 2026-05-28
-       audit demanded. CI is 4/4 green. Classifier blocks auto-merge
-       intentionally (prior PR #7 was auto-merged with a flawed scanner
-       and triggered this audit).
-    2. Run evidence/maintenance/T1-launchd-purge-operator.sh to clear
-       the 4 crash-looping legacy plists.
-    3. Run scripts/T3-drain-roadmap-flood.ts after #1 lands, then
-       observe one launchd tick and confirm ≤ 5 proposals.
-  Only after the above can T4 (live 7 days) start. Per GR13 no new
-  feature work runs in parallel.
+    1. Run evidence/maintenance/T1-launchd-purge-operator.sh to clear
+       the 4 crash-looping legacy plists. Flips T1 honesty_flag.
+    2. Run scripts/T3-drain-roadmap-flood.ts to bulk-reject the 75
+       pending proposals, then observe one launchd tick and confirm
+       ≤ 5 proposals. Flips T3 honesty_flag.
+    3. Run evidence/launch/T4-cleanup-stub-journals-operator.sh to
+       remove day-2..7 template stubs, then live 7 real L1 days.
+       Flips T4 honesty_flag at end of day 7.
+  T2 honesty_flag flips when a real-bindings smoke run is recorded.
+  T5 honesty_flag flips when operator signs ADR-0013-revised-{pathA,pathB}.md.
+  Per GR13 no new feature work runs in parallel.
 ```
 
 ---
