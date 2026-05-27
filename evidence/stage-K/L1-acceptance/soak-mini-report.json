@@ -1,6 +1,6 @@
 {
-  "started_at": "2026-05-27T09:06:46.133Z",
-  "ended_at": "2026-05-27T09:06:47.575Z",
+  "started_at": "2026-05-27T10:11:09.051Z",
+  "ended_at": "2026-05-27T10:11:10.500Z",
   "ticks": 200,
   "events_total": 377,
   "moves_completed": 13,
@@ -10,6 +10,6 @@
   "push_allowances": 16,
   "chaos_drills_fired": 10,
   "daemon_restart_count": 8,
-  "daemon_restart_recovery_ms_p95": 4,
+  "daemon_restart_recovery_ms_p95": 6,
   "reducer_consistency": "1.00"
 }

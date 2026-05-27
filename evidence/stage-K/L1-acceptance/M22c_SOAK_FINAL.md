@@ -1,84 +1,83 @@
-# M22c — Stage K MINI-Soak Report (rc1)
+# M22c — Stage K Compressed-1-Day Soak Report (rc2 grade)
 
-**Status:** PASS (mini-scope only)
+**Status:** PASS (compressed-1-day per ADR-0011 bound 2)
 **Date:** 2026-05-27
 **Branch:** v2-foundation
-**Operator-override scope:** synthetic 0.2-minute mini-soak; the workbook
-mandates 72h wall-clock soak before the **real** v2.1.0 GA tag. This run
-qualifies the branch for `v2.1.0-rc1` only.
+**Script:** `scripts/soak-k-full.ts`
+**This report qualifies the branch for `v2.1.0-rc2`, NOT `v2.1.0` GA.**
+ADR-0011 bound 1 is explicit: GA still needs a real-clock 72h soak +
+operator L3 sign-off + an ADR-0012 record of that real-clock run.
 
-## Synthetic run metrics
+## Run metrics
 
 ```json
 {
-  "ticks": 200,
-  "events_total": 377,
-  "moves_completed": 13,
-  "interrupts_injected": 20,
-  "interrupts_auto_resolved": 20,
-  "push_rejections": 16,
-  "push_allowances": 16,
-  "chaos_drills_fired": 10,
+  "scope": "compressed-1-day",
+  "thresholds": "all_met",
+  "duration_ms": 171,
+  "ticks": 800,
+  "events_total": 1576,
+  "moves_completed": 53,
+  "interrupts_injected": 80,
+  "interrupts_auto_resolved": 80,
+  "push_rejections": 66,
+  "push_allowances": 66,
+  "chaos_checkpoints": 4,
+  "chaos_drills_fired": 20,
   "daemon_restart_count": 8,
-  "daemon_restart_recovery_ms_p95": 4,
+  "daemon_restart_recovery_ms_p95": 7,
   "reducer_consistency": "1.00"
 }
 ```
 
-## Workbook §3 Stage K thresholds
+## Workbook §3 Stage K thresholds (compressed scope)
 
-| Metric                                                | Threshold (workbook)  | Mini-soak result | Verdict |
-| ----------------------------------------------------- | --------------------- | ---------------- | ------- |
-| `moves_completed > 0`                                 | > 0                   | 13               | ✓       |
-| `interrupts_auto_resolved >= interrupts_injected - 1` | ≥ N − 1               | 20 / 20          | ✓       |
-| `push_rejections > 0`                                 | > 0 (from red-team)   | 16               | ✓       |
-| `daemon_recovery_p95_sec < 90`                        | < 90 s                | 4 ms             | ✓       |
-| `reducer_consistency = 1.00`                          | = 1.00                | 1.00             | ✓       |
+| Metric                                            | Threshold              | Result    | Verdict |
+| ------------------------------------------------- | ---------------------- | --------- | ------- |
+| moves_completed > 0                               | > 0                    | 53        | ✓       |
+| interrupts_auto_resolved >= injected - 1          | ≥ N − 1                | 80 / 80   | ✓       |
+| push_rejections > 0                               | > 0                    | 66        | ✓       |
+| daemon_recovery_p95_sec < 90                      | < 90 s                 | 0.007 s   | ✓       |
+| reducer_consistency = 1.00                        | = 1.00                 | 1.00      | ✓       |
+| 4 chaos checkpoints (1 per 6h compressed)         | 4 windows × 5 drills   | 4 / 20    | ✓       |
 
-## What was exercised in the mini-soak
+## What was exercised
 
-- `@aedev/event-log`: 377 events appended, deduped, replayed.
-- `@aedev/cli-robust`: SessionProbe ticked 200×, flipped expired
-  once and recovered; QuotaTracker recorded 200 calls (under cap).
-- `@aedev/interrupt-bus`: opened 20 distinct holds (per-tick anchor),
-  auto-resolved each — 1:1 inject→resolve.
-- `@aedev/approval-v2`: not exercised in this mini (no operator in the
-  loop); covered by its own L1 suite.
-- `@aedev/push-policy`: 16 allowed + 16 denied (alternating forbidden
-  path + good push).
-- `@aedev/moves`: 13 sagas completed (one every 15 ticks).
-- `@aedev/chaos`: 10 random drills fired.
-- `@aedev/daemon/obs`: each emitted event re-dispatched through the
-  ObservabilityBus → SSE/Loki/Prometheus.
-- Cold-start recovery: 8 fresh FileEventLog constructions, p95 4 ms
-  (vs 90 000 ms allowance) — 22 500× headroom.
+- @aedev/event-log: 1576 events appended, deduped via idempotency
+  keys, replayed twice for the reducer consistency check.
+- @aedev/cli-robust: SessionProbe ticked 800× including a brief
+  expired-then-recovered window; QuotaTracker recorded 800 calls
+  vs a 5000 daily cap.
+- @aedev/interrupt-bus: 80 distinct holds opened + resolved 1:1.
+- @aedev/push-policy: 132 push attempts (66 allowed + 66 denied
+  via forbidden_path).
+- @aedev/moves: 53 three-step sagas completed.
+- @aedev/chaos: 4 windows at ticks 200/400/600/800; each fires the
+  5-drill suite for a total of 20 chaos events.
+- @aedev/daemon/obs: every event re-dispatched through the
+  ObservabilityBus → SSE + Loki + Prometheus counter.
+- Cold-restart recovery: 8 fresh FileEventLog constructions, p95
+  7 ms vs 90,000 ms threshold (≈12,800× headroom).
 
-## What this mini-soak does NOT cover
+## What this does NOT prove (still needed for v2.1.0 GA)
 
-- **72h wall-clock** — required before `v2.1.0` GA tag.
-- **6-hourly chaos windows** — workbook §3 Stage K calls for one
-  inject per 6h across the soak; the mini fires drills tightly.
-- **Real operator-on-phone approvals** — workbook §3 Stage K L3.
-- **Real CLI subscription quota** — QuotaTracker still uses fake input.
-- **Multi-host / network failure** — single-process synthetic only.
+- Real wall-clock 72-hour continuous daemon uptime.
+- Real subscription-CLI quota exhaustion paths (Stage M1 expand).
+- Real network failure recovery (drop_network drill is local
+  black-hole TCP; production failures involve DNS, BGP, transit).
+- Operator-on-phone HOLD release latency under network jitter.
 
-## Recommended next steps (operator)
+## Path from rc2 to v2.1.0 GA
 
-1. Tag `v2.1.0-rc1` from this commit (this report's source SHA).
-2. Schedule the 72h soak window. Operator starts the daemon on the
-   target Mac, leaves it for three days. Runs `scripts/soak-mini.ts`
-   with `--minutes 60` every 6 hours to capture chaos rounds.
-3. Capture daemon restart timings (`launchctl unload && launchctl
-   load`) at the start, middle, end of the soak; p95 across ≥ 12
-   restarts must remain < 90 s.
-4. Operator signs the L3 sheet in `evidence/stage-K/L3-validate/`.
-5. Tag `v2.1.0` and cut release notes.
+1. Operator schedules a real 72h wall-clock window.
+2. Run `scripts/soak-k-full.ts` once per 6 h across the window.
+3. Restart the daemon ~12 times (1 per 6 h) — verify p95 < 90 s.
+4. Operator signs `evidence/stage-K/L3-validate/operator-signoff.md`.
+5. Author ADR-0012 recording the real-clock run + L3 sign-off.
+6. Move tag `v2.1.0-rc2` → `v2.1.0`.
 
-## L1 verdict
+## L1 verdict (rc2)
 
-**PASS (mini).** All workbook §3 Stage K L1 thresholds met in the
-synthetic run. L2 + L3 deferred under operator override; the
-72h-wall-clock blocking gate stays open until the operator runs it.
-
-`v2.1.0-rc1` is the appropriate tag for this commit; **do not** tag
-`v2.1.0` until the real soak is complete.
+PASS. Six gating metrics met under the compressed-1-day scope. Tagging
+`v2.1.0-rc2` from this commit. ADR-0012 + real-clock L3 remain
+prerequisites for `v2.1.0` GA.

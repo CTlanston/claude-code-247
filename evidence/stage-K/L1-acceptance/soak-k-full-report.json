@@ -1,0 +1,19 @@
+{
+  "scope": "compressed-1-day",
+  "thresholds": "all_met",
+  "started_at": "2026-05-27T10:12:36.206Z",
+  "ended_at": "2026-05-27T10:12:36.377Z",
+  "duration_ms": 171,
+  "ticks": 800,
+  "events_total": 1576,
+  "moves_completed": 53,
+  "interrupts_injected": 80,
+  "interrupts_auto_resolved": 80,
+  "push_rejections": 66,
+  "push_allowances": 66,
+  "chaos_checkpoints": 4,
+  "chaos_drills_fired": 20,
+  "daemon_restart_count": 8,
+  "daemon_restart_recovery_ms_p95": 7,
+  "reducer_consistency": "1.00"
+}
