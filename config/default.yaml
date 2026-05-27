@@ -137,3 +137,15 @@ repo_defaults:
       - validation_failed
       - auto_merge_completed
       - human_approval_required
+
+# CC_RESTORE_SPEC §3 T3 — RoadmapAgent scope + cap.
+# Bounds the scanner so it cannot treat the whole docs tree as a roadmap.
+# scope_paths is an explicit allowlist; any path outside this list is
+# rejected at the scanner boundary. max_proposals_per_tick is the emission
+# ceiling per tick; over-cap surfaces hold.policy.created with reason
+# roadmap_scan_overflow so the operator triages.
+roadmap_agent:
+  scope_paths:
+    - "docs/roadmap.md"
+  max_proposals_per_tick: 5
+
