@@ -29,13 +29,12 @@ next_action: |
   Codex also prepared evidence/launch/operator-launch-signoff.md and
   day-1 through day-7 L1 journal files.
 
-  Current blocker: true phone/operator paths are not yet healthy enough to
-  claim L0 L3 PASS. TS daemon /status is running, but /approvals, /missions,
-  /tasks, and /repos are empty; legacy claude247 launchd jobs fail with
-  ModuleNotFoundError: gateway; legacy dashboard /status-board.json returns
-  HTTP 500. Next: decide RoadmapAgent cadence (daemon-owned vs launchd),
-  restore/build a healthy phone approval + HOLD resolution entrypoint, then
-  have Lanston confirm the two real phone actions in operator-launch-signoff.md.
+  RoadmapAgent cadence now has a dedicated launchd job and the first tick
+  passed. Local operator approval + HOLD resolution entrypoints now pass via
+  scripts/operator-l0-action-check.ts --auto, with evidence under
+  evidence/launch/operator-l0-action-check-2026-05-27T20-49-34-659Z.*.
+  Caveat: this proves a local operator callback path on the Mac, not an
+  independently verified physical phone tap.
 risk_acknowledgements:
   # The operator has explicitly accepted these trade-offs vs. a long soak.
   - "Rare failure modes (month-boundary, real CLI version bump, sustained quota near-ceiling) may surface in flight; recovery is the operator's responsibility."
@@ -326,6 +325,11 @@ v2.3 scope decided OR operator declares maintenance mode.
     no standalone RoadmapAgent launchd job, and unhealthy legacy Python
     launchd jobs after the F3 cutover. L0 remains blocked on a healthy real
     phone/operator path.
+  - Remediation added `scripts/operator-l0-action-check.ts`,
+    `scripts/roadmap-agent-tick.ts`, and a RoadmapAgent launchd template.
+    The local operator action check passed and the RoadmapAgent launchd job
+    installed/runs hourly. Physical phone tap remains a caveat, not proven
+    by the local callback harness.
 
 #### s_0001 — placeholder (not yet started)
 

@@ -1,0 +1,24 @@
+{
+  "started_at": "2026-05-27T20:49:34.659Z",
+  "ended_at": "2026-05-27T20:49:34.949Z",
+  "mode": "auto-local-callback",
+  "task_id": "operator_l0_20260527204934659",
+  "event_dir": "/Users/lanston/.claude-code-247/aedev-daemon/events",
+  "approval": {
+    "result": "PASS",
+    "approval_id": "appr_mpojf45g_euh3ng",
+    "decision": "approve",
+    "via": "tailscale",
+    "started_at": "2026-05-27T20:49:34.659Z",
+    "ended_at": "2026-05-27T20:49:34.808Z"
+  },
+  "hold": {
+    "result": "PASS",
+    "hold_id": "evt_01KSNK69JRASH76RQ42TV9N8GN",
+    "action": "resolve",
+    "started_at": "2026-05-27T20:49:34.808Z",
+    "ended_at": "2026-05-27T20:49:34.949Z"
+  },
+  "caveat": "Automated local callback; not a physical phone tap.",
+  "verdict": "PASS"
+}

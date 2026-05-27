@@ -1,0 +1,10 @@
+{
+  "started_at": "2026-05-27T20:49:44.753Z",
+  "ended_at": "2026-05-27T20:49:44.765Z",
+  "task_id": "roadmap_launch_20260527204944753",
+  "roadmap_path": "/Users/lanston/projects/claude-code-247/docs/roadmap.md",
+  "event_dir": "/Users/lanston/.claude-code-247/aedev-daemon/events",
+  "scanned": 76,
+  "emitted": 75,
+  "verdict": "PASS"
+}
