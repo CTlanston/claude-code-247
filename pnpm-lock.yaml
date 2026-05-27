@@ -191,6 +191,8 @@ importers:
 
   packages/secrets: {}
 
+  packages/shadow: {}
+
   packages/validators:
     dependencies:
       '@aedev/core':

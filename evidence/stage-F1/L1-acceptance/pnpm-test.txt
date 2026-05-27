@@ -1,0 +1,10 @@
+
+ RUN  v3.2.4 /Users/lanston/projects/claude-code-247
+
+ ✓ packages/shadow/src/diff.test.ts (5 tests) 2ms
+
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+   Start at  01:50:23
+   Duration  158ms (transform 19ms, setup 0ms, collect 18ms, tests 2ms, environment 0ms, prepare 33ms)
+

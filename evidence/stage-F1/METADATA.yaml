@@ -1,0 +1,10 @@
+stage: F1
+substage: F1.exit
+l1_status: passed_partial
+l2_status: deferred_operator_override
+l3_status: deferred_operator_override
+acceptance_pass: 5
+acceptance_total: 5
+session_ids: [s_0002]
+notes:
+  scope_reduction: 24h shadow run not executed — operator-override marathon shipped only the diff tool; the real shadow loop reads dispatcher event streams from the daemon, which is wired in Stage F2.
