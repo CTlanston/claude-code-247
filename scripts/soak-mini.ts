@@ -40,7 +40,8 @@ interface SoakReport {
 }
 
 async function main(): Promise<void> {
-  const minutes = Number(process.argv[process.argv.indexOf('--minutes') + 1] ?? 1)
+  const idx = process.argv.indexOf('--minutes')
+  const minutes = idx >= 0 ? Number(process.argv[idx + 1] ?? '1') : 1
   const startedAt = new Date()
   const startMs = startedAt.getTime()
   const logDir = await fs.mkdtemp(path.join(os.tmpdir(), 'soak-mini-'))
