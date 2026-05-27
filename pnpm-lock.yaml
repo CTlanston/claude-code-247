@@ -162,6 +162,12 @@ importers:
         specifier: workspace:*
         version: link:../core
 
+  packages/push-policy:
+    dependencies:
+      '@aedev/event-log':
+        specifier: workspace:*
+        version: link:../event-log
+
   packages/qa:
     dependencies:
       '@aedev/core':
