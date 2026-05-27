@@ -37,8 +37,10 @@ export interface MissionRunOptions {
   /** URL passed to BrowserQA.run().  Default: a generated file:// reference under evidenceDir. */
   smokeBaseUrl?: string
 
-  // Phase-7/8 release wiring:
+  // Phase-7 preview wiring (runs BEFORE validators so they can see the preview URL):
   previewAdapter?: PreviewAdapter
+
+  // Phase-7/8 release wiring (runs AFTER AUTO_MERGE):
   releasePipeline?: ReleasePipeline
   /** True iff this mission may execute the production-deploy path on AUTO_MERGE. */
   productionDeployEnabled?: boolean
@@ -124,6 +126,27 @@ export class MissionRunner {
         const browserQA = this.opts.browserQA ?? new BrowserQA(new MockBrowserDriver(), { outputDir: evidenceDir })
         const url = this.opts.smokeBaseUrl ?? generatePreviewStub(evidenceDir, mission)
         browserQAResult = await browserQA.run(url)
+        Object.assign(bundle, readEvidenceBundle(evidenceDir))
+      }
+
+      // 4b. External preview deploy (runs before validators so they see the URL).
+      if (this.opts.requiresPreview && this.opts.previewAdapter) {
+        const previewResult = await this.opts.previewAdapter.deploy({
+          outputDir: evidenceDir,
+          projectName: mission.repoId,
+          branchName: `preview-${mission.id.slice(0, 8)}`,
+        })
+        if (previewResult.url) {
+          writeFileSync(join(evidenceDir, 'preview-url.txt'), previewResult.url + '\n')
+        }
+        writeFileSync(join(evidenceDir, 'preview-meta.json'), JSON.stringify({
+          provider: previewResult.provider,
+          url: previewResult.url,
+          deployedAt: previewResult.deployedAt,
+          requiresSecretGrant: previewResult.requiresSecretGrant,
+          requiredSecretName: previewResult.requiredSecretName,
+          error: previewResult.error,
+        }, null, 2))
         Object.assign(bundle, readEvidenceBundle(evidenceDir))
       }
 
