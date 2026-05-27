@@ -74,6 +74,12 @@ importers:
         specifier: workspace:*
         version: link:../event-log
 
+  packages/chaos:
+    dependencies:
+      '@aedev/event-log':
+        specifier: workspace:*
+        version: link:../event-log
+
   packages/claude247-bridge:
     dependencies:
       '@aedev/core':
