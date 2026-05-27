@@ -70,20 +70,14 @@ export class HoldRepository {
 
   /** Snapshot of all known holds across all tasks. */
   async snapshot(): Promise<HoldRecord[]> {
-    const map = new Map<string, HoldRecord>()
-    // Read across all tasks — production version would be paged.
-    // For Stage C tests, we work with a single task and call reduce(taskId).
-    // The polymorphic readAll is on the FileEventLog default impl.
+    let state = new Map<string, HoldRecord>()
     const anyLog = this.log as unknown as { readAll?: () => AsyncIterable<Event> }
     if (anyLog.readAll) {
       for await (const e of anyLog.readAll()) {
-        const next = holdReducer(map, e)
-        // mutate in place via Map identity preserved
-        map.clear()
-        for (const [k, v] of next) map.set(k, v)
+        state = holdReducer(state, e)
       }
     }
-    return [...map.values()]
+    return [...state.values()]
   }
 
   async snapshotForTask(taskId: string): Promise<HoldRecord[]> {
