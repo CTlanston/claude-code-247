@@ -204,9 +204,18 @@ importers:
 
   packages/roadmap-agent:
     dependencies:
+      '@aedev/agent-mesh':
+        specifier: workspace:*
+        version: link:../agent-mesh
+      '@aedev/approval-v2':
+        specifier: workspace:*
+        version: link:../approval-v2
       '@aedev/event-log':
         specifier: workspace:*
         version: link:../event-log
+      '@aedev/push-policy':
+        specifier: workspace:*
+        version: link:../push-policy
 
   packages/runner:
     dependencies:

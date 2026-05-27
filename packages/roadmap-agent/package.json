@@ -5,5 +5,10 @@
   "type": "module",
   "exports": { ".": "./src/index.ts" },
   "scripts": { "build": "tsc", "typecheck": "tsc --noEmit" },
-  "dependencies": { "@aedev/event-log": "workspace:*" }
+  "dependencies": {
+    "@aedev/event-log": "workspace:*",
+    "@aedev/approval-v2": "workspace:*",
+    "@aedev/agent-mesh": "workspace:*",
+    "@aedev/push-policy": "workspace:*"
+  }
 }
