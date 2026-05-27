@@ -70,20 +70,27 @@ function publishUrl(cfg: NtfyConfig, message: string, title: string): string {
   return `${cfg.server}/${cfg.topic}/publish?${params.toString()}`
 }
 
-async function publishReplyPrompt(cfg: NtfyConfig, title: string, command: string): Promise<void> {
+async function publishReplyPrompt(
+  cfg: NtfyConfig,
+  title: string,
+  command: string,
+  context: string,
+): Promise<void> {
   const url = publishUrl(cfg, command, title)
-  await publish(cfg, title, `Tap the button below. Safari may open a plain ntfy response; that is expected.`, {
-    click: url,
-    actions: `view, Send ${command.split(' ')[0]}, ${url}, clear=true`,
-  })
-}
-
-async function publishInstruction(cfg: NtfyConfig, title: string, message: string): Promise<void> {
-  await fetch(`${cfg.server}/${cfg.topic}`, {
-    method: 'POST',
-    headers: { title, priority: '4', tags: 'warning' },
-    body: message,
-  })
+  await publish(
+    cfg,
+    title,
+    [
+      context,
+      '',
+      `Tap the button below to publish: ${command}`,
+      'Safari may open a plain ntfy response; that is expected.',
+    ].join('\n'),
+    {
+      click: url,
+      actions: `view, Send ${command.split(' ')[0]}, ${url}, clear=true`,
+    },
+  )
 }
 
 async function pollMessages(cfg: NtfyConfig, sinceUnix: number): Promise<NtfyMessage[]> {
@@ -120,18 +127,12 @@ class NtfyReplyTransport implements ApprovalTransport {
   }
   async send(req: ApprovalRequest): Promise<ApprovalResponse> {
     const approveCode = code()
-    await publishInstruction(
+    await publishReplyPrompt(
       this.cfg,
-      'claude-code-247 approval reply check',
-      [
-        `Approval id: ${req.approvalId}`,
-        '',
-        `In the ntfy app, publish this exact message to the same topic:`,
-        '',
-        `APPROVE ${approveCode}`,
-      ].join('\n'),
+      'claude-code-247 approve via browser',
+      `APPROVE ${approveCode}`,
+      `Approval id: ${req.approvalId}`,
     )
-    await publishReplyPrompt(this.cfg, 'claude-code-247 approve via browser', `APPROVE ${approveCode}`)
     console.log(`[phone-reply] waiting for ntfy message: APPROVE ${approveCode}`)
     const reply = await waitForReply(this.cfg, `APPROVE ${approveCode}`, this.sinceUnix)
     return {
@@ -203,14 +204,7 @@ async function main(): Promise<void> {
     anchor: taskId,
   })
   const resolveCode = code()
-  await publishInstruction(cfg, 'claude-code-247 HOLD reply check', [
-    `HOLD id: ${holdId}`,
-    '',
-    `In the ntfy app, publish this exact message to the same topic:`,
-    '',
-    `RESOLVE ${resolveCode}`,
-  ].join('\n'))
-  await publishReplyPrompt(cfg, 'claude-code-247 resolve via browser', `RESOLVE ${resolveCode}`)
+  await publishReplyPrompt(cfg, 'claude-code-247 resolve via browser', `RESOLVE ${resolveCode}`, `HOLD id: ${holdId}`)
   console.log(`[phone-reply] waiting for ntfy message: RESOLVE ${resolveCode}`)
   const holdReply = await waitForReply(cfg, `RESOLVE ${resolveCode}`, sinceUnix)
   await holdService.resolve({ taskId, holdId, by: 'lanston-ntfy-phone', reason: 'phone ntfy reply check resolved' })
