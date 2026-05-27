@@ -17,10 +17,9 @@ jobs:
         with:
           fetch-depth: 0
       - uses: gitleaks/gitleaks-action@v2
-        with:
-          config_path: packages/security/redteam/gitleaks.toml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: packages/security/redteam/gitleaks.toml
 
   semgrep:
     runs-on: ubuntu-latest
