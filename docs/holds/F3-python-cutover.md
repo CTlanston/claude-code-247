@@ -1,9 +1,11 @@
 # HOLD · Stage F3 — Python `git rm` + cutover
 
-**Status:** OPEN
+**Status:** RESOLVED (approved)
 **Reason:** `secret_grant_request`-class (operator-only resolution per workbook §8.1)
 **Opened:** 2026-05-27 by session s_0002
-**Resolves to:** approved (run F3) | rejected (defer, keep Python tree)
+**Resolved:** 2026-05-27 by operator (lanston) — explicit statement "F3批准了"
+**Resolution:** approved; F3 git rm executed in commit [F3.1] (see git log)
+**Authority:** ADR-0011 (operator override paper trail), bound 3
 
 ## What F3 would do
 
