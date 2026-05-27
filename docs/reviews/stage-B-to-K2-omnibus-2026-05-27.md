@@ -5,6 +5,12 @@
 > NOT consult `evidence/stage-*/L1-acceptance/` and to work from the source
 > code + workbook + tests alone.
 
+> **Post-GA update (2026-05-27):** This report is the pre-GA L2 record.
+> Its 72h/real-window recommendations were later resolved for GA by
+> ADR-0012 and ADR-0013, which accepted 30-minute real-clock K/K2 soaks.
+> Real ntfy/Tailscale approval latency is now tracked separately by
+> ADR-0014 as a post-GA hardening gate.
+
 ## Verdict per stage
 
 | Stage | L1 acceptance | Smells | Verdict |
@@ -194,7 +200,7 @@ Every event emission I sampled carries an `idempotency_source`:
 3. **Reconcile workbook §3 wording for hold event kinds** — file a §7.4 amendment to rename `hold.created` / `hold.resolved` / `hold.escalated` / `hold.dropped` to the 3-segment forms (`hold.policy.*`) the code uses. ADR-0011 §open-items already lists this.
 4. **Add a daemon-process lint rule** that bans `child_process.spawn` (and `exec`/`execSync`/`fork`) in `packages/daemon/src/**`. The current GROUND RULE 8 invariant is structural; codifying it as a no-restricted-imports rule (or a unit test that grep-checks `packages/daemon/src/`) prevents drift.
 5. **Add a `push.cap.allowed` / `push.cap.denied` idempotency anchor** so retry-storms don't produce a flood of duplicate denial events. Low priority; current behavior is correct, just noisy.
-6. **Promote real-clock observation windows** for GA: F2 7-day dual-site, K 72h soak, K2 72h soak, H Linux 24h. The compressed-to-1-day equivalents are explicit per ADR-0011 bound 2 and gate the rc tags only.
+6. **Promote real-clock observation windows** for GA: originally called for F2 7-day dual-site, K 72h soak, K2 72h soak, H Linux 24h. Post-GA status: K/K2 are superseded by ADR-0012/0013 30-minute real-clock standards; remaining real-world transport latency is tracked by ADR-0014 hardening.
 7. **Tidy Python tree residue** — empty `orchestrator/`, `gateway/`, `runner/`, `validator/`, `dashboard/`, `memory/`, `tests/` directories with only `__pycache__/` should be removed for filesystem cleanliness. Not a correctness issue.
 8. **Add a semgrep / static-scan stage** to the CI workflow per Stage L workbook L1 ("static scan 0 high severity"). Gitleaks shipped; semgrep not located.
 9. **Workbook `@aedev/event-log` vs `@claude247/event-log` namespace inconsistency** (ADR-0011 open item) — either rename the package or amend the workbook.

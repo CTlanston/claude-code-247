@@ -13,7 +13,7 @@ jobs:
   gitleaks:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - uses: gitleaks/gitleaks-action@v2
@@ -26,7 +26,7 @@ jobs:
     container:
       image: returntocorp/semgrep:latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: semgrep p/ci p/typescript p/owasp-top-ten
         # `--severity ERROR` makes this a gate; INFO/WARN findings are
         # reported but do not fail the build. Stage L L1 says "0 high
@@ -59,13 +59,13 @@ jobs:
     # The mesh-on red-team round-3 must remain 0/30 leak on every PR.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v4
         with:
           version: 10
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - name: red-team round-3 (Stage K2 L2)

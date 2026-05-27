@@ -15,10 +15,10 @@ schema_version: 1
 version_target: v2.2.0
 current_part: I            # I = v2.1 基座 · II = v2.2 Agent Mesh
 current_stage: GA          # v2.1.0 + v2.2.0 GA tags placed on origin/main
-current_substage: GA.maintenance   # all 20 stages L1+L2+L3 PASS; both ADR-0012/0013 Accepted
-last_updated_utc: 2026-05-27T17:30:00Z
-last_session_id: s_0003
-total_sessions: 3
+current_substage: GA.hardening   # GA complete; post-GA hardening/ops cadence active
+last_updated_utc: 2026-05-27T18:15:00Z
+last_session_id: s_0004
+total_sessions: 4
 weeks_elapsed: 0
 weeks_remaining: 0
 open_holds: 0
@@ -33,14 +33,16 @@ next_action: |
 
   Workbook execution is COMPLETE for both Part I (v2.1) and Part II (v2.2).
   Remaining items are maintenance-class, not stage-class:
-    - Watch the first real-clock chaos drill cadence (Stage 3.99 monthly)
-    - Optional: Node 20 → 24 in CI workflows before 2026-06-02 deprecation
-    - Install scripts/rollback-drill-random.ts in launchd (operator host-side)
+    - Watch the first scheduled rollback drill cadence (Stage 3.99 monthly)
+    - Node 24 GitHub Actions migration landed in .github/workflows/{ci,security}.yml
+    - rollback-drill launchd template is installed on the operator host
+    - ADR-0014 moves real ntfy/Tailscale approval_e2e_p95_min < 5 min to
+      post-GA hardening; GA remains based on ADR-0012/0013 30-min real-clock soaks
     - If a v2.1.x or v2.2.x hotfix lands: write ADR-NNNN-rev1 per the
       ADR-0012/0013 templates and re-soak.
 sla:
   daemon_recovery_p95_sec: 90
-  approval_e2e_p95_min: 5
+  approval_e2e_p95_min: 5   # post-GA hardening gate per ADR-0014
   redteam_pass_rate: 1.00
   cli_session_pool_min: 1
   reducer_consistency: 1.00
@@ -261,6 +263,11 @@ sla:
 
 ### Stage K — 72h Soak + Release · 5d + 72h
 
+> **GA supersession:** ADR-0012 Accepted the operator-revised 30-minute
+> real-clock GA standard in place of this original 72h workbook target.
+> The original 72h line remains as historical workbook intent, not the
+> current v2.1.0 GA blocker.
+
 - **目标** v2.1 最终 soak + release。
 - **交付** 72h soak 报告 `M22c_SOAK_FINAL.md` 含每 6h 一次混沌注入记录；`v2.1.0` tag；release notes。
 - **L1** 72h 期间：`moves_completed > 0` / `interrupts_auto_resolved >= injected_count - 1` / `push_rejections > 0`（来自红队）/ daemon 重启恢复 p95 < 90s。
@@ -310,6 +317,11 @@ sla:
 - **退出 → K2**
 
 ### Stage K2 — v2.2 Integration Soak + Release · W16
+
+> **GA supersession:** ADR-0013 Accepted the operator-revised 30-minute
+> mesh-on real-clock GA standard in place of this original 72h workbook
+> target. The original 72h line remains as historical workbook intent, not
+> the current v2.2.0 GA blocker.
 
 - **目标** v2.2 端到端 soak + release。
 - **交付** 72h soak 报告 `M23_AGENT_MESH_SOAK.md`；`v2.2.0` tag；升级/回滚开关 (feature flag `mesh.enabled`)。
@@ -582,6 +594,37 @@ ApprovalGateway: ntfy → 操作员手机
 - notes: <一两句>
 ```
 
+### s_0004 — 2026-05-27T18:15:00Z — post-GA residual close-out
+
+- stage_in: GA.maintenance → stage_out: GA.hardening
+- actor: claude, under operator instruction to close residual maintenance items
+- changes:
+  - GitHub Actions moved from Node 20-era actions to Node 24-era actions
+    (`actions/checkout@v6`, `actions/setup-node@v6`, `node-version: '24'`).
+  - `scripts/launchd/com.claude247.rollback-drill.plist.tpl` added and
+    installed to the operator's LaunchAgents path.
+  - Manual rollback drill PASS:
+    `evidence/drills/rollback-2026-05-27T18-35-01-958Z.md`.
+  - ADR-0014 Accepted: real ntfy/Tailscale `approval_e2e_p95_min < 5`
+    remains required, but as post-GA hardening evidence rather than a
+    retroactive v2.1.0/v2.2.0 GA blocker.
+  - Stage K/K2 original 72h workbook text annotated as superseded for GA
+    by ADR-0012/0013 30-min real-clock standards.
+- l1:
+  - `pnpm lint` PASS
+  - `pnpm typecheck` PASS
+  - `pnpm vitest run packages/security/src/redteam-round3.test.ts` PASS
+  - `pnpm tsx scripts/rollback-drill-random.ts` PASS
+  - `plutil -lint scripts/launchd/com.claude247.rollback-drill.plist.tpl` PASS
+  - `launchctl print gui/$(id -u)/com.claude247.rollback-drill` PASS
+  - workflow grep found no Node20/action-v4 residue and expected Node24/action-v6 entries
+- holds_opened: 0 · holds_resolved: 0
+- next_action: complete the post-GA hardening approval SLA runbook/harness
+  and collect 25 real phone/Tailscale cycles under `evidence/approval-e2e/`.
+- notes:
+  - No GA tags were moved. This close-out is forward maintenance on top of
+    the existing accepted GA record.
+
 ### s_0003 — 2026-05-27T17:30:00Z — operator A-class completion (GA tags placed)
 
 - stage_in: K2.exit-rc2-closed → stage_out: GA.maintenance
@@ -753,6 +796,7 @@ ApprovalGateway: ntfy → 操作员手机
 | 2026-05-27 | 1.3 | s_0002 B/C/D round: rc2 K2 tag; ADR-0012/0013 placeholders; CI workflows; quota oracle; judge git fetch; chaos guardrails; W11 GO; rollback drill cron | claude (under ADR-0011) | ADR-0012, ADR-0013, w11-go-no-go, proposals/, .github/workflows/ |
 | 2026-05-27 | 1.4 | apply B8 + B9 amendments: hold.policy 3-segment naming and @aedev package namespace | operator + reviewer | proposals/applied/workbook-amend-2026-05-27-*.md |
 | 2026-05-27 | 1.5 | s_0003 A-class completion: ADR-0012/0013 Accepted on real-clock 30-min soak; 20/20 L3 PASS; v2.1.0 + v2.2.0 GA tags placed; release-pipeline GR8 refactor; §0 advanced to GA.maintenance | operator + claude (post-merge fix-ups) | ADR-0012, ADR-0013, evidence/stage-*/L3-validate/, evidence/stage-K{,2}/soak/ |
+| 2026-05-27 | 1.6 | s_0004 post-GA residual close-out: Node24 workflows, rollback drill launchd template/install, ADR-0014 approval SLA deferral, K/K2 30-min supersession note | claude (under operator instruction) | ADR-0014, scripts/launchd/com.claude247.rollback-drill.plist.tpl, docs/operations/rollback-drill-cadence.md |
 
 ---
 
