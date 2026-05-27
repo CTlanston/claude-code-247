@@ -90,7 +90,8 @@ describe('sentinel · interceptor + LLM second-opinion (Stage M4 L1)', () => {
   it('case 6: rule-based hard_block is NOT re-reviewed (LLM not invoked)', async () => {
     const { log } = await mkLog()
     let spawned = 0
-    const counterSpawn = (() => { spawned++; return fakeSpawn({ verdict: 'allow', reason: 'unexpected' })() }) as unknown as typeof import('node:child_process').spawn
+    const inner = fakeSpawn({ verdict: 'allow', reason: 'unexpected' })
+    const counterSpawn = ((cmd: string, args: readonly string[]) => { spawned++; return (inner as unknown as (c: string, a: readonly string[]) => ChildProcess)(cmd, args) }) as unknown as typeof import('node:child_process').spawn
     const llm = new LlmReviewer({ spawnFn: counterSpawn })
     const s = new ToolCallSentinel({ log, taskId: 'task_m4llm', llm })
     await s.intercept({ tool: 'bash', args: 'rm -rf /etc' }, 'c-rm')
@@ -100,7 +101,8 @@ describe('sentinel · interceptor + LLM second-opinion (Stage M4 L1)', () => {
   it('case 7: rule-based allow is NOT re-reviewed (LLM not invoked)', async () => {
     const { log } = await mkLog()
     let spawned = 0
-    const counterSpawn = (() => { spawned++; return fakeSpawn({ verdict: 'allow', reason: 'unexpected' })() }) as unknown as typeof import('node:child_process').spawn
+    const inner = fakeSpawn({ verdict: 'allow', reason: 'unexpected' })
+    const counterSpawn = ((cmd: string, args: readonly string[]) => { spawned++; return (inner as unknown as (c: string, a: readonly string[]) => ChildProcess)(cmd, args) }) as unknown as typeof import('node:child_process').spawn
     const llm = new LlmReviewer({ spawnFn: counterSpawn })
     const s = new ToolCallSentinel({ log, taskId: 'task_m4llm', llm })
     await s.intercept({ tool: 'bash', args: 'ls -la' }, 'c-ls')
