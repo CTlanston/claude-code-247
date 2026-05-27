@@ -1,0 +1,10 @@
+
+ RUN  v3.2.4 /Users/lanston/projects/claude-code-247
+
+ ✓ packages/daemon/src/obs/obs.test.ts (6 tests) 2ms
+
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+   Start at  01:58:29
+   Duration  173ms (transform 43ms, setup 0ms, collect 45ms, tests 2ms, environment 0ms, prepare 33ms)
+
