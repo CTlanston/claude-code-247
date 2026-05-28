@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "stageId": "stage8-review-real",
+  "mode": "real",
+  "startedAt": "2026-05-28T08:33:34.508Z",
+  "endedAt": "2026-05-28T08:34:19.898Z",
+  "durationMs": 45390,
+  "iterationsRequested": 1,
+  "iterationsCompleted": 1,
+  "status": "pass",
+  "failures": [],
+  "acceptanceReports": [
+    "/Users/lanston/projects/claude-code-247-v23/evidence/v23/stage8-review-real-real-1/acceptance.json"
+  ],
+  "reportPath": "/Users/lanston/projects/claude-code-247-v23/evidence/v23/stage8-review-real/guarded-soak-real/guarded-soak.json"
+}

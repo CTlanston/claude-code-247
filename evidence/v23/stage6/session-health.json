@@ -1,5 +1,5 @@
 {
-  "checkedAt": "2026-05-28T08:17:24.415Z",
+  "checkedAt": "2026-05-28T08:31:29.981Z",
   "sessions": [
     {
       "id": "claude-cli",
@@ -7,7 +7,7 @@
       "family": "anthropic",
       "healthy": true,
       "active": 0,
-      "lastHeartbeatAt": "2026-05-28T08:17:24.378Z",
+      "lastHeartbeatAt": "2026-05-28T08:31:29.947Z",
       "failureReason": null
     },
     {
@@ -16,7 +16,7 @@
       "family": "openai",
       "healthy": true,
       "active": 0,
-      "lastHeartbeatAt": "2026-05-28T08:17:24.415Z",
+      "lastHeartbeatAt": "2026-05-28T08:31:29.981Z",
       "failureReason": null
     }
   ]

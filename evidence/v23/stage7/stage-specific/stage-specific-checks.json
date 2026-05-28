@@ -1,0 +1,7 @@
+[
+  {
+    "name": "stage7 mission_os dashboard contract",
+    "passed": true,
+    "detail": "dashboard exposes queue, worker, checkpoint, draft PR, and acceptance status"
+  }
+]

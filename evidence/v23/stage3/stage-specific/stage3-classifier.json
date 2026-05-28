@@ -1,0 +1,29 @@
+[
+  {
+    "id": "todo-1",
+    "source": "todo",
+    "title": "TODO cleanup",
+    "body": "TODO: cleanup router",
+    "decision": "proposal_only",
+    "reason": "TODO candidates are noisy until approved"
+  },
+  {
+    "id": "issue-1",
+    "source": "github-issue",
+    "title": "Fix bug",
+    "body": "low risk",
+    "labels": [
+      "aedev:auto"
+    ],
+    "decision": "execute_now",
+    "reason": "low-risk candidate"
+  },
+  {
+    "id": "blocked-1",
+    "source": "manual",
+    "title": "Read .env",
+    "body": "touch .env and secrets/key",
+    "decision": "blocked",
+    "reason": "blocked by destructive or secret-touching pattern"
+  }
+]

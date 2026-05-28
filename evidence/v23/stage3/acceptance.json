@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
   "stageId": "stage3",
-  "startedAt": "2026-05-28T08:15:33.519Z",
-  "endedAt": "2026-05-28T08:15:34.119Z",
+  "startedAt": "2026-05-28T08:31:27.831Z",
+  "endedAt": "2026-05-28T08:31:28.175Z",
   "commands": [
     {
       "command": "pnpm test:mission-os:dry-soak -- --iterations 1",
       "exitCode": 0,
-      "durationMs": 281,
+      "durationMs": 269,
       "stdoutPath": "/Users/lanston/projects/claude-code-247-v23/evidence/v23/stage3/pnpm.out",
       "stderrPath": "/Users/lanston/projects/claude-code-247-v23/evidence/v23/stage3/pnpm.err"
     }
@@ -31,6 +31,13 @@
       "role": "validator",
       "provider": "codex-cli",
       "reason": "selected codex-cli for validator"
+    }
+  ],
+  "stageChecks": [
+    {
+      "name": "stage3 mixed intake classifier",
+      "passed": true,
+      "detail": "TODO proposal_only, auto issue execute_now, secret touch blocked"
     }
   ],
   "validatorLeakScan": {

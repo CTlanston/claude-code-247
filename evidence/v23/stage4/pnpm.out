@@ -3,8 +3,8 @@
 > node --import tsx scripts/mission-os-dry-soak.ts -- --iterations 1
 
 {
-  "startedAt": "2026-05-28T08:16:05.029Z",
-  "endedAt": "2026-05-28T08:16:05.051Z",
+  "startedAt": "2026-05-28T08:31:28.671Z",
+  "endedAt": "2026-05-28T08:31:28.683Z",
   "iterations": 1,
   "executed": 1,
   "held": 0,

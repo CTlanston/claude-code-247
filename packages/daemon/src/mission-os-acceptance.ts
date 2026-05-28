@@ -31,6 +31,7 @@ export interface MissionOsAcceptanceInput {
   commands: AcceptanceCommandResult[]
   evidencePaths: string[]
   routeDecisions: AcceptanceRouteDecision[]
+  stageChecks?: AcceptanceCheck[]
   validatorLeakScan: AcceptanceCheck
   sideEffectIdempotency: AcceptanceCheck
   draftPr: AcceptanceCheck
@@ -69,6 +70,7 @@ export function buildMissionOsAcceptanceReport(
   }
 
   for (const check of [
+    ...(input.stageChecks ?? []),
     input.validatorLeakScan,
     input.sideEffectIdempotency,
     input.draftPr,

@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
   "stageId": "stage5",
-  "startedAt": "2026-05-28T08:16:48.670Z",
-  "endedAt": "2026-05-28T08:16:49.048Z",
+  "startedAt": "2026-05-28T08:31:29.034Z",
+  "endedAt": "2026-05-28T08:31:29.384Z",
   "commands": [
     {
       "command": "pnpm test:mission-os:dry-soak -- --iterations 1",
       "exitCode": 0,
-      "durationMs": 290,
+      "durationMs": 274,
       "stdoutPath": "/Users/lanston/projects/claude-code-247-v23/evidence/v23/stage5/pnpm.out",
       "stderrPath": "/Users/lanston/projects/claude-code-247-v23/evidence/v23/stage5/pnpm.err"
     }
@@ -31,6 +31,13 @@
       "role": "validator",
       "provider": "codex-cli",
       "reason": "selected codex-cli for validator"
+    }
+  ],
+  "stageChecks": [
+    {
+      "name": "stage5 validator isolation",
+      "passed": true,
+      "detail": "0 forbidden tokens; removed coder-transcript.txt, model-name.txt, token-cost.json"
     }
   ],
   "validatorLeakScan": {

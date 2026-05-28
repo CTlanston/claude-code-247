@@ -1,0 +1,19 @@
+{
+  "name": "side effect idempotency",
+  "passed": true,
+  "detail": "same idempotency key reused; one draft PR created",
+  "pushedKeys": [
+    "sha256:bf5e5af70e681dfb4117e1dc38bfdf3d9d363ba3b42dd493c6203918a376800e"
+  ],
+  "prKeys": [
+    "sha256:bf5e5af70e681dfb4117e1dc38bfdf3d9d363ba3b42dd493c6203918a376800e"
+  ],
+  "createdPrs": [
+    {
+      "number": 1,
+      "url": "https://example.test/pr/1",
+      "state": "open",
+      "draft": true
+    }
+  ]
+}

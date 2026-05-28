@@ -1,0 +1,19 @@
+{
+  "check": {
+    "name": "stage1 subscription worker routing",
+    "passed": true,
+    "detail": "coder routed to local subscription provider codex-cli"
+  },
+  "routeDecisions": [
+    {
+      "role": "coder",
+      "provider": "codex-cli",
+      "reason": "selected codex-cli for coder"
+    },
+    {
+      "role": "validator",
+      "provider": "codex-cli",
+      "reason": "selected codex-cli for validator"
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+
+> aedev@0.0.1 test:mission-os:real-soak /Users/lanston/projects/claude-code-247-v23
+> node --import tsx scripts/mission-os-real-soak.ts -- --stage stage8-review-real-real-1 --providers claude,codex --timeout-ms 180000
+
+{
+  "schemaVersion": 1,
+  "stageId": "stage8-review-real-real-1",
+  "startedAt": "2026-05-28T08:33:35.359Z",
+  "endedAt": "2026-05-28T08:34:19.885Z",
+  "status": "pass",
+  "providers": [
+    {
+      "provider": "claude",
+      "status": "pass",
+      "available": true,
+      "exitCode": 0,
+      "durationMs": 13627,
+      "evidenceDir": "/Users/lanston/projects/claude-code-247-v23/evidence/v23/stage8-review-real-real-1/real-soak-claude"
+    },
+    {
+      "provider": "codex",
+      "status": "pass",
+      "available": true,
+      "exitCode": 0,
+      "durationMs": 30895,
+      "evidenceDir": "/Users/lanston/projects/claude-code-247-v23/evidence/v23/stage8-review-real-real-1/real-soak-codex"
+    }
+  ],
+  "reportPath": "/Users/lanston/projects/claude-code-247-v23/evidence/v23/stage8-review-real-real-1/real-soak.json"
+}

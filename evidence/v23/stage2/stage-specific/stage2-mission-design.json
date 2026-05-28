@@ -1,0 +1,156 @@
+{
+  "missionId": "acceptance-stage2",
+  "title": "Add OAuth login",
+  "brainstormSummary": {
+    "intent": "Add OAuth login with security review, dependency changes, rollback plan, docs impact, and CI validation.",
+    "constraints": [
+      "v2.3 stops at draft PR; automatic merge is out of scope."
+    ],
+    "tradeoffs": [
+      "Higher autonomy requires stricter HOLD behavior when evidence, sessions, or approvals are incomplete."
+    ],
+    "openQuestions": [
+      "Operator approval is required before executing checkpoint-gated work."
+    ]
+  },
+  "prd": {
+    "summary": "Add OAuth login with security review, dependency changes, rollback plan, docs impact, and CI validation.",
+    "goals": [
+      "Produce a reviewed implementation plan and evidence-backed draft PR.",
+      "Keep execution local-first and resumable through bounded moves."
+    ],
+    "nonGoals": [
+      "Automatic merge is out of scope for v2.3."
+    ],
+    "acceptanceCriteria": [
+      "Task DAG is valid and every runnable task declares expected evidence.",
+      "Reviewer and validator consume evidence-only context.",
+      "Final output is a draft PR or a local HOLD with evidence."
+    ],
+    "risks": [
+      "Local subscription CLI sessions may expire or hit quota.",
+      "Mixed intake can create noisy candidates without classifier gates."
+    ],
+    "rollbackPlan": "Disable mission scheduling; leave any created branch as an unmerged draft PR.",
+    "documentationImpact": "Update ADR, operations notes, and per-repo memory when implementation changes behavior."
+  },
+  "adrDraft": {
+    "title": "ADR: Add OAuth login",
+    "context": "Add OAuth login with security review, dependency changes, rollback plan, docs impact, and CI validation.",
+    "decision": "Implement this mission through the v2.3 local Mission OS pipeline.",
+    "alternatives": [
+      "Manual one-off implementation without Mission OS orchestration.",
+      "API-only autonomous agents without local subscription routing."
+    ],
+    "consequences": "The daemon may open a draft PR after validation, but must not merge it automatically."
+  },
+  "roadmap": [
+    "Clarify mission intent and acceptance criteria.",
+    "Run bounded coder moves through the local worker pool.",
+    "Review and validate from redacted evidence.",
+    "Prepare documentation updates and draft PR."
+  ],
+  "checkpoints": [
+    {
+      "id": "cp-design",
+      "title": "Review Finalize PRD, ADR draft, and task DAG",
+      "reason": "Architecture, dependency, security, workflow, or large-refactor risk requires operator approval.",
+      "required": true
+    },
+    {
+      "id": "cp-implement",
+      "title": "Review Implement bounded local changes",
+      "reason": "Architecture, dependency, security, workflow, or large-refactor risk requires operator approval.",
+      "required": true
+    },
+    {
+      "id": "cp-validate",
+      "title": "Review Review and validate evidence-only output",
+      "reason": "Architecture, dependency, security, workflow, or large-refactor risk requires operator approval.",
+      "required": true
+    },
+    {
+      "id": "cp-document",
+      "title": "Review Update docs and memory proposal",
+      "reason": "Architecture, dependency, security, workflow, or large-refactor risk requires operator approval.",
+      "required": true
+    }
+  ],
+  "taskDag": [
+    {
+      "id": "design",
+      "title": "Finalize PRD, ADR draft, and task DAG",
+      "role": "planner",
+      "parentIds": [],
+      "contextFiles": [
+        "README.md",
+        "docs/adr/"
+      ],
+      "writeFiles": [
+        "docs/adr/"
+      ],
+      "expectedEvidence": [
+        "mission-design.json",
+        "mission-design.md"
+      ],
+      "checkpointGate": "cp-design"
+    },
+    {
+      "id": "implement",
+      "title": "Implement bounded local changes",
+      "role": "coder",
+      "parentIds": [
+        "design"
+      ],
+      "contextFiles": [],
+      "writeFiles": [
+        "src/**",
+        "packages/**",
+        "tests/**"
+      ],
+      "expectedEvidence": [
+        "git.diff",
+        "test-summary.md",
+        "done-report.md"
+      ],
+      "checkpointGate": "cp-implement"
+    },
+    {
+      "id": "validate",
+      "title": "Review and validate evidence-only output",
+      "role": "validator",
+      "parentIds": [
+        "implement"
+      ],
+      "contextFiles": [],
+      "writeFiles": [],
+      "expectedEvidence": [
+        "validator-result.json",
+        "risk-report.md"
+      ],
+      "checkpointGate": "cp-validate"
+    },
+    {
+      "id": "document",
+      "title": "Update docs and memory proposal",
+      "role": "doc-writer",
+      "parentIds": [
+        "validate"
+      ],
+      "contextFiles": [
+        "README.md",
+        "docs/OPERATIONS.md",
+        "CHANGELOG.md"
+      ],
+      "writeFiles": [
+        "README.md",
+        "docs/OPERATIONS.md",
+        "CHANGELOG.md"
+      ],
+      "expectedEvidence": [
+        "docs-summary.md"
+      ],
+      "checkpointGate": "cp-document"
+    }
+  ]
+}

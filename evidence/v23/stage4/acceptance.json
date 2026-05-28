@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
   "stageId": "stage4",
-  "startedAt": "2026-05-28T08:16:04.769Z",
-  "endedAt": "2026-05-28T08:16:05.384Z",
+  "startedAt": "2026-05-28T08:31:28.426Z",
+  "endedAt": "2026-05-28T08:31:28.779Z",
   "commands": [
     {
       "command": "pnpm test:mission-os:dry-soak -- --iterations 1",
       "exitCode": 0,
-      "durationMs": 301,
+      "durationMs": 269,
       "stdoutPath": "/Users/lanston/projects/claude-code-247-v23/evidence/v23/stage4/pnpm.out",
       "stderrPath": "/Users/lanston/projects/claude-code-247-v23/evidence/v23/stage4/pnpm.err"
     }
@@ -31,6 +31,13 @@
       "role": "validator",
       "provider": "codex-cli",
       "reason": "selected codex-cli for validator"
+    }
+  ],
+  "stageChecks": [
+    {
+      "name": "stage4 stage6 bounded DAG and draft gate",
+      "passed": true,
+      "detail": "completed 5 moves and blocked auto-merge into WAITING"
     }
   ],
   "validatorLeakScan": {

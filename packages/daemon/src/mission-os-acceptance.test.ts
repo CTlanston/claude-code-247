@@ -31,6 +31,48 @@ describe('Mission OS acceptance report', () => {
     expect(report.failures[0]).toContain('missing evidence path')
   })
 
+  it('fails when a stage-specific check fails', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mission-os-acceptance-'))
+    const evidencePath = join(dir, 'route.json')
+    writeFileSync(evidencePath, '{}\n')
+
+    const report = buildMissionOsAcceptanceReport({
+      ...validInput(evidencePath),
+      stageChecks: [{ name: 'stage4 dag runtime', passed: false, detail: 'missing move manifest' }],
+    }, join(dir, 'acceptance.json'))
+
+    expect(report.status).toBe('failed')
+    expect(report.failures).toContain('stage4 dag runtime: missing move manifest')
+  })
+
+  it('preserves passing stage-specific checks in the report', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mission-os-acceptance-'))
+    const evidencePath = join(dir, 'route.json')
+    writeFileSync(evidencePath, '{}\n')
+
+    const report = buildMissionOsAcceptanceReport({
+      ...validInput(evidencePath),
+      stageChecks: [{ name: 'stage2 mission design', passed: true, detail: 'schema valid' }],
+    }, join(dir, 'acceptance.json'))
+
+    expect(report.status).toBe('pass')
+    expect(report.stageChecks?.[0]?.name).toBe('stage2 mission design')
+  })
+
+  it('marks a report as hold when checks pass but holds are present', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mission-os-acceptance-'))
+    const evidencePath = join(dir, 'route.json')
+    writeFileSync(evidencePath, '{}\n')
+
+    const report = buildMissionOsAcceptanceReport({
+      ...validInput(evidencePath),
+      holds: ['HOLD-SESSION-POOL'],
+    }, join(dir, 'acceptance.json'))
+
+    expect(report.status).toBe('hold')
+    expect(report.holds).toEqual(['HOLD-SESSION-POOL'])
+  })
+
   it('writes acceptance.json to the stage evidence directory', () => {
     const dir = mkdtempSync(join(tmpdir(), 'mission-os-acceptance-'))
     const evidenceDir = join(dir, 'evidence')

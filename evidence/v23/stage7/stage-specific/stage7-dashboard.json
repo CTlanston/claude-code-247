@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-05-28T00:00:00.000Z",
+  "missions": {
+    "open": 2,
+    "total": 3
+  },
+  "tasks": {
+    "running": 1,
+    "queued": 4
+  },
+  "holds": {
+    "open": 0
+  },
+  "approvals": {
+    "pending": 1
+  },
+  "cli": {
+    "session_health": "healthy",
+    "quota_fraction": 0.2
+  },
+  "mission_os": {
+    "queue_depth": 4,
+    "active_workers": 2,
+    "healthy_workers": 3,
+    "worker_providers": {
+      "claude-cli": 1,
+      "codex-cli": 1,
+      "gemini-api": 1
+    },
+    "checkpoint_waits": 1,
+    "draft_pr_waits": 2,
+    "last_acceptance_status": "pass"
+  }
+}

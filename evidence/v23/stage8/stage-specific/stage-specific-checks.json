@@ -1,0 +1,7 @@
+[
+  {
+    "name": "stage8 guarded soak entrypoint",
+    "passed": true,
+    "detail": "guarded soak script is wired; guarded reports are produced by the outer soak command"
+  }
+]

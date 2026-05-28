@@ -6,7 +6,13 @@ import type {
   AedevDb, Mission, MissionDesign, RunnerConfig, RunResult, Task, ValidatorResult, MergePolicyDecision,
 } from '@aedev/core'
 import { RunnerManager, WorkerPoolRouter, type ModelFamily, type RouteDecision, type WorkerSession } from '@aedev/runner'
-import { MergePolicy, RiskScorer, type MergePolicyEvidence } from '@aedev/validators'
+import {
+  assertDifferentFamily,
+  FamilyConflictError,
+  MergePolicy,
+  RiskScorer,
+  type MergePolicyEvidence,
+} from '@aedev/validators'
 import { BrowserQA, MockBrowserDriver, type BrowserQAResult } from '@aedev/qa'
 import type { PreviewAdapter, PreviewResult } from '@aedev/preview'
 import { RolePipeline } from './roles/role-pipeline.js'
@@ -19,6 +25,7 @@ import { BoundedMoveRunner, type BoundedMove } from './moves/index.js'
  * the e2e smoke can run without API keys.
  */
 export interface MissionValidator {
+  family?: ModelFamily
   validate(taskId: string, bundle: Record<string, string>): Promise<ValidatorResult>
 }
 
@@ -211,7 +218,20 @@ export class MissionRunner {
       // 6. Validators (Gemini + OpenAI by default; injectable for tests)
       const validators = this.opts.validators ?? []
       const validatorResults: ValidatorResult[] = []
-      const validatorRouteDecision = validators.length > 0 ? this.routeRole('validator', routeDecision.provider) : undefined
+      const reviewerFamily = validators.length > 1 ? inferMissionValidatorFamily(validators[0]) : undefined
+      const configuredFamilyConflict = findConfiguredFamilyConflict(validators)
+      if (configuredFamilyConflict) {
+        return this.createHeldResult({
+          mission,
+          task,
+          evidenceDir,
+          routeDecision,
+          reason: configuredFamilyConflict.message,
+          holdCode: 'HOLD-FAMILY-CONFLICT',
+          run,
+        })
+      }
+      const validatorRouteDecision = validators.length > 0 ? this.routeRole('validator', reviewerFamily) : undefined
       if (validatorRouteDecision) {
         writeRouteDecision(evidenceDir, validatorRouteDecision, 'validator-route.json')
         this.db.insertEvent('mission.route_selected', 'mission', mission.id, {
@@ -237,8 +257,24 @@ export class MissionRunner {
       }
       for (const v of validators) {
         try {
-          validatorResults.push(await v.validate(task.id, bundle))
+          const result = await v.validate(task.id, bundle)
+          const family = inferMissionValidatorFamily(v, result)
+          const reviewer = validatorResults[0]
+          if (reviewer) assertDifferentFamily(validatorResultToFamily(reviewer.validator), family)
+          validatorResults.push(result)
         } catch (e) {
+          if (e instanceof FamilyConflictError) {
+            return this.createHeldResult({
+              mission,
+              task,
+              evidenceDir,
+              routeDecision,
+              validatorRouteDecision,
+              reason: e.message,
+              holdCode: 'HOLD-FAMILY-CONFLICT',
+              run,
+            })
+          }
           validatorResults.push({
             id: `error-${Date.now()}-${validatorResults.length}`,
             taskId: task.id,
@@ -333,7 +369,7 @@ export class MissionRunner {
     }
   }
 
-  private routeRole(role: 'coder' | 'validator', reviewerProvider?: RouteDecision['provider']): RouteDecision {
+  private routeRole(role: 'coder' | 'validator', reviewerFamily?: ModelFamily): RouteDecision {
     const router = this.opts.workerRouter ?? (this.opts.workerSessions ? new WorkerPoolRouter(this.opts.workerSessions) : null)
     if (!router) {
       return {
@@ -345,7 +381,7 @@ export class MissionRunner {
     return router.decide({
       role,
       queueDepth: typeof this.opts.queueDepth === 'function' ? this.opts.queueDepth() : this.opts.queueDepth,
-      ...(role === 'validator' ? { reviewerFamily: providerToFamily(reviewerProvider) } : {}),
+      ...(role === 'validator' ? { reviewerFamily } : {}),
     })
   }
 
@@ -567,14 +603,32 @@ function resolveProviderFromMode(mode: RunnerConfig['mode']): RouteDecision['pro
   }
 }
 
-function providerToFamily(provider: RouteDecision['provider'] | undefined): ModelFamily | undefined {
-  switch (provider) {
-    case 'claude-cli': return 'anthropic'
-    case 'codex-cli':
-    case 'openai-api': return 'openai'
-    case 'gemini-api': return 'google'
+function inferMissionValidatorFamily(validator: MissionValidator | undefined, result?: ValidatorResult): ModelFamily {
+  if (validator?.family) return validator.family
+  if (result) return validatorResultToFamily(result.validator)
+  return 'mock'
+}
+
+function findConfiguredFamilyConflict(validators: MissionValidator[]): FamilyConflictError | null {
+  if (validators.length < 2) return null
+  const reviewer = inferMissionValidatorFamily(validators[0])
+  for (const validator of validators.slice(1)) {
+    const family = inferMissionValidatorFamily(validator)
+    try {
+      assertDifferentFamily(reviewer, family)
+    } catch (error) {
+      return error instanceof FamilyConflictError ? error : new FamilyConflictError(family)
+    }
+  }
+  return null
+}
+
+function validatorResultToFamily(validator: ValidatorResult['validator']): ModelFamily {
+  switch (validator) {
+    case 'gemini': return 'google'
+    case 'openai':
+    case 'codex': return 'openai'
     case 'mock': return 'mock'
-    default: return undefined
   }
 }
 

@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
   "stageId": "stage8",
-  "startedAt": "2026-05-28T08:18:33.112Z",
-  "endedAt": "2026-05-28T08:18:33.459Z",
+  "startedAt": "2026-05-28T08:31:30.870Z",
+  "endedAt": "2026-05-28T08:31:31.242Z",
   "commands": [
     {
       "command": "pnpm test:mission-os:dry-soak -- --iterations 1",
       "exitCode": 0,
-      "durationMs": 274,
+      "durationMs": 289,
       "stdoutPath": "/Users/lanston/projects/claude-code-247-v23/evidence/v23/stage8/pnpm.out",
       "stderrPath": "/Users/lanston/projects/claude-code-247-v23/evidence/v23/stage8/pnpm.err"
     }
@@ -31,6 +31,13 @@
       "role": "validator",
       "provider": "codex-cli",
       "reason": "selected codex-cli for validator"
+    }
+  ],
+  "stageChecks": [
+    {
+      "name": "stage8 guarded soak entrypoint",
+      "passed": true,
+      "detail": "guarded soak script is wired; guarded reports are produced by the outer soak command"
     }
   ],
   "validatorLeakScan": {

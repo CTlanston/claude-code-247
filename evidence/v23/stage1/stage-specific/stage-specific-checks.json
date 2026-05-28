@@ -1,0 +1,7 @@
+[
+  {
+    "name": "stage1 subscription worker routing",
+    "passed": true,
+    "detail": "coder routed to local subscription provider codex-cli"
+  }
+]

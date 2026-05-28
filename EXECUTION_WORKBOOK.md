@@ -15,31 +15,30 @@ schema_version: 1
 version_target: v2.3.0
 current_part: I            # I = v2.1 基座 · II = v2.2 Agent Mesh
 current_stage: V2.3        # Mission OS incremental autonomy
-current_substage: mission-os-stage1-8-runtime-loop   # Stage 1-8 wired through probes, DAG moves, isolation, draft gate, dashboard, guarded soak
-last_updated_utc: 2026-05-28T08:22:00Z
-last_session_id: s_0009
-total_sessions: 9
+current_substage: mission-os-stage1-8-post-review-hardening   # Stage-specific acceptance checks and validator family guard tightened
+last_updated_utc: 2026-05-28T08:35:00Z
+last_session_id: s_0010
+total_sessions: 10
 weeks_elapsed: 0
 weeks_remaining: 0
 open_holds: 0
 blocked_on: null
 next_action: |
-  Stage 1-8 Mission OS runtime loop is wired into the v2.3 branch:
-  subscription session probes preserve unhealthy Claude/Codex sessions as
-  HOLD-able facts; LeadAgent emits auditable brainstorm/PRD/ADR/DAG designs;
-  mixed intake emits HOLD-FLOOD on cap overflow; MissionRunner executes approved
-  designs as bounded DAG moves; validator prompts are forced through
-  redactForValidator(); v2.3 defaults to draft-only and blocks auto-merge;
-  dashboard JSON exposes mission_os queue/worker/checkpoint/draft fields; and
-  guarded-soak entrypoints cover mock, real, and draft-pr modes.
+  Post-review hardening found two overclaim risks and fixed them. Acceptance
+  reports now include `stageChecks`, so stage1-stage8 no longer pass only on a
+  generic dry-soak/route/leak/idempotency bundle. MissionRunner validator family
+  enforcement now preflights configured reviewer/validator families instead of
+  deriving validator constraints from the coder route. A strict review is saved
+  at `docs/reviews/v23-stage1-8-post-implementation-review.md`; the rolling
+  handoff is `docs/handoff/v23-latest.md`.
 
   Validation: pnpm lint PASS; pnpm typecheck PASS; pnpm test PASS (92 files,
-  534 passed, 6 skipped); pnpm test:mission-os:dry-soak PASS; for stage1-stage8,
-  `pnpm test:mission-os:real-soak -- --stage <stage> --providers claude,codex
-  --timeout-ms 180000` PASS and `pnpm test:mission-os:acceptance -- --stage
-  <stage> --require-real-soak` PASS; guarded soak mock/real/draft-pr one-iteration
-  gates PASS. Next action is to watch CI on PR #12 and run an operator-approved
-  long wall-clock soak before declaring production hardening complete.
+  538 passed, 6 skipped); pnpm test:mission-os:dry-soak PASS; stage1-stage8
+  `pnpm test:mission-os:acceptance -- --stage <stage> --require-real-soak` PASS
+  with stage-specific checks; guarded-soak mock/real/draft-pr one-iteration PASS
+  after the hardening. Next action is live scheduler/dashboard aggregation plus a true
+  MissionRunner subscription soak that routes real Claude/Codex workers through
+  the mission runtime, then longer wall-clock soak.
 sla:
   daemon_recovery_p95_sec: 90
   approval_e2e_p95_min: 5   # post-GA hardening gate per ADR-0014
@@ -593,6 +592,34 @@ ApprovalGateway: ntfy → 操作员手机
 - next_action: <见 §0>
 - notes: <一两句>
 ```
+
+### s_0010 — 2026-05-28T08:35:00Z — v2.3 Stage 1-8 post-review hardening
+
+- stage_in: V2.3.mission-os-stage1-8-runtime-loop → stage_out: V2.3.mission-os-stage1-8-post-review-hardening
+- actor: codex
+- branch: `codex/v23-acceptance-harness`
+- shipped:
+    - Added `stageChecks` to Mission OS acceptance reports; failed stage-specific checks now fail the whole report.
+    - Added stage-specific checks to `scripts/mission-os-acceptance.ts` for subscription routing, mission design schema, intake classifier decisions, bounded DAG runtime, draft-only auto-merge block, validator isolation, dashboard mission_os shape, and guarded-soak wiring.
+    - Fixed MissionRunner validator family enforcement so configured reviewer/validator family conflicts HOLD before validation, and route selection no longer treats coder provider as reviewer family.
+    - Added `docs/reviews/v23-stage1-8-post-implementation-review.md` with an explicit implemented/overclaimed/remaining-gap audit.
+    - Added rolling handoff at `docs/handoff/v23-latest.md`.
+- validation:
+    - `pnpm --filter @aedev/daemon typecheck` PASS
+    - `pnpm vitest run packages/daemon/src/mission-os-acceptance.test.ts packages/daemon/src/mission-runner.test.ts` PASS
+    - `pnpm lint` PASS
+    - `pnpm typecheck` PASS
+    - `pnpm test` PASS — 92 files, 538 passed, 6 skipped
+    - `pnpm test:mission-os:dry-soak` PASS — 3 iterations, 3 executed, 0 failures
+    - `pnpm test:mission-os:acceptance -- --stage stage1..stage8 --require-real-soak` PASS; each report now contains the relevant `stageChecks`
+    - `pnpm test:mission-os:guarded-soak -- --stage stage8-review-mock --mode mock --duration-ms 1000 --interval-ms 100 --max-iterations 1` PASS
+    - `pnpm test:mission-os:guarded-soak -- --stage stage8-review-real --mode real --duration-ms 1000 --interval-ms 100 --max-iterations 1` PASS
+    - `pnpm test:mission-os:guarded-soak -- --stage stage8-review-draft-pr --mode draft-pr --duration-ms 1000 --interval-ms 100 --max-iterations 1` PASS
+- evidence:
+    - Updated `evidence/v23/stage1/acceptance.json` through `evidence/v23/stage8/acceptance.json` with stage-specific checks.
+    - Added `evidence/v23/stage*/stage-specific/` files for the new checks.
+- holds_opened: 0 · holds_resolved: 0
+- next_action: live scheduler/dashboard aggregation and a true MissionRunner subscription soak with real Claude/Codex worker routing.
 
 ### s_0009 — 2026-05-28T08:22:00Z — v2.3 Stage 1-8 runtime loop
 

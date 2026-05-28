@@ -1,0 +1,84 @@
+{
+  "result": {
+    "status": "waiting",
+    "mergeDecision": "WAITING",
+    "evidenceDir": "/Users/lanston/projects/claude-code-247-v23/evidence/v23/stage4/stage-specific/runtime/evidence/01KSPVBGG5ZPQ1GWQDGYFVKHA9"
+  },
+  "manifest": {
+    "completed": [
+      "role-pipeline",
+      "dag-design",
+      "dag-implement",
+      "dag-validate",
+      "dag-document"
+    ],
+    "skipped": []
+  },
+  "dag": {
+    "missionId": "01KSPVBGG5ZPQ1GWQDGYFVKHA9",
+    "tasks": [
+      {
+        "id": "design",
+        "role": "planner",
+        "parentIds": [],
+        "writeFiles": [
+          "docs/adr/"
+        ],
+        "expectedEvidence": [
+          "mission-design.json",
+          "mission-design.md"
+        ],
+        "checkpointGate": "cp-design"
+      },
+      {
+        "id": "implement",
+        "role": "coder",
+        "parentIds": [
+          "design"
+        ],
+        "writeFiles": [
+          "src/**",
+          "packages/**",
+          "tests/**"
+        ],
+        "expectedEvidence": [
+          "git.diff",
+          "test-summary.md",
+          "done-report.md"
+        ],
+        "checkpointGate": null
+      },
+      {
+        "id": "validate",
+        "role": "validator",
+        "parentIds": [
+          "implement"
+        ],
+        "writeFiles": [],
+        "expectedEvidence": [
+          "validator-result.json",
+          "risk-report.md"
+        ],
+        "checkpointGate": null
+      },
+      {
+        "id": "document",
+        "role": "doc-writer",
+        "parentIds": [
+          "validate"
+        ],
+        "writeFiles": [
+          "README.md",
+          "docs/OPERATIONS.md",
+          "CHANGELOG.md"
+        ],
+        "expectedEvidence": [
+          "docs-summary.md"
+        ],
+        "checkpointGate": null
+      }
+    ],
+    "serializedConflicts": []
+  },
+  "autoMergeBlocked": 1
+}

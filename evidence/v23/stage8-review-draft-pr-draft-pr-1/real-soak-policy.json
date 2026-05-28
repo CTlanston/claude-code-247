@@ -1,0 +1,5 @@
+{
+  "name": "real soak policy",
+  "passed": true,
+  "detail": "audit harness records policy only; major stages must run real soak separately"
+}

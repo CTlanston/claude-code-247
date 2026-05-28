@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
   "stageId": "stage2",
-  "startedAt": "2026-05-28T08:14:52.410Z",
-  "endedAt": "2026-05-28T08:14:53.006Z",
+  "startedAt": "2026-05-28T08:31:27.204Z",
+  "endedAt": "2026-05-28T08:31:27.575Z",
   "commands": [
     {
       "command": "pnpm test:mission-os:dry-soak -- --iterations 1",
       "exitCode": 0,
-      "durationMs": 280,
+      "durationMs": 289,
       "stdoutPath": "/Users/lanston/projects/claude-code-247-v23/evidence/v23/stage2/pnpm.out",
       "stderrPath": "/Users/lanston/projects/claude-code-247-v23/evidence/v23/stage2/pnpm.err"
     }
@@ -31,6 +31,13 @@
       "role": "validator",
       "provider": "codex-cli",
       "reason": "selected codex-cli for validator"
+    }
+  ],
+  "stageChecks": [
+    {
+      "name": "stage2 auditable mission design",
+      "passed": true,
+      "detail": "schema valid with 4 DAG tasks and 4 checkpoints"
     }
   ],
   "validatorLeakScan": {

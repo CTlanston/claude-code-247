@@ -7,7 +7,7 @@ import { IntakeService } from './intake.js'
 import { MemoryGitClient, MissionRunner, type MissionValidator } from './mission-runner.js'
 import { ReleasePipeline, type DeployFn } from './release-pipeline.js'
 import type { RolePipeline } from './roles/role-pipeline.js'
-import type { WorkerSession } from '@aedev/runner'
+import type { ModelFamily, WorkerSession } from '@aedev/runner'
 
 let db: AedevDb
 let stateDir: string
@@ -77,6 +77,7 @@ function workerSessions(): WorkerSession[] {
 
 function fakeValidator(name: 'gemini' | 'openai' | 'mock', verdict: 'pass' | 'fail' | 'inconclusive'): MissionValidator {
   return {
+    family: validatorFamily(name),
     async validate(taskId: string): Promise<ValidatorResult> {
       return {
         id: `${name}-${taskId}`, taskId, runId: `${name}-run`, validator: name,
@@ -84,6 +85,12 @@ function fakeValidator(name: 'gemini' | 'openai' | 'mock', verdict: 'pass' | 'fa
       }
     },
   }
+}
+
+function validatorFamily(name: 'gemini' | 'openai' | 'mock'): ModelFamily {
+  if (name === 'gemini') return 'google'
+  if (name === 'openai') return 'openai'
+  return 'mock'
 }
 
 function makeTaskEvidence(diffSummary = '# Diff Summary\n\nChanged app code.\n'): string {
@@ -335,13 +342,30 @@ describe('MissionRunner — workbook end-to-end glue', () => {
       workerSessions: [
         { id: 'codex-1', provider: 'codex-cli', family: 'openai', healthy: true, active: 0, lastHeartbeatAt: '2026-05-28T00:00:00.000Z' },
       ],
-      validators: [fakeValidator('openai', 'pass')],
+      validators: [fakeValidator('openai', 'pass'), fakeValidator('gemini', 'pass')],
     })
 
     const result = await runner.runMission(mission.id)
 
     expect(result.status).toBe('waiting')
     expect(result.validatorRouteDecision?.holdCode).toBe('HOLD-FAMILY-CONFLICT')
+    expect(db.getMission(mission.id)?.status).toBe('paused')
+  })
+
+  it('holds before validation when configured reviewer and validator share a real family', async () => {
+    const mission = approveMission('Reject duplicate validation family')
+    const runner = new MissionRunner(db, {
+      stateDir,
+      rolePipeline: fakeRolePipeline(),
+      runner: fakeRunner({ taskEvidenceDir: makeTaskEvidence() }),
+      workerSessions: workerSessions(),
+      validators: [fakeValidator('openai', 'pass'), fakeValidator('openai', 'pass')],
+    })
+
+    const result = await runner.runMission(mission.id)
+
+    expect(result.status).toBe('waiting')
+    expect(readFileSync(join(result.evidenceDir, 'run-hold.json'), 'utf8')).toContain('HOLD-FAMILY-CONFLICT')
     expect(db.getMission(mission.id)?.status).toBe('paused')
   })
 })
