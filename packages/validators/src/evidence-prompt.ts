@@ -25,6 +25,8 @@ const EXPECTED_FILES = [
 ] as const
 
 export function buildEvidencePrompt(input: EvidencePromptInput): string {
+  const redacted = redactForValidator(input.bundle)
+  const bundle = redacted.bundle
   const lines: string[] = []
   lines.push(`You are a strict, evidence-only validator for the aedev autonomous engineering system.`)
   lines.push(``)
@@ -41,13 +43,16 @@ export function buildEvidencePrompt(input: EvidencePromptInput): string {
   lines.push(``)
   lines.push(`---`)
   lines.push(`Task ID: ${input.taskId}`)
+  if (redacted.removed.length > 0) {
+    lines.push(`Redacted evidence files: ${redacted.removed.join(', ')}`)
+  }
   if (input.riskScore !== undefined) {
     lines.push(`Risk score (0-100): ${input.riskScore}`)
   }
   lines.push(``)
 
   for (const name of EXPECTED_FILES) {
-    const content = input.bundle[name]
+    const content = bundle[name]
     if (content === undefined) {
       lines.push(`### ${name}`)
       lines.push(`(missing)`)
@@ -62,11 +67,11 @@ export function buildEvidencePrompt(input: EvidencePromptInput): string {
   }
 
   // Any extra files outside the expected list — surface but truncate harder.
-  const extras = Object.keys(input.bundle).filter((k) => !EXPECTED_FILES.includes(k as typeof EXPECTED_FILES[number]))
+  const extras = Object.keys(bundle).filter((k) => !EXPECTED_FILES.includes(k as typeof EXPECTED_FILES[number]))
   for (const name of extras) {
     lines.push(`### ${name} (extra)`)
     lines.push('```')
-    lines.push(truncate(input.bundle[name] ?? '', MAX_FILE_CHARS / 2))
+    lines.push(truncate(bundle[name] ?? '', MAX_FILE_CHARS / 2))
     lines.push('```')
     lines.push(``)
   }
@@ -124,3 +129,4 @@ function normalize(obj: Record<string, unknown>): { verdict: 'pass' | 'fail' | '
     : []
   return { verdict, summary, reasons }
 }
+import { redactForValidator } from './redact.js'

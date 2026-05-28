@@ -12,15 +12,35 @@ describe('buildEvidencePrompt', () => {
     expect(prompt).toContain('Task ID: t')
   })
 
-  it('surfaces unknown files as "extra" so the model can still see them', () => {
+  it('redacts unknown files instead of surfacing them to validators', () => {
     const prompt = buildEvidencePrompt({ taskId: 't', bundle: { 'plan.md': 'a', 'weird.json': '{}' } })
-    expect(prompt).toContain('### weird.json (extra)')
+    expect(prompt).not.toContain('### weird.json')
+    expect(prompt).toContain('Redacted evidence files: weird.json')
   })
 
   it('truncates very long files', () => {
     const big = 'x'.repeat(20_000)
     const prompt = buildEvidencePrompt({ taskId: 't', bundle: { 'plan.md': big } })
     expect(prompt).toContain('truncated')
+  })
+
+  it('does not leak coder transcript, model, retry, or cost evidence', () => {
+    const prompt = buildEvidencePrompt({
+      taskId: 't',
+      bundle: {
+        'diff-summary.md': 'safe diff',
+        'coder-transcript.txt': 'CODER_TRANSCRIPT_SHOULD_NOT_LEAK',
+        'model-name.txt': 'MODEL_NAME_SHOULD_NOT_LEAK',
+        'retry-count.txt': 'RETRY_COUNT_SHOULD_NOT_LEAK',
+        'token-cost.json': 'TOKEN_COST_SHOULD_NOT_LEAK',
+      },
+    })
+
+    expect(prompt).toContain('safe diff')
+    expect(prompt).not.toContain('CODER_TRANSCRIPT_SHOULD_NOT_LEAK')
+    expect(prompt).not.toContain('MODEL_NAME_SHOULD_NOT_LEAK')
+    expect(prompt).not.toContain('RETRY_COUNT_SHOULD_NOT_LEAK')
+    expect(prompt).not.toContain('TOKEN_COST_SHOULD_NOT_LEAK')
   })
 })
 

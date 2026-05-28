@@ -4,9 +4,11 @@ export interface RedactedEvidence {
 }
 
 const ALLOWED = [
+  /^plan\.md$/,
   /^diff-summary\.md$/,
   /^changed-files\.md$/,
   /^test-summary\.md$/,
+  /^done-report\.md$/,
   /^typecheck\.out$/,
   /^lint\.out$/,
   /^risk-report\.(md|json)$/,
