@@ -69,9 +69,9 @@ function fakeRunner(opts: { taskEvidenceDir: string; exitCode?: number; throwErr
 
 function workerSessions(): WorkerSession[] {
   return [
-    { id: 'claude-1', provider: 'claude-cli', family: 'anthropic', healthy: true, active: 1 },
-    { id: 'codex-1', provider: 'codex-cli', family: 'openai', healthy: true, active: 0 },
-    { id: 'gemini-1', provider: 'gemini-api', family: 'google', healthy: true, active: 0 },
+    { id: 'claude-1', provider: 'claude-cli', family: 'anthropic', healthy: true, active: 1, lastHeartbeatAt: '2026-05-28T00:00:00.000Z' },
+    { id: 'codex-1', provider: 'codex-cli', family: 'openai', healthy: true, active: 0, lastHeartbeatAt: '2026-05-28T00:00:00.000Z' },
+    { id: 'gemini-1', provider: 'gemini-api', family: 'google', healthy: true, active: 0, lastHeartbeatAt: '2026-05-28T00:00:00.000Z' },
   ]
 }
 
@@ -96,7 +96,7 @@ function makeTaskEvidence(diffSummary = '# Diff Summary\n\nChanged app code.\n')
 }
 
 describe('MissionRunner — workbook end-to-end glue', () => {
-  it('AUTO_MERGE when dual validators pass + low risk (non-UI mission)', async () => {
+  it('WAITING by default when dual validators pass because v2.3 is draft-only', async () => {
     const mission = approveMission('Refactor the auth utility (no UI)')
     const taskEvidenceDir = makeTaskEvidence()
     const runner = new MissionRunner(db, {
@@ -108,13 +108,14 @@ describe('MissionRunner — workbook end-to-end glue', () => {
     })
 
     const result = await runner.runMission(mission.id)
-    expect(result.mergeDecision).toBe('AUTO_MERGE')
-    expect(result.status).toBe('done')
+    expect(result.mergeDecision).toBe('WAITING')
+    expect(result.status).toBe('waiting')
     expect(result.validatorResults).toHaveLength(2)
     expect(result.riskLevel).toBe('low')
-    expect(db.getMission(mission.id)?.status).toBe('done')
+    expect(db.getMission(mission.id)?.status).toBe('paused')
+    expect(db.queryEvents({ type: 'mission.auto_merge_blocked', entityId: mission.id })).toHaveLength(1)
     const summary = readFileSync(join(result.evidenceDir, 'workbook-summary.md'), 'utf-8')
-    expect(summary).toContain('AUTO_MERGE')
+    expect(summary).toContain('WAITING')
     expect(summary).toContain('gemini: pass')
     expect(summary).toContain('openai: pass')
   })
@@ -154,6 +155,7 @@ describe('MissionRunner — workbook end-to-end glue', () => {
       rolePipeline: fakeRolePipeline(),
       runner: fakeRunner({ taskEvidenceDir: makeTaskEvidence() }),
       validators: [fakeValidator('gemini', 'pass'), fakeValidator('openai', 'pass')],
+      draftOnly: false,
       // requiresUi defaults to heuristic (mission title contains "landing page UI")
     })
     const result = await runner.runMission(mission.id)
@@ -177,6 +179,7 @@ describe('MissionRunner — workbook end-to-end glue', () => {
       releasePipeline,
       productionDeployEnabled: true,
       requiresUi: false,
+      draftOnly: false,
     })
     const result = await runner.runMission(mission.id)
     expect(result.mergeDecision).toBe('AUTO_MERGE')
@@ -199,6 +202,7 @@ describe('MissionRunner — workbook end-to-end glue', () => {
       productionDeployEnabled: true,
       healthcheckUrl: 'https://prod.example/health',
       requiresUi: false,
+      draftOnly: false,
     })
     // Inject the failing healthcheck via a custom release pipeline result is hard;
     // instead reuse the pattern by configuring a tiny window + always-failing fetch.
@@ -221,17 +225,19 @@ describe('MissionRunner — workbook end-to-end glue', () => {
     expect(existsSync(result.releaseResult!.incidentPath!)).toBe(true)
   })
 
-  it('Worker throw → status failed + run-error.txt recorded (unchanged path)', async () => {
+  it('Worker throw inside a bounded move → mission holds with move evidence', async () => {
     const mission = approveMission()
     const runner = new MissionRunner(db, {
       stateDir,
       rolePipeline: fakeRolePipeline(),
       runner: fakeRunner({ taskEvidenceDir: makeTaskEvidence(), throwError: 'worker failed' }),
     })
-    await expect(runner.runMission(mission.id)).rejects.toThrow(/worker failed/)
-    expect(db.getMission(mission.id)?.status).toBe('failed')
-    const errorPath = join(stateDir, 'evidence', mission.id, 'run-error.txt')
-    expect(readFileSync(errorPath, 'utf-8')).toContain('worker failed')
+    const result = await runner.runMission(mission.id)
+
+    expect(result.status).toBe('waiting')
+    expect(db.getMission(mission.id)?.status).toBe('paused')
+    expect(readFileSync(join(result.evidenceDir, 'run-hold.json'), 'utf-8')).toContain('worker failed')
+    expect(readFileSync(join(result.evidenceDir, 'move-manifest.json'), 'utf-8')).toContain('dag-implement')
   })
 
   it('refuses to run a non-approved mission (unchanged)', async () => {
@@ -249,6 +255,7 @@ describe('MissionRunner — workbook end-to-end glue', () => {
       runner: fakeRunner({ taskEvidenceDir: makeTaskEvidence() }),
       validators: [fakeValidator('gemini', 'pass'), fakeValidator('openai', 'pass')],
       requiresUi: false,
+      draftOnly: false,
     })
     const result = await runner.runMission(mission.id)
     const summary = readFileSync(join(result.evidenceDir, 'workbook-summary.md'), 'utf-8')
@@ -274,12 +281,41 @@ describe('MissionRunner — workbook end-to-end glue', () => {
     expect(readFileSync(join(result.evidenceDir, 'worker-route.json'), 'utf8')).toContain('"provider": "codex-cli"')
   })
 
+  it('executes mission design as bounded DAG moves with a manifest', async () => {
+    const mission = approveMission('Build a local Mission OS with docs and validation')
+    const runner = new MissionRunner(db, {
+      stateDir,
+      rolePipeline: fakeRolePipeline(),
+      runner: fakeRunner({ taskEvidenceDir: makeTaskEvidence() }),
+      validators: [fakeValidator('gemini', 'pass'), fakeValidator('openai', 'pass')],
+      requiresUi: false,
+    })
+
+    const result = await runner.runMission(mission.id)
+    const manifest = JSON.parse(readFileSync(join(result.evidenceDir, 'move-manifest.json'), 'utf8')) as {
+      completed: string[]
+    }
+    const dag = JSON.parse(readFileSync(join(result.evidenceDir, 'mission-dag.json'), 'utf8')) as {
+      tasks: Array<{ id: string; parentIds: string[] }>
+    }
+
+    expect(manifest.completed).toEqual([
+      'role-pipeline',
+      'dag-design',
+      'dag-implement',
+      'dag-validate',
+      'dag-document',
+    ])
+    expect(dag.tasks.find((task) => task.id === 'implement')?.parentIds).toEqual(['design'])
+    expect(db.queryEvents({ type: 'move.completed', entityId: result.taskId })).toHaveLength(5)
+  })
+
   it('holds the mission when the worker router has no healthy coder session', async () => {
     const mission = approveMission('Implement a safe hold path')
     const runner = new MissionRunner(db, {
       stateDir,
       rolePipeline: fakeRolePipeline(),
-      workerSessions: [{ id: 'codex-1', provider: 'codex-cli', family: 'openai', healthy: false, active: 0 }],
+      workerSessions: [{ id: 'codex-1', provider: 'codex-cli', family: 'openai', healthy: false, active: 0, lastHeartbeatAt: '2026-05-28T00:00:00.000Z', failureReason: 'test unhealthy' }],
     })
 
     const result = await runner.runMission(mission.id)
@@ -297,7 +333,7 @@ describe('MissionRunner — workbook end-to-end glue', () => {
       rolePipeline: fakeRolePipeline(),
       runner: fakeRunner({ taskEvidenceDir: makeTaskEvidence() }),
       workerSessions: [
-        { id: 'codex-1', provider: 'codex-cli', family: 'openai', healthy: true, active: 0 },
+        { id: 'codex-1', provider: 'codex-cli', family: 'openai', healthy: true, active: 0, lastHeartbeatAt: '2026-05-28T00:00:00.000Z' },
       ],
       validators: [fakeValidator('openai', 'pass')],
     })

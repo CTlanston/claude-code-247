@@ -3,7 +3,7 @@ import {
 } from 'fs'
 import { join } from 'path'
 import type {
-  AedevDb, Mission, RunnerConfig, RunResult, Task, ValidatorResult, MergePolicyDecision,
+  AedevDb, Mission, MissionDesign, RunnerConfig, RunResult, Task, ValidatorResult, MergePolicyDecision,
 } from '@aedev/core'
 import { RunnerManager, WorkerPoolRouter, type ModelFamily, type RouteDecision, type WorkerSession } from '@aedev/runner'
 import { MergePolicy, RiskScorer, type MergePolicyEvidence } from '@aedev/validators'
@@ -11,6 +11,7 @@ import { BrowserQA, MockBrowserDriver, type BrowserQAResult } from '@aedev/qa'
 import type { PreviewAdapter, PreviewResult } from '@aedev/preview'
 import { RolePipeline } from './roles/role-pipeline.js'
 import { ReleasePipeline, type GitClient, type DeployFn, type DeployRequest, type ReleaseResult } from './release-pipeline.js'
+import { BoundedMoveRunner, type BoundedMove } from './moves/index.js'
 
 /**
  * Mission validator contract.  Production wires real Gemini + OpenAI; tests
@@ -54,6 +55,8 @@ export interface MissionRunOptions {
   requiresUi?: boolean
   requiresPreview?: boolean
   sensitiveLane?: boolean
+  /** v2.3 default: never auto-merge; successful work waits as a draft PR candidate. */
+  draftOnly?: boolean
 }
 
 export interface MissionRunResult {
@@ -98,12 +101,10 @@ export class MissionRunner {
     let routeDecision: RouteDecision | undefined
     let run: RunResult | undefined
     try {
-      // 1. Role pipeline (PRD already on disk → architecture / design / tasks / etc.)
-      const pipeline = this.opts.rolePipeline ?? new RolePipeline()
       const requiresUi = this.opts.requiresUi ?? heuristicRequiresUi(mission)
-      await pipeline.run(mission, evidenceDir, { requiresUi })
+      const design = readMissionDesign(this.opts.stateDir, mission.id)
 
-      // 2. Builder task → worker run
+      // 1. Mission task + route selection.
       task = this.db.insertTask({
         missionId: mission.id,
         repoId: mission.repoId,
@@ -135,8 +136,35 @@ export class MissionRunner {
       }
 
       const runner = this.opts.runner ?? new RunnerManager(this.db, buildRunnerConfig(this.opts, routeDecision))
-      run = await runner.runTask(task)
-      importTaskEvidence(run.evidenceDir, evidenceDir)
+      const moveRunner = new BoundedMoveRunner<MissionMoveContext>({
+        db: this.db,
+        taskId: task.id,
+        evidenceDir,
+      })
+      const moveResult = await moveRunner.run(
+        { mission, evidenceDir, task, requiresUi },
+        buildMissionMoves({
+          mission,
+          design,
+          evidenceDir,
+          requiresUi,
+          pipeline: this.opts.rolePipeline ?? new RolePipeline(),
+          runner,
+        }),
+      )
+      if (moveResult.failed) {
+        return this.createHeldResult({
+          mission,
+          task,
+          evidenceDir,
+          routeDecision,
+          reason: moveResult.failed.error,
+          holdCode: 'HOLD-MOVE-FAILED',
+          run: moveResult.ctx.run,
+        })
+      }
+      run = moveResult.ctx.run
+      if (!run) throw new Error('Mission DAG completed without a coder run result')
       ensureRequiredEvidence(evidenceDir)
 
       // 3. Bundle the evidence dir for downstream gates
@@ -233,7 +261,15 @@ export class MissionRunner {
         forbiddenPathTouched: false,
       }
       const policy = this.opts.mergePolicy ?? new MergePolicy()
-      const decision = policy.decide(risk.score, validatorResults, evidence)
+      const policyDecision = policy.decide(risk.score, validatorResults, evidence)
+      const decision: MergePolicyDecision =
+        policyDecision === 'AUTO_MERGE' && this.opts.draftOnly !== false ? 'WAITING' : policyDecision
+      if (policyDecision === 'AUTO_MERGE' && decision === 'WAITING') {
+        this.db.insertEvent('mission.auto_merge_blocked', 'mission', mission.id, {
+          reason: 'v2.3 draft-only policy',
+          policyDecision,
+        })
+      }
 
       // 8. Release pipeline (only on AUTO_MERGE)
       let releaseResult: ReleaseResult | undefined
@@ -368,6 +404,127 @@ export class MissionRunner {
 }
 
 // ---------- helpers ----------
+
+interface MissionMoveContext {
+  mission: Mission
+  evidenceDir: string
+  task: Task
+  requiresUi: boolean
+  run?: RunResult
+}
+
+function buildMissionMoves(params: {
+  mission: Mission
+  design: MissionDesign | null
+  evidenceDir: string
+  requiresUi: boolean
+  pipeline: RolePipeline
+  runner: { runTask(task: Task): Promise<RunResult> }
+}): Array<BoundedMove<MissionMoveContext>> {
+  const orderedDag = topologicalMissionTasks(params.design)
+  writeFileSync(join(params.evidenceDir, 'mission-dag.json'), JSON.stringify({
+    missionId: params.mission.id,
+    tasks: orderedDag.map((task) => ({
+      id: task.id,
+      role: task.role,
+      parentIds: task.parentIds,
+      writeFiles: task.writeFiles,
+      expectedEvidence: task.expectedEvidence,
+      checkpointGate: task.checkpointGate,
+    })),
+    serializedConflicts: detectWriteConflicts(orderedDag),
+  }, null, 2))
+
+  const moves: Array<BoundedMove<MissionMoveContext>> = [{
+    id: 'role-pipeline',
+    title: 'Run mission role pipeline',
+    run: async (ctx) => {
+      await params.pipeline.run(ctx.mission, ctx.evidenceDir, { requiresUi: ctx.requiresUi })
+      return ctx
+    },
+  }]
+
+  if (orderedDag.length === 0) {
+    moves.push({
+      id: 'worker-run',
+      title: 'Run mission worker',
+      tokenBudget: 20_000,
+      run: async (ctx) => {
+        const run = await params.runner.runTask(ctx.task)
+        importTaskEvidence(run.evidenceDir, ctx.evidenceDir)
+        return { ...ctx, run }
+      },
+    })
+    return moves
+  }
+
+  const coderTaskId = orderedDag.find((task) => task.role === 'coder')?.id ?? orderedDag[0]?.id
+  for (const dagTask of orderedDag) {
+    moves.push({
+      id: `dag-${dagTask.id}`,
+      title: dagTask.title,
+      tokenBudget: dagTask.role === 'coder' ? 20_000 : 4_000,
+      run: async (ctx) => {
+        if (dagTask.checkpointGate) {
+          writeFileSync(join(ctx.evidenceDir, `${dagTask.id}-checkpoint.txt`), `${dagTask.checkpointGate}\n`)
+        }
+        if (dagTask.id === coderTaskId) {
+          const run = await params.runner.runTask(ctx.task)
+          importTaskEvidence(run.evidenceDir, ctx.evidenceDir)
+          return { ...ctx, run }
+        }
+        writeFileSync(join(ctx.evidenceDir, `${dagTask.id}-move.md`), [
+          `# ${dagTask.title}`,
+          '',
+          `Role: ${dagTask.role}`,
+          `Expected evidence: ${dagTask.expectedEvidence.join(', ')}`,
+          `Write files: ${dagTask.writeFiles.join(', ') || '(none)'}`,
+          '',
+        ].join('\n'))
+        return ctx
+      },
+    })
+  }
+  return moves
+}
+
+function readMissionDesign(stateDir: string, missionId: string): MissionDesign | null {
+  const path = join(stateDir, 'prd', `${missionId}.design.json`)
+  if (!existsSync(path)) return null
+  return JSON.parse(readFileSync(path, 'utf8')) as MissionDesign
+}
+
+function topologicalMissionTasks(design: MissionDesign | null): MissionDesign['taskDag'] {
+  const tasks = design?.taskDag ?? []
+  if (tasks.length === 0) return []
+  const remaining = new Map(tasks.map((task) => [task.id, task]))
+  const completed = new Set<string>()
+  const ordered: MissionDesign['taskDag'] = []
+  while (remaining.size > 0) {
+    const ready = [...remaining.values()].filter((task) => task.parentIds.every((parent) => completed.has(parent)))
+    if (ready.length === 0) throw new Error('Mission DAG contains a cycle or missing parent')
+    for (const task of ready) {
+      ordered.push(task)
+      completed.add(task.id)
+      remaining.delete(task.id)
+    }
+  }
+  return ordered
+}
+
+function detectWriteConflicts(tasks: MissionDesign['taskDag']): Array<{ left: string; right: string; files: string[] }> {
+  const conflicts: Array<{ left: string; right: string; files: string[] }> = []
+  for (let i = 0; i < tasks.length; i++) {
+    for (let j = i + 1; j < tasks.length; j++) {
+      const left = tasks[i]
+      const right = tasks[j]
+      if (!left || !right) continue
+      const files = left.writeFiles.filter((file) => right.writeFiles.includes(file))
+      if (files.length > 0) conflicts.push({ left: left.id, right: right.id, files })
+    }
+  }
+  return conflicts
+}
 
 function buildTaskPrompt(mission: Mission, evidenceDir: string): string {
   return [
