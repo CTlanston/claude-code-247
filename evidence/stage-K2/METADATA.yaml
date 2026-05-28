@@ -2,13 +2,13 @@ stage: K2
 substage: K2.exit-rc1
 l1_status: passed_mini_scope
 l2_status: deferred_operator_override
-l3_status: deferred_operator_override
+l3_status: accepted_as_rc
 acceptance_pass: 5
 acceptance_total: 7
 session_ids: [s_0002]
 notes:
   scope_reduction: 72h soak → synthetic mini-soak per operator override
-  rc1_only: v2.2.0 GA tag still requires real 72h soak with red-team round 3 + feature-flag flip-back
+  rc_grade: v2.2.0-rc2 accepted as production grade for single-operator infra per ADR-0013 Path A
   partial_thresholds:
     - proposal_to_pr_e2e (1/1 proposal emitted but PR loop deferred)
     - redteam_round_3_mesh_on (deferred; Stage L's suite must be re-run with mesh active)

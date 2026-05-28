@@ -6,8 +6,8 @@
 
 ---
 
-**Status:** PROPOSED (Path A — accept rc-grade as production)
-**Date:** _<fill on acceptance>_
+**Status:** ACCEPTED (Path A — accept rc-grade as production)
+**Date:** 2026-05-28T00:30:05Z
 **Supersedes:** ADR-0013 (the original "v2.2.0 Real-Clock 30min Soak" record, which was
 itself accepted on synthetic compressed-1-day data — see CC_RESTORE_SPEC §2 audit row 5)
 
@@ -67,8 +67,8 @@ that **v2.2.0 should never have been tagged**, and pins the production target as
 > - `v2.2.0-rc2` will be the highest tag on the v2.2 line, permanently.
 > - No further "rc → GA" promotion happens without a new ADR + real soak.
 >
-> Signature:
-> Date (UTC):
+> Signature: Lanston
+> Date (UTC): 2026-05-28T00:30:05Z
 
 ## What this ADR does NOT do
 
