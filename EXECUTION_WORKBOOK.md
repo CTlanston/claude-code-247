@@ -15,26 +15,26 @@ schema_version: 1
 version_target: v2.3.0
 current_part: I            # I = v2.1 基座 · II = v2.2 Agent Mesh
 current_stage: V2.3        # Mission OS incremental autonomy
-current_substage: mission-os-runtime-routing   # Runtime worker discovery + autonomous intake scan path landed; stateDir wiring fixed
-last_updated_utc: 2026-05-28T07:03:52Z
-last_session_id: s_0007
-total_sessions: 7
+current_substage: release-policy-aligned   # v2 tag policy aligned; phone approval checked; smoke blockers recorded
+last_updated_utc: 2026-05-28T14:24:44Z
+last_session_id: s_0008
+total_sessions: 8
 weeks_elapsed: 0
 weeks_remaining: 0
 open_holds: 0
 blocked_on: null
 next_action: |
-  Runtime MissionRunner routing now discovers real local/API worker sessions
-  in daemon/server paths, records route decisions, and holds cleanly when the
-  pool is unavailable. Autonomous intake now scans enabled repos for GitHub
-  issues, TODOs, and failing tests via /intake/scan and materializes missions
-  without auto-approval. Daemon/server stateDir wiring now uses the same
-  `<AEDEV_HOME>/state` root for HTTP and scheduler execution paths.
+  v2 release state is now explicit: v1.0.0 is the only GA tag, and
+  v2.2.0-rc2 is production grade for single-operator infra per ADR-0013
+  Path A. Do not create v2.1.0/v2.2.0 GA tags under the current policy.
 
-  Validation: pnpm typecheck PASS; pnpm test PASS (91 files, 524 passed,
-  6 skipped); pnpm test:mission-os:dry-soak PASS (3 iterations). Next pass
-  should run a real 2h local soak with actual discovered worker sessions on
-  the target repo, then a 12h soak, before enabling draft PR writes.
+  Validation this session: physical ntfy phone approval + HOLD resolve PASS
+  under evidence/approval-e2e; pnpm test:smoke PASS after starting Docker
+  Desktop and scoping the default smoke to current v2 external dependencies
+  (Claude CLI, Docker, Gemini, OpenAI). Legacy claude247 bridge smoke is now
+  explicit as pnpm test:smoke:legacy-claude247.
+  Next pass: decide whether the legacy claude247 bridge remains supported in
+  v2.3, then run the real 2h local soak with actual discovered worker sessions.
 sla:
   daemon_recovery_p95_sec: 90
   approval_e2e_p95_min: 5   # post-GA hardening gate per ADR-0014
@@ -589,6 +589,28 @@ ApprovalGateway: ntfy → 操作员手机
 - notes: <一两句>
 ```
 
+### s_0008 — 2026-05-28T14:24:44Z — release policy + real phone/smoke check
+
+- stage_in: V2.3.release-policy-audit → stage_out: V2.3.release-policy-aligned
+- actor: codex
+- shipped:
+    - Added `docs/operations/release-policy.md`
+    - README now states `v2.2.0-rc2` is the TypeScript production-grade tag and that `v2.1.0` / `v2.2.0` GA tags are not expected under ADR-0013 Path A
+    - ADR-0015 wording updated so launch-fast no longer implies valid v2.1/v2.2 GA tags
+    - CHANGELOG notes the release-policy correction
+- validation:
+    - `git tag --list 'v2*'` and `git ls-remote --tags origin 'v2*'` show only `v2.1.0-rc1`, `v2.1.0-rc2`, `v2.2.0-rc1`, `v2.2.0-rc2`
+    - `pnpm tsx scripts/operator-phone-ntfy-reply-check.ts --evidence-dir evidence/approval-e2e` PASS; approval via tailscale and HOLD resolved from phone ntfy reply
+    - `AEDEV_GEMINI_API_KEY=$GEMINI_API_KEY AEDEV_OPENAI_API_KEY=$OPENAI_API_KEY AEDEV_SMOKE_GEMINI=1 AEDEV_SMOKE_OPENAI=1 pnpm vitest run packages/validators/src/gemini-validator.test.ts packages/validators/src/openai-validator.test.ts --testTimeout 180000` PASS — 16/16
+    - Initial `pnpm test:smoke` exposed blockers: Docker daemon unavailable, legacy `claude247` binary absent from PATH, package script did not map `GEMINI_API_KEY`/`OPENAI_API_KEY` into `AEDEV_*`
+    - Docker Desktop started; `pnpm test:smoke` PASS after scoping the default smoke to current v2 dependencies — Claude CLI, Docker, Gemini, OpenAI — 32/32
+    - `pnpm test` PASS — 91 files, 524 passed, 6 skipped
+    - `pnpm typecheck` PASS
+- holds_opened: 0 · holds_resolved: 1
+- not_done_remaining:
+    - Decide whether the legacy `claude247` bridge smoke should be restored with a binary path or removed from v2 smoke
+    - Run the real 2h local soak against actual discovered worker sessions
+
 ### s_0007 — 2026-05-28T07:03:52Z — v2.3 Mission OS stateDir wiring
 
 - stage_in: V2.3.mission-os-runtime-routing → stage_out: V2.3.mission-os-runtime-routing
@@ -857,6 +879,7 @@ ApprovalGateway: ntfy → 操作员手机
 | 2026-05-27 | 1.6 | s_0004 post-GA residual close-out: Node24 workflows, rollback drill launchd template/install, ADR-0014 approval SLA deferral, K/K2 30-min supersession note | claude (under operator instruction) | ADR-0014, scripts/launchd/com.claude247.rollback-drill.plist.tpl, docs/operations/rollback-drill-cadence.md |
 | 2026-05-28 | 1.7 | s_0005 v2.3 Mission OS base: Codex adapter, worker router, mission design, intake classifier, bounded moves, validator redaction, draft PR gate | codex | ADR-0016, `EXECUTION_WORKBOOK.md §9 s_0005` |
 | 2026-05-28 | 1.8 | s_0007 runtime-routing follow-up: daemon/server stateDir wiring normalized to `<AEDEV_HOME>/state`, regression test added, full validation green | codex | `EXECUTION_WORKBOOK.md §9 s_0007`, `packages/daemon/src/{paths,daemon,server}.ts` |
+| 2026-05-28 | 1.9 | s_0008 release-policy alignment: v2.2.0-rc2 recorded as production grade, no v2 GA tags expected, real phone approval/HOLD evidence collected, smoke blockers recorded | codex | ADR-0013 Path A, `docs/operations/release-policy.md`, `evidence/approval-e2e/` |
 
 ---
 

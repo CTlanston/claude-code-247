@@ -3,6 +3,14 @@
 All notable changes to `claude-code-247` are recorded here.
 Pre-1.0 releases are pre-release on GitHub.
 
+## [Unreleased]
+
+### Fixed
+
+- Documented the v2 release-grade policy: `v2.2.0-rc2` is production
+  grade for single-operator infra, and no `v2.1.0` / `v2.2.0` GA tag is
+  expected under ADR-0013 Path A.
+
 ## [v2.1.0-rc1] — 2026-05-27 — TypeScript-only control plane (Stage F3 cutover)
 
 ### BREAKING
