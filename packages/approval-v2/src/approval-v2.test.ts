@@ -40,9 +40,9 @@ describe('approval-v2 · token (Stage D L1)', () => {
     const parts = tok.encoded.split('.')
     // Flip a char in the signature segment — payload still decodes cleanly,
     // signature comparison fails deterministically.
-    const lastChar = parts[2].charAt(parts[2].length - 1)
-    const swap = lastChar === 'A' ? 'B' : 'A'
-    const tampered = parts[2].slice(0, -1) + swap
+    const firstChar = parts[2].charAt(0)
+    const swap = firstChar === 'A' ? 'B' : 'A'
+    const tampered = swap + parts[2].slice(1)
     const r = verifier.verify(`${parts[0]}.${parts[1]}.${tampered}`)
     expect(r.ok).toBe(false)
     expect(r.error).toBe('signature_mismatch')

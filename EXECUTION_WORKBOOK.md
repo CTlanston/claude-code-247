@@ -15,26 +15,28 @@ schema_version: 1
 version_target: v2.3.0
 current_part: I            # I = v2.1 基座 · II = v2.2 Agent Mesh
 current_stage: V2.3        # Mission OS incremental autonomy
-current_substage: mission-os-runtime-routing   # Runtime worker discovery + autonomous intake scan path landed; stateDir wiring fixed
-last_updated_utc: 2026-05-28T07:03:52Z
-last_session_id: s_0007
-total_sessions: 7
+current_substage: mission-os-acceptance-harness   # Stage 0 acceptance + real-soak harness landed; Codex CLI argv updated for 0.130
+last_updated_utc: 2026-05-28T07:50:36Z
+last_session_id: s_0008
+total_sessions: 8
 weeks_elapsed: 0
 weeks_remaining: 0
 open_holds: 0
 blocked_on: null
 next_action: |
-  Runtime MissionRunner routing now discovers real local/API worker sessions
-  in daemon/server paths, records route decisions, and holds cleanly when the
-  pool is unavailable. Autonomous intake now scans enabled repos for GitHub
-  issues, TODOs, and failing tests via /intake/scan and materializes missions
-  without auto-approval. Daemon/server stateDir wiring now uses the same
-  `<AEDEV_HOME>/state` root for HTTP and scheduler execution paths.
+  Stage 0 now has a machine-readable Mission OS acceptance harness:
+  `pnpm test:mission-os:acceptance -- --stage audit` writes
+  `evidence/v23/audit/acceptance.json` with command results, evidence paths,
+  route decisions, validator leak scan, side-effect idempotency, draft PR
+  dry-run, and real-soak status. `pnpm test:mission-os:real-soak -- --stage
+  audit --providers claude,codex` passed on real local Claude/Codex sessions.
 
-  Validation: pnpm typecheck PASS; pnpm test PASS (91 files, 524 passed,
-  6 skipped); pnpm test:mission-os:dry-soak PASS (3 iterations). Next pass
-  should run a real 2h local soak with actual discovered worker sessions on
-  the target repo, then a 12h soak, before enabling draft PR writes.
+  Validation: pnpm lint PASS; pnpm typecheck PASS; pnpm test PASS (92 files,
+  527 passed, 6 skipped); pnpm test:mission-os:dry-soak PASS; pnpm
+  test:mission-os:acceptance -- --stage audit PASS; pnpm
+  test:mission-os:real-soak -- --stage audit --providers claude,codex PASS.
+  Next pass should implement Stage 1 subscription worker-pool session probes
+  and HOLD behavior on top of this acceptance harness.
 sla:
   daemon_recovery_p95_sec: 90
   approval_e2e_p95_min: 5   # post-GA hardening gate per ADR-0014
@@ -589,6 +591,27 @@ ApprovalGateway: ntfy → 操作员手机
 - notes: <一两句>
 ```
 
+### s_0008 — 2026-05-28T07:50:36Z — v2.3 Stage 0 acceptance harness
+
+- stage_in: V2.3.mission-os-runtime-routing → stage_out: V2.3.mission-os-acceptance-harness
+- actor: codex
+- branch: `codex/v23-acceptance-harness`
+- shipped:
+    - Added a Mission OS acceptance report schema and writer with unit coverage
+    - Added `pnpm test:mission-os:acceptance -- --stage <stage>` to emit `evidence/v23/<stage>/acceptance.json`
+    - Added `pnpm test:mission-os:real-soak -- --stage <stage>` for real Claude/Codex tiny-task verification; missing sessions report HOLD instead of pass
+    - Updated Codex CLI adapter argv for `codex-cli 0.130.0` by removing the removed `--ask-for-approval` flag and adding `--skip-git-repo-check`
+    - Fixed nondeterministic approval token tamper test and kept MissionRunner route test on fake runner boundary
+- validation:
+    - `pnpm lint` PASS
+    - `pnpm typecheck` PASS
+    - `pnpm test` PASS — 92 files, 527 passed, 6 skipped
+    - `pnpm test:mission-os:dry-soak` PASS — 3 iterations, 3 executed, 0 failures
+    - `pnpm test:mission-os:acceptance -- --stage audit` PASS
+    - `pnpm test:mission-os:real-soak -- --stage audit --providers claude,codex --timeout-ms 180000` PASS
+- holds_opened: 0 · holds_resolved: 0
+- next_action: implement Stage 1 subscription worker pool probes and long-running session HOLD behavior using the acceptance harness as the autonomous gate.
+
 ### s_0007 — 2026-05-28T07:03:52Z — v2.3 Mission OS stateDir wiring
 
 - stage_in: V2.3.mission-os-runtime-routing → stage_out: V2.3.mission-os-runtime-routing
@@ -857,6 +880,7 @@ ApprovalGateway: ntfy → 操作员手机
 | 2026-05-27 | 1.6 | s_0004 post-GA residual close-out: Node24 workflows, rollback drill launchd template/install, ADR-0014 approval SLA deferral, K/K2 30-min supersession note | claude (under operator instruction) | ADR-0014, scripts/launchd/com.claude247.rollback-drill.plist.tpl, docs/operations/rollback-drill-cadence.md |
 | 2026-05-28 | 1.7 | s_0005 v2.3 Mission OS base: Codex adapter, worker router, mission design, intake classifier, bounded moves, validator redaction, draft PR gate | codex | ADR-0016, `EXECUTION_WORKBOOK.md §9 s_0005` |
 | 2026-05-28 | 1.8 | s_0007 runtime-routing follow-up: daemon/server stateDir wiring normalized to `<AEDEV_HOME>/state`, regression test added, full validation green | codex | `EXECUTION_WORKBOOK.md §9 s_0007`, `packages/daemon/src/{paths,daemon,server}.ts` |
+| 2026-05-28 | 1.9 | s_0008 Stage 0 Mission OS acceptance harness and real Claude/Codex tiny soak gate | codex | `EXECUTION_WORKBOOK.md §9 s_0008`, `evidence/v23/audit/acceptance.json` |
 
 ---
 

@@ -107,6 +107,18 @@ export type {
   ReleaseResult,
 } from './release-pipeline.js'
 export {
+  buildMissionOsAcceptanceReport,
+  writeMissionOsAcceptanceReport,
+} from './mission-os-acceptance.js'
+export type {
+  AcceptanceCheck,
+  AcceptanceCommandResult,
+  AcceptanceRouteDecision,
+  MissionOsAcceptanceInput,
+  MissionOsAcceptanceReport,
+  MissionOsAcceptanceStatus,
+} from './mission-os-acceptance.js'
+export {
   RolePipeline,
   ArchitectRole,
   DesignerRole,

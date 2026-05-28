@@ -53,8 +53,11 @@ export class CodexCliAdapter {
       'exec',
       '--cd', workdir,
       '--sandbox', options.sandbox ?? 'workspace-write',
-      '--ask-for-approval', options.approvalPolicy ?? 'never',
+      '--skip-git-repo-check',
     ]
+    if (options.approvalPolicy === 'never' && options.sandbox === 'danger-full-access') {
+      argv.push('--dangerously-bypass-approvals-and-sandbox')
+    }
     if (options.json ?? true) argv.push('--json')
     if (options.ephemeral ?? true) argv.push('--ephemeral')
     if (options.model) argv.push('--model', options.model)

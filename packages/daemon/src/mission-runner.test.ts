@@ -263,6 +263,7 @@ describe('MissionRunner — workbook end-to-end glue', () => {
     const runner = new MissionRunner(db, {
       stateDir,
       rolePipeline: fakeRolePipeline(),
+      runner: fakeRunner({ taskEvidenceDir: makeTaskEvidence() }),
       workerSessions: workerSessions(),
       validators: [fakeValidator('gemini', 'pass'), fakeValidator('openai', 'pass')],
     })
