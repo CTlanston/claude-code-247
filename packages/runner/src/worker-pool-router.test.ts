@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { dynamicConcurrency, WorkerPoolRouter, type WorkerSession } from './worker-pool-router.js'
 
 const sessions: WorkerSession[] = [
-  { id: 'claude-1', provider: 'claude-cli', family: 'anthropic', healthy: true, active: 1 },
-  { id: 'codex-1', provider: 'codex-cli', family: 'openai', healthy: true, active: 0 },
-  { id: 'gemini-1', provider: 'gemini-api', family: 'google', healthy: true, active: 0 },
+  { id: 'claude-1', provider: 'claude-cli', family: 'anthropic', healthy: true, active: 1, lastHeartbeatAt: '2026-05-28T00:00:00.000Z' },
+  { id: 'codex-1', provider: 'codex-cli', family: 'openai', healthy: true, active: 0, lastHeartbeatAt: '2026-05-28T00:00:00.000Z' },
+  { id: 'gemini-1', provider: 'gemini-api', family: 'google', healthy: true, active: 0, lastHeartbeatAt: '2026-05-28T00:00:00.000Z' },
 ]
 
 describe('WorkerPoolRouter', () => {
@@ -21,7 +21,7 @@ describe('WorkerPoolRouter', () => {
 
   it('enforces validator family separation from reviewer', () => {
     const decision = new WorkerPoolRouter([
-      { id: 'gemini-1', provider: 'gemini-api', family: 'google', healthy: true, active: 0 },
+      { id: 'gemini-1', provider: 'gemini-api', family: 'google', healthy: true, active: 0, lastHeartbeatAt: '2026-05-28T00:00:00.000Z' },
     ]).decide({ role: 'validator', reviewerFamily: 'google', queueDepth: 2 })
 
     expect(decision.provider).toBeNull()
@@ -30,7 +30,7 @@ describe('WorkerPoolRouter', () => {
 
   it('holds when every session is unhealthy', () => {
     const decision = new WorkerPoolRouter([
-      { id: 'codex-1', provider: 'codex-cli', family: 'openai', healthy: false, active: 0 },
+      { id: 'codex-1', provider: 'codex-cli', family: 'openai', healthy: false, active: 0, lastHeartbeatAt: '2026-05-28T00:00:00.000Z', failureReason: 'test unhealthy' },
     ]).decide({ role: 'coder', queueDepth: 5 })
 
     expect(decision.provider).toBeNull()

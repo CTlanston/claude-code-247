@@ -10,6 +10,8 @@ export interface WorkerSession {
   family: ModelFamily
   healthy: boolean
   active: number
+  lastHeartbeatAt: string
+  failureReason?: string
 }
 
 export interface RouteRequest {
@@ -43,7 +45,12 @@ export class WorkerPoolRouter {
     const concurrency = dynamicConcurrency(this.sessions, req.queueDepth ?? 0)
     const healthy = this.sessions.filter((s) => s.healthy)
     if (healthy.length === 0) {
-      return { provider: null, concurrency, holdCode: 'HOLD-SESSION-POOL', reason: 'no healthy local or API sessions' }
+      return {
+        provider: null,
+        concurrency,
+        holdCode: 'HOLD-SESSION-POOL',
+        reason: summarizeSessionFailures(this.sessions),
+      }
     }
 
     const preferences = ROLE_PREFERENCES[req.role]
@@ -79,4 +86,12 @@ export function dynamicConcurrency(sessions: readonly WorkerSession[], queueDept
   const cpuBudget = Math.max(1, Math.min(5, Math.floor(os.cpus().length / 2)))
   const pressure = queueDepth <= 1 ? 1 : queueDepth <= 3 ? 3 : 5
   return Math.max(1, Math.min(5, healthy, cpuBudget, pressure))
+}
+
+function summarizeSessionFailures(sessions: readonly WorkerSession[]): string {
+  if (sessions.length === 0) return 'no worker sessions discovered'
+  const failures = sessions
+    .map((session) => `${session.provider}:${session.failureReason ?? 'unhealthy'}`)
+    .join(', ')
+  return `no healthy local or API sessions (${failures})`
 }

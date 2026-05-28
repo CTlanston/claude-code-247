@@ -8,7 +8,7 @@ import {
   type AcceptanceCommandResult,
   type AcceptanceRouteDecision,
 } from '@aedev/daemon'
-import { WorkerPoolRouter, type WorkerSession } from '@aedev/runner'
+import { discoverWorkerSessions, WorkerPoolRouter, type WorkerSession } from '@aedev/runner'
 import { buildEvidencePrompt, redactForValidator } from '@aedev/validators'
 
 interface CliArgs {
@@ -28,6 +28,7 @@ async function main(): Promise<void> {
     runCommand('pnpm', ['test:mission-os:dry-soak', '--', '--iterations', String(args.iterations)], outputDir),
   ]
   const drySoakReport = join(process.cwd(), 'evidence', 'stage-v23', 'dry-soak', 'mission-os-dry-soak.json')
+  const sessionHealthPath = await writeSessionHealthEvidence(outputDir)
   const routeDecisions = writeRouteEvidence(outputDir)
   const validatorLeakScan = writeValidatorLeakScan(outputDir)
   const sideEffectIdempotency = await writeSideEffectIdempotency(outputDir)
@@ -41,6 +42,7 @@ async function main(): Promise<void> {
   const holds = realSoak.passed ? [] : [realSoak.detail]
   const evidencePaths = [
     drySoakReport,
+    sessionHealthPath,
     join(outputDir, 'route-decisions.json'),
     join(outputDir, 'validator-leak-scan.json'),
     join(outputDir, 'side-effect-idempotency.json'),
@@ -101,11 +103,29 @@ function runCommand(command: string, args: string[], outputDir: string): Accepta
   }
 }
 
+async function writeSessionHealthEvidence(outputDir: string): Promise<string> {
+  const sessions = await discoverWorkerSessions()
+  const path = join(outputDir, 'session-health.json')
+  writeFileSync(path, JSON.stringify({
+    checkedAt: new Date().toISOString(),
+    sessions: sessions.map((session) => ({
+      id: session.id,
+      provider: session.provider,
+      family: session.family,
+      healthy: session.healthy,
+      active: session.active,
+      lastHeartbeatAt: session.lastHeartbeatAt,
+      failureReason: session.failureReason ?? null,
+    })),
+  }, null, 2) + '\n')
+  return path
+}
+
 function writeRouteEvidence(outputDir: string): AcceptanceRouteDecision[] {
   const sessions: WorkerSession[] = [
-    { id: 'claude-audit', provider: 'claude-cli', family: 'anthropic', healthy: true, active: 1 },
-    { id: 'codex-audit', provider: 'codex-cli', family: 'openai', healthy: true, active: 0 },
-    { id: 'gemini-audit', provider: 'gemini-api', family: 'google', healthy: true, active: 0 },
+    { id: 'claude-audit', provider: 'claude-cli', family: 'anthropic', healthy: true, active: 1, lastHeartbeatAt: '2026-05-28T00:00:00.000Z' },
+    { id: 'codex-audit', provider: 'codex-cli', family: 'openai', healthy: true, active: 0, lastHeartbeatAt: '2026-05-28T00:00:00.000Z' },
+    { id: 'gemini-audit', provider: 'gemini-api', family: 'google', healthy: true, active: 0, lastHeartbeatAt: '2026-05-28T00:00:00.000Z' },
   ]
   const router = new WorkerPoolRouter(sessions)
   const coder = router.decide({ role: 'coder', queueDepth: 4 })

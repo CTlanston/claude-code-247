@@ -177,13 +177,13 @@ function drySoakRunner(stateDir: string) {
 function drySoakSessions(iteration: number): WorkerSession[] {
   if (iteration === 1) {
     return [
-      { id: 'codex-only', provider: 'codex-cli', family: 'openai', healthy: true, active: 0 },
+      { id: 'codex-only', provider: 'codex-cli', family: 'openai', healthy: true, active: 0, lastHeartbeatAt: '2026-05-28T00:00:00.000Z' },
     ]
   }
   return [
-    { id: 'claude-1', provider: 'claude-cli', family: 'anthropic', healthy: true, active: 1 },
-    { id: 'codex-1', provider: 'codex-cli', family: 'openai', healthy: true, active: 0 },
-    { id: 'gemini-1', provider: 'gemini-api', family: 'google', healthy: true, active: 0 },
+    { id: 'claude-1', provider: 'claude-cli', family: 'anthropic', healthy: true, active: 1, lastHeartbeatAt: '2026-05-28T00:00:00.000Z' },
+    { id: 'codex-1', provider: 'codex-cli', family: 'openai', healthy: true, active: 0, lastHeartbeatAt: '2026-05-28T00:00:00.000Z' },
+    { id: 'gemini-1', provider: 'gemini-api', family: 'google', healthy: true, active: 0, lastHeartbeatAt: '2026-05-28T00:00:00.000Z' },
   ]
 }
 
