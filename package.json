@@ -19,6 +19,7 @@
     "test:smoke": "AEDEV_SMOKE_CLAUDE=1 AEDEV_SMOKE_DOCKER=1 AEDEV_SMOKE_CLAUDE247=1 AEDEV_SMOKE_GEMINI=1 AEDEV_SMOKE_OPENAI=1 vitest run --testTimeout 180000",
     "test:e2e:sandbox": "tsx scripts/e2e-sandbox.ts",
     "test:hermus:mission": "tsx scripts/hermus-mission-smoke.ts",
+    "test:mission-os:dry-soak": "node --import tsx scripts/mission-os-dry-soak.ts",
     "test:workbook": "tsx scripts/workbook-acceptance.ts",
     "typecheck": "pnpm -r typecheck",
     "lint": "eslint .",

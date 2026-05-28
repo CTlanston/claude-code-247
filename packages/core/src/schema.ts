@@ -3,9 +3,16 @@ export type MissionStatus = 'draft' | 'pending_approval' | 'approved' | 'running
 export type RunStatus = 'pending' | 'running' | 'done' | 'failed'
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected'
 export type SecretGrantStatus = 'active' | 'expired' | 'revoked'
-export type RunnerMode = 'docker' | 'local' | 'mock' | 'claude247-bridge'
+export type RunnerMode =
+  | 'docker'
+  | 'local'
+  | 'mock'
+  | 'claude247-bridge'
+  | 'claude-cli'
+  | 'codex-cli'
+  | 'subscription-pool'
 export type RiskLevel = 'low' | 'medium' | 'high'
-export type ValidatorName = 'gemini' | 'openai' | 'mock'
+export type ValidatorName = 'gemini' | 'openai' | 'codex' | 'mock'
 export type ValidatorVerdict = 'pass' | 'fail' | 'inconclusive'
 export type MergePolicyDecision = 'AUTO_MERGE' | 'WAITING' | 'BLOCKED'
 

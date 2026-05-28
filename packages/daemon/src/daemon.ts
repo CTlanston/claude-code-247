@@ -1,12 +1,13 @@
 import { mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
-import { homedir } from 'os'
 import { AedevDb } from '@aedev/core'
 import { createServer } from './server.js'
 import { HeartbeatService } from './heartbeat.js'
 import { MissionScheduler } from './mission-scheduler.js'
 import { DailySummaryGenerator } from './daily-summary.js'
 import { MissionRunner } from './mission-runner.js'
+import { discoverWorkerSessions } from '@aedev/runner'
+import { resolveStateDir } from './paths.js'
 
 export const DEFAULT_PORT = 7247
 
@@ -42,13 +43,10 @@ export class Daemon {
     this.heartbeat = new HeartbeatService(this.db, 30_000)
     this.heartbeat.start()
 
-    this.stateDir = this.config.stateDir ?? join(
-      process.env['AEDEV_HOME'] ?? join(homedir(), '.aedev'),
-      'state',
-    )
+    this.stateDir = this.config.stateDir ?? resolveStateDir()
     mkdirSync(this.stateDir, { recursive: true })
 
-    this.server = createServer(this.db, this.startTime)
+    this.server = createServer(this.db, this.startTime, this.stateDir)
     await this.server.listen({ port: this.config.port ?? DEFAULT_PORT, host: '127.0.0.1' })
 
     // Mission scheduler — survives restart because state lives in the events table.
@@ -61,7 +59,10 @@ export class Daemon {
     if (autoStart) {
       // Run in background; never awaited — stop() cancels it.
       this.schedulerLoop = this.scheduler.runLoop(async (mission) => {
-        const runner = new MissionRunner(this.db, { stateDir: this.stateDir })
+        const runner = new MissionRunner(this.db, {
+          stateDir: this.stateDir,
+          workerSessions: await discoverWorkerSessions(),
+        })
         await runner.runMission(mission.id).catch((e) => {
           this.db.insertEvent('mission.scheduler_dispatch_error', 'mission', mission.id, {
             error: (e as Error).message,

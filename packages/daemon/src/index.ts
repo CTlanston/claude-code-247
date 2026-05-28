@@ -14,10 +14,61 @@ export { HeartbeatService } from './heartbeat.js'
 export { IntakeService } from './intake.js'
 export { DailySummaryGenerator } from './daily-summary.js'
 export type { DailySummaryOptions, DailySummaryStats } from './daily-summary.js'
+export { AutonomousIntakeService } from './autonomous-intake.js'
+export type {
+  AutonomousIntakeScanOptions,
+  AutonomousIntakeScanResult,
+  AutonomousIntakeServiceOptions,
+  MaterializedIntakeMission,
+} from './autonomous-intake.js'
 export { ReleasePipeline } from './release-pipeline.js'
 export { ChildProcessGitClient } from '@aedev/runner'
 export { PremiumDebugger, buildFailureSignature } from './premium-debugger.js'
 export { MissionScheduler } from './mission-scheduler.js'
+export { planDocFollowup } from './doc-followup.js'
+export type { DocFollowupInput, DocFollowupPlan } from './doc-followup.js'
+export {
+  DraftPrGate,
+  DraftPrGateError,
+  draftPrIdempotencyKey,
+  renderDraftPrBody,
+} from './draft-pr-gate.js'
+export type {
+  DraftPrCreator,
+  DraftPrGateConfig,
+  DraftPrInfo,
+  DraftPrRequest,
+  GitRemoteWriter,
+} from './draft-pr-gate.js'
+export {
+  BoundedMoveRunner,
+  moveIdempotencyKey,
+} from './moves/index.js'
+export type {
+  BoundedMove,
+  MoveRunnerOpts,
+  MoveRunResult,
+} from './moves/index.js'
+export {
+  classifyIntakeBatch,
+  classifyIntakeCandidate,
+  MissionIntakeSource,
+  scanFailingTestCandidates,
+  scanGitHubIssueCandidates,
+  scanTodoCandidates,
+} from './mission-intake-source.js'
+export type {
+  ClassifiedIntakeCandidate,
+  FailingTestScannerOptions,
+  GitHubIssueScannerOptions,
+  IntakeBatchResult,
+  IntakeCandidate,
+  IntakeDecision,
+  MissionIntakeScanResult,
+  MissionIntakeSourceOptions,
+  IntakeSourceKind,
+  TodoScannerOptions,
+} from './mission-intake-source.js'
 export type {
   ScheduledMission,
   SchedulerOptions,
