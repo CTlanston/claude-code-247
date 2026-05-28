@@ -38,6 +38,8 @@ export interface AutonomousIntakeScanResult {
   created: number
   duplicates: number
   blocked: number
+  overflow: number
+  holds: Array<{ repoId: string; holdCode: 'HOLD-FLOOD'; detail: string }>
   missions: MaterializedIntakeMission[]
 }
 
@@ -58,11 +60,29 @@ export class AutonomousIntakeService {
     let created = 0
     let duplicates = 0
     let blocked = 0
+    let overflow = 0
+    const holds: AutonomousIntakeScanResult['holds'] = []
 
     for (const repo of repos) {
       const source = await this.buildSource(repo)
       const result = await source.scan()
       candidatesDiscovered += result.candidates.length
+      overflow += result.overflow.length
+      if (result.overflow.length > 0) {
+        const hold = {
+          repoId: repo.id,
+          holdCode: 'HOLD-FLOOD' as const,
+          detail: `intake scan found ${result.candidates.length} candidates; cap ${result.cap} overflowed ${result.overflow.length}`,
+        }
+        holds.push(hold)
+        this.db.insertEvent('hold.policy.created', 'repo', repo.id, {
+          holdCode: hold.holdCode,
+          reason: 'intake_overflow',
+          candidates: result.candidates.length,
+          cap: result.cap,
+          overflow: result.overflow.length,
+        })
+      }
 
       for (const candidate of result.accepted) {
         if (candidate.decision === 'blocked') {
@@ -126,6 +146,8 @@ export class AutonomousIntakeService {
       created,
       duplicates,
       blocked,
+      overflow,
+      holds,
       missions,
     }
   }

@@ -74,6 +74,7 @@ describe('AutonomousIntakeService', () => {
 
     expect(result.created).toBe(3)
     expect(result.blocked).toBe(0)
+    expect(result.overflow).toBe(0)
     expect(result.missions.filter((mission) => mission.missionStatus === 'pending_approval')).toHaveLength(1)
     expect(result.missions.filter((mission) => mission.missionStatus === 'draft')).toHaveLength(2)
     expect(db.listMissions(repo.id)).toHaveLength(3)
@@ -113,6 +114,42 @@ describe('AutonomousIntakeService', () => {
 
     expect(first.created).toBe(1)
     expect(second.duplicates).toBe(1)
+    expect(db.listMissions(repo.id)).toHaveLength(1)
+  })
+
+  it('creates a HOLD-FLOOD event when intake exceeds the repo cap', async () => {
+    const db = new AedevDb(':memory:')
+    const stateDir = makeTempDir('autonomous-intake-state-flood')
+    const repoPath = makeTempDir('autonomous-intake-repo-flood')
+    const repo = db.insertRepo({
+      name: 'widget',
+      path: repoPath,
+      defaultBranch: 'main',
+      enabled: true,
+      testCommands: [],
+      forbiddenPaths: [],
+      riskRules: {},
+      mergePolicy: 'WAITING',
+    })
+
+    const service = new AutonomousIntakeService(db, stateDir, {
+      capPerRepo: 1,
+      sourceFactory: async (_repo, options) => new MissionIntakeSource({
+        ...options,
+        manual: [
+          { id: 'manual-1', source: 'manual', title: 'Safe manual follow-up 1', body: 'Polish evidence.', repoId: repo.id },
+          { id: 'manual-2', source: 'manual', title: 'Safe manual follow-up 2', body: 'Polish evidence.', repoId: repo.id },
+        ],
+      }),
+    })
+
+    const result = await service.scan({ repoId: repo.id })
+    const events = db.queryEvents({ type: 'hold.policy.created', entityId: repo.id })
+
+    expect(result.created).toBe(1)
+    expect(result.overflow).toBe(1)
+    expect(result.holds[0]?.holdCode).toBe('HOLD-FLOOD')
+    expect(events[0]?.payload['holdCode']).toBe('HOLD-FLOOD')
     expect(db.listMissions(repo.id)).toHaveLength(1)
   })
 })
