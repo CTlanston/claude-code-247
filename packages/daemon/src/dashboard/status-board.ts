@@ -15,6 +15,14 @@ export interface StatusBoardInput {
   sessionHealth: 'unknown' | 'healthy' | 'expired'
   /** Subscription daily call fraction 0..1. */
   quotaFraction: number
+  missionOs?: {
+    activeWorkers: number
+    healthyWorkers: number
+    workerProviders: Record<string, number>
+    checkpointWaits: number
+    draftPrWaits: number
+    lastAcceptanceStatus: 'unknown' | 'pass' | 'failed' | 'hold'
+  }
 }
 
 export interface StatusBoardJson {
@@ -26,6 +34,15 @@ export interface StatusBoardJson {
   holds: { open: number }
   approvals: { pending: number }
   cli: { session_health: 'unknown' | 'healthy' | 'expired'; quota_fraction: number }
+  mission_os?: {
+    queue_depth: number
+    active_workers: number
+    healthy_workers: number
+    worker_providers: Record<string, number>
+    checkpoint_waits: number
+    draft_pr_waits: number
+    last_acceptance_status: 'unknown' | 'pass' | 'failed' | 'hold'
+  }
 }
 
 /**
@@ -34,7 +51,7 @@ export interface StatusBoardJson {
  * serializer's output.
  */
 export function buildStatusBoard(input: StatusBoardInput, generatedAt: string): StatusBoardJson {
-  return {
+  const board: StatusBoardJson = {
     schema_version: 1,
     generated_at: generatedAt,
     missions: { open: input.missionsOpen, total: input.missionsTotal },
@@ -43,6 +60,18 @@ export function buildStatusBoard(input: StatusBoardInput, generatedAt: string): 
     approvals: { pending: input.approvalsPending },
     cli:      { session_health: input.sessionHealth, quota_fraction: input.quotaFraction },
   }
+  if (input.missionOs) {
+    board.mission_os = {
+      queue_depth: input.tasksQueued,
+      active_workers: input.missionOs.activeWorkers,
+      healthy_workers: input.missionOs.healthyWorkers,
+      worker_providers: input.missionOs.workerProviders,
+      checkpoint_waits: input.missionOs.checkpointWaits,
+      draft_pr_waits: input.missionOs.draftPrWaits,
+      last_acceptance_status: input.missionOs.lastAcceptanceStatus,
+    }
+  }
+  return board
 }
 
 /** Canonical JSON string — used by byte-equality tests. */

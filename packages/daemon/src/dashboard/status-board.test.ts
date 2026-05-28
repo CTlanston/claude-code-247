@@ -46,4 +46,28 @@ describe('dashboard · status-board JSON (Stage F2 L1)', () => {
     const b = buildStatusBoard(SAMPLE, '2026-05-27T00:00:00Z')
     expect(Object.keys(b.cli).sort()).toEqual(['quota_fraction', 'session_health'])
   })
+
+  it('case 6: mission_os exposes queue, worker, checkpoint, and draft PR waits when provided', () => {
+    const b = buildStatusBoard({
+      ...SAMPLE,
+      missionOs: {
+        activeWorkers: 2,
+        healthyWorkers: 3,
+        workerProviders: { 'claude-cli': 1, 'codex-cli': 2 },
+        checkpointWaits: 1,
+        draftPrWaits: 4,
+        lastAcceptanceStatus: 'pass',
+      },
+    }, '2026-05-27T00:00:00Z')
+
+    expect(b.mission_os).toEqual({
+      queue_depth: 5,
+      active_workers: 2,
+      healthy_workers: 3,
+      worker_providers: { 'claude-cli': 1, 'codex-cli': 2 },
+      checkpoint_waits: 1,
+      draft_pr_waits: 4,
+      last_acceptance_status: 'pass',
+    })
+  })
 })
