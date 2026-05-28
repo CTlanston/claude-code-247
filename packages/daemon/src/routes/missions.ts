@@ -2,7 +2,15 @@ import type { FastifyInstance } from 'fastify'
 import type { AedevDb } from '@aedev/core'
 
 export function registerMissionRoutes(app: FastifyInstance, db: AedevDb): void {
-  app.get('/missions', async () => ({ missions: db.listMissions() }))
+  app.get('/missions', async (req) => {
+    const url = new URL(req.url, 'http://localhost')
+    const status = url.searchParams.get('status')
+    const limit = Number(url.searchParams.get('limit') ?? '100')
+    const missions = db.listMissions()
+      .filter((m) => !status || m.status === status)
+      .slice(0, limit)
+    return { missions }
+  })
 
   app.get<{ Params: { id: string } }>('/missions/:id', async (req, reply) => {
     const m = db.getMission(req.params.id)

@@ -57,6 +57,56 @@ describe('createServer', () => {
     }
   })
 
+  it('serves the real L0 smoke route contract', async () => {
+    const app = createServer(db, new Date(), stateDir)
+
+    const health = await app.inject({ method: 'GET', url: '/health' })
+    expect(health.statusCode).toBe(200)
+    expect(health.json<{ status: string }>().status).toBe('green')
+
+    const scan = await app.inject({ method: 'POST', url: '/missions/scan', payload: {} })
+    expect(scan.statusCode).toBe(200)
+    const scanned = scan.json<{ taskId: string; missionId: string }>()
+    expect(scanned.taskId).toBeTruthy()
+
+    const events = await app.inject({ method: 'GET', url: `/events?taskId=${scanned.taskId}` })
+    expect(events.json<{ events: Array<{ kind: string }> }>().events[0]?.kind).toBe('roadmap.proposal.emitted')
+
+    const missions = await app.inject({ method: 'GET', url: '/missions?status=approved&limit=1' })
+    expect(missions.json<{ missions: Array<{ id: string }> }>().missions[0]?.id).toBe(scanned.missionId)
+
+    const dispatch = await app.inject({ method: 'POST', url: `/missions/${scanned.missionId}/dispatch` })
+    expect(dispatch.statusCode).toBe(200)
+
+    const approval = await app.inject({
+      method: 'POST',
+      url: '/approvals',
+      payload: { reason: 'smoke-check-3', operator: 'lanston' },
+    })
+    expect(approval.statusCode).toBe(200)
+    const { approvalId } = approval.json<{ approvalId: string }>()
+    const approved = await app.inject({ method: 'POST', url: `/approvals/${approvalId}/approve`, payload: { by: 'operator' } })
+    expect(approved.statusCode).toBe(200)
+
+    const sentinel = await app.inject({
+      method: 'POST',
+      url: '/sentinel/probe',
+      payload: { tool: 'bash', args: 'cat .env.production' },
+    })
+    expect(sentinel.json<{ verdict: string }>().verdict).toBe('hard_block')
+
+    const chaos = await app.inject({ method: 'POST', url: '/chaos/kill-session' })
+    expect(chaos.statusCode).toBe(200)
+    const resolved = await app.inject({ method: 'POST', url: '/chaos/resolve-latest-hold', payload: { by: 'operator' } })
+    expect(resolved.statusCode).toBe(200)
+
+    const metrics = await app.inject({ method: 'GET', url: '/metrics' })
+    expect(metrics.body).toContain('events_total')
+
+    const loki = await app.inject({ method: 'GET', url: '/loki/recent?limit=10' })
+    expect(loki.statusCode).toBe(200)
+  })
+
   it('runs the intake approval state machine through the API', async () => {
     const app = createServer(db, new Date(), stateDir)
     const intake = await app.inject({

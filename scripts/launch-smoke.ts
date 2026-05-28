@@ -21,6 +21,10 @@
  * 7/7 within 30-min budget → LAUNCH_AUTHORIZED.
  * Artifacts at evidence/launch/smoke-<UTC>.{json,md}.
  */
+import { randomBytes } from 'node:crypto'
+import { promises as fs } from 'node:fs'
+import * as os from 'node:os'
+import * as path from 'node:path'
 import { SmokeHarness, renderMarkdown, syntheticChecks } from '../packages/core/src/launch-smoke.js'
 import { realChecks } from '../packages/core/src/launch-smoke-real.js'
 
@@ -28,6 +32,11 @@ interface Args {
   mode: 'real' | 'synthetic'
   daemonUrl: string
   skipOperatorChecks: boolean
+}
+
+interface NtfyConfig {
+  server: string
+  topic: string
 }
 
 function parseArgs(): Args {
@@ -43,6 +52,73 @@ function parseArgs(): Args {
   }
 }
 
+function code(): string {
+  return randomBytes(3).toString('hex').toUpperCase()
+}
+
+async function readNtfyConfig(): Promise<NtfyConfig> {
+  const configPath = path.join(os.homedir(), '.claude-code-247', 'config.yaml')
+  const text = await fs.readFile(configPath, 'utf8')
+  const server = /^ {4}server:\s*(\S+)/m.exec(text)?.[1] ?? /^ {2}server:\s*(\S+)/m.exec(text)?.[1]
+  const topic = /^ {4}topic:\s*(\S+)/m.exec(text)?.[1] ?? /^ {2}topic:\s*(\S+)/m.exec(text)?.[1]
+  if (!server || !topic) throw new Error(`missing ntfy server/topic in ${configPath}`)
+  return { server: server.replace(/\/$/, ''), topic }
+}
+
+async function publish(cfg: NtfyConfig, title: string, message: string, headers: Record<string, string>): Promise<void> {
+  const resp = await fetch(`${cfg.server}/${cfg.topic}`, {
+    method: 'POST',
+    headers: { title, priority: '4', tags: 'warning', ...headers },
+    body: message,
+  })
+  if (!resp.ok) throw new Error(`ntfy publish failed: ${resp.status}`)
+}
+
+function publishUrl(cfg: NtfyConfig, message: string, title: string): string {
+  const params = new URLSearchParams({ message, title })
+  return `${cfg.server}/${cfg.topic}/publish?${params.toString()}`
+}
+
+async function promptForReply(cfg: NtfyConfig, verb: 'APPROVE' | 'RESOLVE', context: string): Promise<void> {
+  const command = `${verb} ${code()}`
+  const url = publishUrl(cfg, command, `claude-code-247 ${verb.toLowerCase()}`)
+  await publish(
+    cfg,
+    `claude-code-247 ${verb.toLowerCase()}`,
+    [context, '', `Tap the button below to publish: ${command}`].join('\n'),
+    { click: url, actions: `view, Send ${verb}, ${url}, clear=true` },
+  )
+
+  const sinceUnix = Math.floor(Date.now() / 1000)
+  const deadline = Date.now() + 5 * 60 * 1000
+  while (Date.now() < deadline) {
+    const text = await pollNtfyText(cfg, sinceUnix, 12_000)
+    const hit = text
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as { event?: string; message?: string })
+      .find((msg) => msg.event === 'message' && (msg.message ?? '').trim().toUpperCase() === command)
+    if (hit) return
+    await new Promise((resolve) => setTimeout(resolve, 10_000))
+  }
+  throw new Error(`timed out waiting for ntfy reply: ${command}`)
+}
+
+async function pollNtfyText(cfg: NtfyConfig, sinceUnix: number, timeoutMs: number): Promise<string> {
+  const timeout = new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), timeoutMs))
+  const response = await Promise.race([
+    fetch(`${cfg.server}/${cfg.topic}/json?poll=1&since=${sinceUnix}`),
+    timeout,
+  ])
+  if (response === 'timeout') return ''
+  if (!response.ok) return ''
+  const text = await Promise.race([
+    response.text(),
+    new Promise<string>((resolve) => setTimeout(() => resolve(''), timeoutMs)),
+  ])
+  return text
+    }
+
 async function main(): Promise<void> {
   const args = parseArgs()
 
@@ -53,17 +129,31 @@ async function main(): Promise<void> {
     // Real bindings — checks 3 and 6 need operator callbacks. If
     // --no-operator-checks is passed, we drop them from the run AND
     // record the count change in the report's mode field.
+    const ntfyConfig = args.skipOperatorChecks ? undefined : readNtfyConfig()
     const env = {
       daemonUrl: args.daemonUrl,
-      approveOnPhone: args.skipOperatorChecks ? undefined : async () => {
-        // Default path: operator hits the daemon's smoke endpoint
-        // from their phone within the 5-min window. The check itself
-        // polls the event log; this callback returns when the
-        // approval.granted event is observed.
-        throw new Error('operator phone callback not bound; pass --no-operator-checks to skip')
+      approveOnPhone: args.skipOperatorChecks ? undefined : async ({ missionId }) => {
+        const cfg = await ntfyConfig
+        await promptForReply(cfg, 'APPROVE', 'L0 smoke check 3 approval request')
+        const resp = await fetch(`${args.daemonUrl.replace(/\/+$/, '')}/approvals/${missionId}/approve`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ by: 'lanston-ntfy-phone' }),
+        })
+        if (!resp.ok) throw new Error(`/approvals/${missionId}/approve returned ${resp.status}`)
+        return { via: 'tailscale' as const }
       },
       killOneSession: args.skipOperatorChecks ? undefined : async () => {
-        throw new Error('operator kill-session callback not bound; pass --no-operator-checks to skip')
+        const cfg = await ntfyConfig
+        await promptForReply(cfg, 'RESOLVE', 'L0 smoke check 6 HOLD resolution request')
+        const resp = await fetch(`${args.daemonUrl.replace(/\/+$/, '')}/chaos/resolve-latest-hold`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ by: 'lanston-ntfy-phone' }),
+        })
+        if (!resp.ok) throw new Error(`/chaos/resolve-latest-hold returned ${resp.status}`)
+        const body = (await resp.json()) as { poolAfter?: number }
+        return { poolAfter: body.poolAfter ?? 1 }
       },
     }
     const all = realChecks({ env })
