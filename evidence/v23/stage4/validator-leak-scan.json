@@ -1,0 +1,10 @@
+{
+  "name": "validator leak scan",
+  "passed": true,
+  "detail": "0 forbidden tokens; removed coder-transcript.txt, model-name.txt, token-cost.json",
+  "removed": [
+    "coder-transcript.txt",
+    "model-name.txt",
+    "token-cost.json"
+  ]
+}

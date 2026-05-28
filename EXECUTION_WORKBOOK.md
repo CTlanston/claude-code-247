@@ -15,28 +15,31 @@ schema_version: 1
 version_target: v2.3.0
 current_part: I            # I = v2.1 基座 · II = v2.2 Agent Mesh
 current_stage: V2.3        # Mission OS incremental autonomy
-current_substage: mission-os-acceptance-harness   # Stage 0 acceptance + real-soak harness landed; Codex CLI argv updated for 0.130
-last_updated_utc: 2026-05-28T07:50:36Z
-last_session_id: s_0008
-total_sessions: 8
+current_substage: mission-os-stage1-8-runtime-loop   # Stage 1-8 wired through probes, DAG moves, isolation, draft gate, dashboard, guarded soak
+last_updated_utc: 2026-05-28T08:22:00Z
+last_session_id: s_0009
+total_sessions: 9
 weeks_elapsed: 0
 weeks_remaining: 0
 open_holds: 0
 blocked_on: null
 next_action: |
-  Stage 0 now has a machine-readable Mission OS acceptance harness:
-  `pnpm test:mission-os:acceptance -- --stage audit` writes
-  `evidence/v23/audit/acceptance.json` with command results, evidence paths,
-  route decisions, validator leak scan, side-effect idempotency, draft PR
-  dry-run, and real-soak status. `pnpm test:mission-os:real-soak -- --stage
-  audit --providers claude,codex` passed on real local Claude/Codex sessions.
+  Stage 1-8 Mission OS runtime loop is wired into the v2.3 branch:
+  subscription session probes preserve unhealthy Claude/Codex sessions as
+  HOLD-able facts; LeadAgent emits auditable brainstorm/PRD/ADR/DAG designs;
+  mixed intake emits HOLD-FLOOD on cap overflow; MissionRunner executes approved
+  designs as bounded DAG moves; validator prompts are forced through
+  redactForValidator(); v2.3 defaults to draft-only and blocks auto-merge;
+  dashboard JSON exposes mission_os queue/worker/checkpoint/draft fields; and
+  guarded-soak entrypoints cover mock, real, and draft-pr modes.
 
   Validation: pnpm lint PASS; pnpm typecheck PASS; pnpm test PASS (92 files,
-  527 passed, 6 skipped); pnpm test:mission-os:dry-soak PASS; pnpm
-  test:mission-os:acceptance -- --stage audit PASS; pnpm
-  test:mission-os:real-soak -- --stage audit --providers claude,codex PASS.
-  Next pass should implement Stage 1 subscription worker-pool session probes
-  and HOLD behavior on top of this acceptance harness.
+  534 passed, 6 skipped); pnpm test:mission-os:dry-soak PASS; for stage1-stage8,
+  `pnpm test:mission-os:real-soak -- --stage <stage> --providers claude,codex
+  --timeout-ms 180000` PASS and `pnpm test:mission-os:acceptance -- --stage
+  <stage> --require-real-soak` PASS; guarded soak mock/real/draft-pr one-iteration
+  gates PASS. Next action is to watch CI on PR #12 and run an operator-approved
+  long wall-clock soak before declaring production hardening complete.
 sla:
   daemon_recovery_p95_sec: 90
   approval_e2e_p95_min: 5   # post-GA hardening gate per ADR-0014
@@ -590,6 +593,37 @@ ApprovalGateway: ntfy → 操作员手机
 - next_action: <见 §0>
 - notes: <一两句>
 ```
+
+### s_0009 — 2026-05-28T08:22:00Z — v2.3 Stage 1-8 runtime loop
+
+- stage_in: V2.3.mission-os-acceptance-harness → stage_out: V2.3.mission-os-stage1-8-runtime-loop
+- actor: codex
+- branch: `codex/v23-acceptance-harness`
+- shipped:
+    - Stage 1: normalized Claude/Codex session probes with `lastHeartbeatAt` and `failureReason`; unhealthy local sessions remain visible for HOLD routing instead of disappearing.
+    - Stage 2: LeadAgent mission designs now include brainstorm summary, ADR alternatives, and stricter PRD/DAG schema checks for coder write files and expected evidence.
+    - Stage 3: autonomous mixed intake records HOLD-FLOOD events when repo flood caps overflow.
+    - Stage 4: MissionRunner now executes approved mission designs as bounded DAG moves with manifests, topological ordering, write-file conflict detection, and move-failure HOLD behavior.
+    - Stage 5: validator prompt construction forces evidence through `redactForValidator()` and records redacted evidence files.
+    - Stage 6: v2.3 MissionRunner defaults to draft-only by downgrading auto-merge policy decisions and emitting `mission.auto_merge_blocked`.
+    - Stage 7: dashboard status board optionally exposes `mission_os` queue depth, active/healthy workers, provider distribution, checkpoint waits, draft PR waits, and last acceptance status.
+    - Stage 8: added `pnpm test:mission-os:guarded-soak` for mock, real, and draft-pr guarded soak reports.
+- validation:
+    - `pnpm lint` PASS
+    - `pnpm typecheck` PASS
+    - `pnpm test` PASS — 92 files, 534 passed, 6 skipped
+    - `pnpm test:mission-os:dry-soak` PASS — 3 iterations, 3 executed, 0 failures
+    - `pnpm test:mission-os:real-soak -- --stage stage1..stage8 --providers claude,codex --timeout-ms 180000` PASS for every stage
+    - `pnpm test:mission-os:acceptance -- --stage stage1..stage8 --require-real-soak` PASS for every stage
+    - `pnpm test:mission-os:guarded-soak -- --stage stage8-mock --mode mock --duration-ms 1000 --interval-ms 100 --max-iterations 1` PASS
+    - `pnpm test:mission-os:guarded-soak -- --stage stage8-real --mode real --duration-ms 1000 --interval-ms 100 --max-iterations 1` PASS
+    - `pnpm test:mission-os:guarded-soak -- --stage stage8-draft-pr --mode draft-pr --duration-ms 1000 --interval-ms 100 --max-iterations 1` PASS
+- evidence:
+    - `evidence/v23/stage1/acceptance.json` through `evidence/v23/stage8/acceptance.json`
+    - `evidence/v23/stage1/real-soak.json` through `evidence/v23/stage8/real-soak.json`
+    - `evidence/v23/stage8-{mock,real,draft-pr}/guarded-soak-*/guarded-soak.json`
+- holds_opened: 0 · holds_resolved: 0
+- next_action: watch CI on PR #12; run longer operator-approved 2h/12h/24h wall-clock soak before marking production hardening complete.
 
 ### s_0008 — 2026-05-28T07:50:36Z — v2.3 Stage 0 acceptance harness
 

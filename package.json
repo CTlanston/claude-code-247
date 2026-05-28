@@ -22,6 +22,7 @@
     "test:mission-os:dry-soak": "node --import tsx scripts/mission-os-dry-soak.ts",
     "test:mission-os:acceptance": "node --import tsx scripts/mission-os-acceptance.ts",
     "test:mission-os:real-soak": "node --import tsx scripts/mission-os-real-soak.ts",
+    "test:mission-os:guarded-soak": "node --import tsx scripts/mission-os-guarded-soak.ts",
     "test:workbook": "tsx scripts/workbook-acceptance.ts",
     "typecheck": "pnpm -r typecheck",
     "lint": "eslint .",

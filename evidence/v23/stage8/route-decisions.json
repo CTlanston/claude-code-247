@@ -1,0 +1,12 @@
+[
+  {
+    "role": "coder",
+    "provider": "codex-cli",
+    "reason": "selected codex-cli for coder"
+  },
+  {
+    "role": "validator",
+    "provider": "codex-cli",
+    "reason": "selected codex-cli for validator"
+  }
+]

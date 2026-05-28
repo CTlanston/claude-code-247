@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "stageId": "stage8-draft-pr-draft-pr-1",
+  "startedAt": "2026-05-28T08:19:57.872Z",
+  "endedAt": "2026-05-28T08:20:34.344Z",
+  "status": "pass",
+  "providers": [
+    {
+      "provider": "claude",
+      "status": "pass",
+      "available": true,
+      "exitCode": 0,
+      "durationMs": 16655,
+      "evidenceDir": "/Users/lanston/projects/claude-code-247-v23/evidence/v23/stage8-draft-pr-draft-pr-1/real-soak-claude"
+    },
+    {
+      "provider": "codex",
+      "status": "pass",
+      "available": true,
+      "exitCode": 0,
+      "durationMs": 19813,
+      "evidenceDir": "/Users/lanston/projects/claude-code-247-v23/evidence/v23/stage8-draft-pr-draft-pr-1/real-soak-codex"
+    }
+  ],
+  "reportPath": "/Users/lanston/projects/claude-code-247-v23/evidence/v23/stage8-draft-pr-draft-pr-1/real-soak.json"
+}

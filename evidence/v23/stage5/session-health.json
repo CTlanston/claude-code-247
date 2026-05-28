@@ -1,0 +1,23 @@
+{
+  "checkedAt": "2026-05-28T08:16:49.046Z",
+  "sessions": [
+    {
+      "id": "claude-cli",
+      "provider": "claude-cli",
+      "family": "anthropic",
+      "healthy": true,
+      "active": 0,
+      "lastHeartbeatAt": "2026-05-28T08:16:49.006Z",
+      "failureReason": null
+    },
+    {
+      "id": "codex-cli",
+      "provider": "codex-cli",
+      "family": "openai",
+      "healthy": true,
+      "active": 0,
+      "lastHeartbeatAt": "2026-05-28T08:16:49.046Z",
+      "failureReason": null
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "stageId": "stage8-draft-pr",
+  "mode": "draft-pr",
+  "startedAt": "2026-05-28T08:19:57.043Z",
+  "endedAt": "2026-05-28T08:20:34.356Z",
+  "durationMs": 37313,
+  "iterationsRequested": 1,
+  "iterationsCompleted": 1,
+  "status": "pass",
+  "failures": [],
+  "acceptanceReports": [
+    "/Users/lanston/projects/claude-code-247-v23/evidence/v23/stage8-draft-pr-draft-pr-1/acceptance.json"
+  ],
+  "reportPath": "/Users/lanston/projects/claude-code-247-v23/evidence/v23/stage8-draft-pr/guarded-soak-draft-pr/guarded-soak.json"
+}

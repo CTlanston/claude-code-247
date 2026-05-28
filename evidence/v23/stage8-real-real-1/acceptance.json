@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "stageId": "stage8-real-real-1",
+  "startedAt": "2026-05-28T08:19:04.410Z",
+  "endedAt": "2026-05-28T08:19:04.766Z",
+  "commands": [
+    {
+      "command": "pnpm test:mission-os:dry-soak -- --iterations 1",
+      "exitCode": 0,
+      "durationMs": 283,
+      "stdoutPath": "/Users/lanston/projects/claude-code-247-v23/evidence/v23/stage8-real-real-1/pnpm.out",
+      "stderrPath": "/Users/lanston/projects/claude-code-247-v23/evidence/v23/stage8-real-real-1/pnpm.err"
+    }
+  ],
+  "evidencePaths": [
+    "/Users/lanston/projects/claude-code-247-v23/evidence/stage-v23/dry-soak/mission-os-dry-soak.json",
+    "/Users/lanston/projects/claude-code-247-v23/evidence/v23/stage8-real-real-1/session-health.json",
+    "/Users/lanston/projects/claude-code-247-v23/evidence/v23/stage8-real-real-1/route-decisions.json",
+    "/Users/lanston/projects/claude-code-247-v23/evidence/v23/stage8-real-real-1/validator-leak-scan.json",
+    "/Users/lanston/projects/claude-code-247-v23/evidence/v23/stage8-real-real-1/side-effect-idempotency.json",
+    "/Users/lanston/projects/claude-code-247-v23/evidence/v23/stage8-real-real-1/real-soak-policy.json"
+  ],
+  "routeDecisions": [
+    {
+      "role": "coder",
+      "provider": "codex-cli",
+      "reason": "selected codex-cli for coder"
+    },
+    {
+      "role": "validator",
+      "provider": "codex-cli",
+      "reason": "selected codex-cli for validator"
+    }
+  ],
+  "validatorLeakScan": {
+    "name": "validator leak scan",
+    "passed": true,
+    "detail": "0 forbidden tokens; removed coder-transcript.txt, model-name.txt, token-cost.json"
+  },
+  "sideEffectIdempotency": {
+    "name": "side effect idempotency",
+    "passed": true,
+    "detail": "same idempotency key reused; one draft PR created"
+  },
+  "draftPr": {
+    "name": "draft PR gate",
+    "passed": true,
+    "detail": "same idempotency key reused; one draft PR created"
+  },
+  "realSoak": {
+    "name": "real soak policy",
+    "passed": true,
+    "detail": "audit harness records policy only; major stages must run real soak separately"
+  },
+  "holds": [],
+  "status": "pass",
+  "failures": [],
+  "reportPath": "/Users/lanston/projects/claude-code-247-v23/evidence/v23/stage8-real-real-1/acceptance.json"
+}

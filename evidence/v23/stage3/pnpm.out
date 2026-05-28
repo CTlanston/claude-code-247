@@ -1,0 +1,14 @@
+
+> aedev@0.0.1 test:mission-os:dry-soak /Users/lanston/projects/claude-code-247-v23
+> node --import tsx scripts/mission-os-dry-soak.ts -- --iterations 1
+
+{
+  "startedAt": "2026-05-28T08:15:33.764Z",
+  "endedAt": "2026-05-28T08:15:33.786Z",
+  "iterations": 1,
+  "executed": 1,
+  "held": 0,
+  "proposals": 1,
+  "failures": 0,
+  "reportPath": "/Users/lanston/projects/claude-code-247-v23/evidence/stage-v23/dry-soak/mission-os-dry-soak.json"
+}
