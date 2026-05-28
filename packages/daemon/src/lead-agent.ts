@@ -49,6 +49,7 @@ ${description}
 
   designMission(missionId: string, description: string, title?: string): MissionDesign {
     const missionTitle = title ?? description.split('\n')[0]?.slice(0, 80) ?? 'Untitled mission'
+    const brainstormSummary = summarizeIntent(description)
     const tasks = buildDefaultDag(description)
     const checkpoints = tasks
       .filter((task) => requiresCheckpoint(`${task.title}\n${description}`, task.writeFiles))
@@ -66,6 +67,7 @@ ${description}
     return validateMissionDesign({
       missionId,
       title: missionTitle,
+      brainstormSummary,
       prd: {
         summary: description,
         goals: [
@@ -89,6 +91,10 @@ ${description}
         title: `ADR: ${missionTitle}`,
         context: description,
         decision: 'Implement this mission through the v2.3 local Mission OS pipeline.',
+        alternatives: [
+          'Manual one-off implementation without Mission OS orchestration.',
+          'API-only autonomous agents without local subscription routing.',
+        ],
         consequences: 'The daemon may open a draft PR after validation, but must not merge it automatically.',
       },
       roadmap: [
@@ -109,6 +115,12 @@ ${description}
       `**Mission ID:** ${design.missionId}`,
       '',
       '## PRD',
+      '### Brainstorm Summary',
+      `Intent: ${design.brainstormSummary.intent}`,
+      ...design.brainstormSummary.constraints.map((c) => `- Constraint: ${c}`),
+      ...design.brainstormSummary.tradeoffs.map((t) => `- Tradeoff: ${t}`),
+      ...design.brainstormSummary.openQuestions.map((q) => `- Open question: ${q}`),
+      '',
       design.prd.summary,
       '',
       '### Goals',
@@ -122,6 +134,11 @@ ${description}
       '',
       '## ADR Draft',
       `**Decision:** ${design.adrDraft.decision}`,
+      '',
+      '### Alternatives',
+      ...(design.adrDraft.alternatives.length
+        ? design.adrDraft.alternatives.map((a) => `- ${a}`)
+        : ['- None recorded']),
       '',
       '## Roadmap',
       ...design.roadmap.map((r, i) => `${i + 1}. ${r}`),
@@ -157,7 +174,7 @@ function buildDefaultDag(description: string): MissionDagTask[] {
       role: 'coder',
       parentIds: ['design'],
       contextFiles: [],
-      writeFiles: [],
+      writeFiles: ['src/**', 'packages/**', 'tests/**'],
       expectedEvidence: ['git.diff', 'test-summary.md', 'done-report.md'],
       checkpointGate: null,
     },
@@ -182,4 +199,27 @@ function buildDefaultDag(description: string): MissionDagTask[] {
       checkpointGate: null,
     },
   ]
+}
+
+function summarizeIntent(description: string): MissionDesign['brainstormSummary'] {
+  const lower = description.toLowerCase()
+  const constraints = ['v2.3 stops at draft PR; automatic merge is out of scope.']
+  if (lower.includes('local') || lower.includes('subscription') || lower.includes('codex') || lower.includes('claude')) {
+    constraints.push('Prefer local Claude/Codex subscription workers before any API fallback.')
+  }
+  if (lower.includes('7x24') || lower.includes('24/7') || lower.includes('restart') || lower.includes('recover')) {
+    constraints.push('Execution must be resumable through bounded moves and durable evidence.')
+  }
+  const tradeoffs = [
+    'Higher autonomy requires stricter HOLD behavior when evidence, sessions, or approvals are incomplete.',
+  ]
+  const openQuestions = requiresCheckpoint(description)
+    ? ['Operator approval is required before executing checkpoint-gated work.']
+    : []
+  return {
+    intent: description.split('\n').map((line) => line.trim()).filter(Boolean).join(' ').slice(0, 500),
+    constraints,
+    tradeoffs,
+    openQuestions,
+  }
 }

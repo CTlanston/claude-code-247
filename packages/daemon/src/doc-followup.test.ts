@@ -5,6 +5,12 @@ import { planDocFollowup } from './doc-followup.js'
 const design: MissionDesign = {
   missionId: 'm1',
   title: 'Mission OS worker pool',
+  brainstormSummary: {
+    intent: 'Update daemon scheduler and worker pool.',
+    constraints: ['Draft PR only'],
+    tradeoffs: [],
+    openQuestions: [],
+  },
   prd: {
     summary: 'Update daemon scheduler and worker pool.',
     goals: ['Ship draft PR flow'],
@@ -18,11 +24,12 @@ const design: MissionDesign = {
     title: 'ADR',
     context: 'Context.',
     decision: 'Use local worker pool.',
+    alternatives: [],
     consequences: 'Local quota bound.',
   },
   roadmap: ['Do it'],
   checkpoints: [],
-  taskDag: [{ id: 't1', title: 'Code', role: 'coder', parentIds: [], contextFiles: [], writeFiles: [], expectedEvidence: [], checkpointGate: null }],
+  taskDag: [{ id: 't1', title: 'Code', role: 'coder', parentIds: [], contextFiles: [], writeFiles: ['packages/daemon/src/foo.ts'], expectedEvidence: ['done-report.md'], checkpointGate: null }],
 }
 
 describe('planDocFollowup', () => {

@@ -6,6 +6,10 @@ describe('MissionDesignSchema', () => {
     const design = validateMissionDesign({
       missionId: 'm_1',
       title: 'Mission OS',
+      brainstormSummary: {
+        intent: 'Create autonomous draft PRs.',
+        constraints: ['No auto-merge in v2.3'],
+      },
       prd: {
         summary: 'Build a local 7x24 coding coworker.',
         goals: ['Create draft PRs from approved missions'],
@@ -17,6 +21,7 @@ describe('MissionDesignSchema', () => {
         title: 'Use local subscription workers',
         context: 'The Mac owns execution.',
         decision: 'Route work to Claude and Codex CLIs.',
+        alternatives: ['Use API-only agents'],
         consequences: 'Throughput is bounded by local session health.',
       },
       roadmap: ['Stage 1 worker pool', 'Stage 2 mission designer'],
@@ -25,6 +30,7 @@ describe('MissionDesignSchema', () => {
           id: 't1',
           title: 'Implement Codex adapter',
           role: 'coder',
+          writeFiles: ['packages/runner/src/codex-adapter.ts'],
           expectedEvidence: ['test.out'],
         },
       ],
@@ -38,6 +44,7 @@ describe('MissionDesignSchema', () => {
     expect(() => validateMissionDesign({
       missionId: 'm_1',
       title: 'Bad mission',
+      brainstormSummary: { intent: 'Ship something.' },
       prd: {
         summary: 'No AC.',
         goals: ['Ship something'],
@@ -54,6 +61,29 @@ describe('MissionDesignSchema', () => {
       roadmap: ['Do it'],
       taskDag: [{ id: 't1', title: 'Task', role: 'coder' }],
     })).toThrow()
+  })
+
+  it('rejects coder tasks without declared write files', () => {
+    expect(() => validateMissionDesign({
+      missionId: 'm_1',
+      title: 'Bad coder task',
+      brainstormSummary: { intent: 'Implement a change.' },
+      prd: {
+        summary: 'Has AC.',
+        goals: ['Ship a bounded change'],
+        acceptanceCriteria: ['Tests pass'],
+        rollbackPlan: 'Revert.',
+        documentationImpact: 'None.',
+      },
+      adrDraft: {
+        title: 'ADR',
+        context: 'Context.',
+        decision: 'Decision.',
+        consequences: 'Consequences.',
+      },
+      roadmap: ['Do it'],
+      taskDag: [{ id: 't1', title: 'Task', role: 'coder', expectedEvidence: ['done-report.md'] }],
+    })).toThrow(/writeFiles/)
   })
 })
 
