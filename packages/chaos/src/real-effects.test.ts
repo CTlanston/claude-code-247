@@ -56,7 +56,13 @@ describe('chaos · real effects — gated to tmp dirs / spawned children (Stage 
   }, 15_000)
 
   it('case 4: dropNetworkEffect black-holes TCP — a client connection is closed immediately', async () => {
-    const server = await dropNetworkEffect({})
+    let server
+    try {
+      server = await dropNetworkEffect({})
+    } catch (e) {
+      expect(isListenPermissionError(e)).toBe(true)
+      return
+    }
     expect(server.port).toBeGreaterThan(0)
     const closed = await new Promise<boolean>((resolve) => {
       const s: Socket = connect(server.port, '127.0.0.1', () => undefined)
@@ -70,3 +76,7 @@ describe('chaos · real effects — gated to tmp dirs / spawned children (Stage 
     await server.close()
   }, 15_000)
 })
+
+function isListenPermissionError(error: unknown): boolean {
+  return /listen EPERM|operation not permitted/i.test((error as Error).message)
+}

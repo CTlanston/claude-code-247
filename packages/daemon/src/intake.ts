@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync, existsSync, readFileSync } from 'fs'
 import { join } from 'path'
-import type { AedevDb, Mission } from '@aedev/core'
+import type { AedevDb, Mission, MissionDesign } from '@aedev/core'
 import { validateMissionTransition } from '@aedev/core'
 import { LeadAgent } from './lead-agent.js'
 import { ApprovalGate } from './approval.js'
@@ -41,9 +41,11 @@ export class IntakeService {
     const prdDir = join(this.stateDir, 'prd')
     mkdirSync(prdDir, { recursive: true })
     const prdPath = join(prdDir, `${mission.id}.md`)
-    const prdContent = this.agent.generatePrdTemplate(mission.id, description)
+    const design = this.agent.designMission(mission.id, description, mission.title)
+    const prdContent = this.agent.renderDesignMarkdown(design)
     writeFileSync(prdPath, prdContent)
-    this.db.insertEvent('mission.created', 'mission', mission.id, { title: mission.title })
+    writeFileSync(this.getDesignPath(mission.id), JSON.stringify(design, null, 2))
+    this.db.insertEvent('mission.created', 'mission', mission.id, { title: mission.title, designPath: this.getDesignPath(mission.id) })
     return { ...mission, prdPath }
   }
 
@@ -107,8 +109,18 @@ export class IntakeService {
     return join(this.stateDir, 'prd', `${missionId}.md`)
   }
 
+  getDesignPath(missionId: string): string {
+    return join(this.stateDir, 'prd', `${missionId}.design.json`)
+  }
+
   getPrdContent(missionId: string): string | null {
     const p = this.getPrdPath(missionId)
     return existsSync(p) ? readFileSync(p, 'utf8') : null
+  }
+
+  getDesign(missionId: string): MissionDesign | null {
+    const p = this.getDesignPath(missionId)
+    if (!existsSync(p)) return null
+    return JSON.parse(readFileSync(p, 'utf8')) as MissionDesign
   }
 }

@@ -7,6 +7,7 @@ import { IntakeService } from './intake.js'
 import { MemoryGitClient, MissionRunner, type MissionValidator } from './mission-runner.js'
 import { ReleasePipeline, type DeployFn } from './release-pipeline.js'
 import type { RolePipeline } from './roles/role-pipeline.js'
+import type { WorkerSession } from '@aedev/runner'
 
 let db: AedevDb
 let stateDir: string
@@ -64,6 +65,14 @@ function fakeRunner(opts: { taskEvidenceDir: string; exitCode?: number; throwErr
       }
     },
   }
+}
+
+function workerSessions(): WorkerSession[] {
+  return [
+    { id: 'claude-1', provider: 'claude-cli', family: 'anthropic', healthy: true, active: 1 },
+    { id: 'codex-1', provider: 'codex-cli', family: 'openai', healthy: true, active: 0 },
+    { id: 'gemini-1', provider: 'gemini-api', family: 'google', healthy: true, active: 0 },
+  ]
 }
 
 function fakeValidator(name: 'gemini' | 'openai' | 'mock', verdict: 'pass' | 'fail' | 'inconclusive'): MissionValidator {
@@ -247,5 +256,55 @@ describe('MissionRunner — workbook end-to-end glue', () => {
     expect(summary).toContain('Risk:')
     expect(summary).toContain('Validators')
     expect(summary).toMatch(/Decision:[*\s]*AUTO_MERGE/)
+  })
+
+  it('routes coder work through WorkerPoolRouter and records the route decision', async () => {
+    const mission = approveMission('Implement the routing glue')
+    const runner = new MissionRunner(db, {
+      stateDir,
+      rolePipeline: fakeRolePipeline(),
+      workerSessions: workerSessions(),
+      validators: [fakeValidator('gemini', 'pass'), fakeValidator('openai', 'pass')],
+    })
+
+    const result = await runner.runMission(mission.id)
+
+    expect(result.routeDecision?.provider).toBe('codex-cli')
+    expect(readFileSync(join(result.evidenceDir, 'worker-route.json'), 'utf8')).toContain('"provider": "codex-cli"')
+  })
+
+  it('holds the mission when the worker router has no healthy coder session', async () => {
+    const mission = approveMission('Implement a safe hold path')
+    const runner = new MissionRunner(db, {
+      stateDir,
+      rolePipeline: fakeRolePipeline(),
+      workerSessions: [{ id: 'codex-1', provider: 'codex-cli', family: 'openai', healthy: false, active: 0 }],
+    })
+
+    const result = await runner.runMission(mission.id)
+
+    expect(result.status).toBe('waiting')
+    expect(result.mergeDecision).toBe('WAITING')
+    expect(db.getMission(mission.id)?.status).toBe('paused')
+    expect(readFileSync(join(result.evidenceDir, 'run-hold.json'), 'utf8')).toContain('HOLD-SESSION-POOL')
+  })
+
+  it('holds when validator family separation cannot be satisfied', async () => {
+    const mission = approveMission('Validate the routed family guard')
+    const runner = new MissionRunner(db, {
+      stateDir,
+      rolePipeline: fakeRolePipeline(),
+      runner: fakeRunner({ taskEvidenceDir: makeTaskEvidence() }),
+      workerSessions: [
+        { id: 'codex-1', provider: 'codex-cli', family: 'openai', healthy: true, active: 0 },
+      ],
+      validators: [fakeValidator('openai', 'pass')],
+    })
+
+    const result = await runner.runMission(mission.id)
+
+    expect(result.status).toBe('waiting')
+    expect(result.validatorRouteDecision?.holdCode).toBe('HOLD-FAMILY-CONFLICT')
+    expect(db.getMission(mission.id)?.status).toBe('paused')
   })
 })

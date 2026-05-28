@@ -11,6 +11,18 @@ export function registerMissionCommand(program: Command): void {
     if (missions.length === 0) { console.log('No missions.'); return }
     for (const m of missions) console.log(JSON.stringify(m))
   })
+
+  cmd.command('draft <idea>').description('Alias for brainstorm-style mission drafting').action(async (idea: string) => {
+    const res = await fetch(`${DAEMON_URL}/brainstorm`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ idea }),
+    }).catch(() => null)
+    if (!res) { console.error('daemon not running'); process.exit(1) }
+    const body = await res.json() as Record<string, unknown>
+    if (!res.ok) { console.error('Error:', body['error']); process.exit(1) }
+    console.log(`Mission drafted: ${body['missionId']}`)
+    console.log(`Design + PRD: ${body['prdPath']}`)
+  })
   for (const action of ['pause', 'resume', 'cancel'] as const) {
     cmd.command(`${action} <id>`).action(async (id: string) => {
       const statusMap = { pause: 'paused', resume: 'running', cancel: 'cancelled' } as const

@@ -1,0 +1,10 @@
+{
+  "startedAt": "2026-05-28T07:08:00.541Z",
+  "endedAt": "2026-05-28T07:08:00.608Z",
+  "iterations": 3,
+  "executed": 3,
+  "held": 0,
+  "proposals": 3,
+  "failures": 0,
+  "reportPath": "/Users/lanston/projects/claude-code-247-v23/evidence/stage-v23/dry-soak/mission-os-dry-soak.json"
+}

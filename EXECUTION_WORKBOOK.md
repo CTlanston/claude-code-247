@@ -12,34 +12,29 @@
 ```yaml
 # 这一块是机器读的。任何字段修改都要在 §9 留痕。
 schema_version: 1
-version_target: v2.2.0
+version_target: v2.3.0
 current_part: I            # I = v2.1 基座 · II = v2.2 Agent Mesh
-current_stage: GA          # v2.1.0 + v2.2.0 GA tags placed on origin/main
-current_substage: GA.hardening   # GA complete; post-GA hardening/ops cadence active
-last_updated_utc: 2026-05-27T18:15:00Z
-last_session_id: s_0004
-total_sessions: 4
+current_stage: V2.3        # Mission OS incremental autonomy
+current_substage: mission-os-runtime-routing   # Runtime worker discovery + autonomous intake scan path landed; stateDir wiring fixed
+last_updated_utc: 2026-05-28T07:03:52Z
+last_session_id: s_0007
+total_sessions: 7
 weeks_elapsed: 0
 weeks_remaining: 0
 open_holds: 0
 blocked_on: null
 next_action: |
-  Both GA tags landed (v2.1.0 = 7c3cee2, v2.2.0 = d547f79 on origin/main).
-  ADR-0012 + ADR-0013 Accepted on real-clock 30-min soak (operator-revised
-  SLA per ADR-0011 bound 1 §"explicit second ADR amending the SLA").
-  20/20 stages have L3 operator sign-off PASS. B8 + B9 workbook
-  amendments applied (proposals/applied/). release-pipeline.ts GR8
-  refactor landed ([ops.gr8]).
+  Runtime MissionRunner routing now discovers real local/API worker sessions
+  in daemon/server paths, records route decisions, and holds cleanly when the
+  pool is unavailable. Autonomous intake now scans enabled repos for GitHub
+  issues, TODOs, and failing tests via /intake/scan and materializes missions
+  without auto-approval. Daemon/server stateDir wiring now uses the same
+  `<AEDEV_HOME>/state` root for HTTP and scheduler execution paths.
 
-  Workbook execution is COMPLETE for both Part I (v2.1) and Part II (v2.2).
-  Remaining items are maintenance-class, not stage-class:
-    - Watch the first scheduled rollback drill cadence (Stage 3.99 monthly)
-    - Node 24 GitHub Actions migration landed in .github/workflows/{ci,security}.yml
-    - rollback-drill launchd template is installed on the operator host
-    - ADR-0014 moves real ntfy/Tailscale approval_e2e_p95_min < 5 min to
-      post-GA hardening; GA remains based on ADR-0012/0013 30-min real-clock soaks
-    - If a v2.1.x or v2.2.x hotfix lands: write ADR-NNNN-rev1 per the
-      ADR-0012/0013 templates and re-soak.
+  Validation: pnpm typecheck PASS; pnpm test PASS (91 files, 524 passed,
+  6 skipped); pnpm test:mission-os:dry-soak PASS (3 iterations). Next pass
+  should run a real 2h local soak with actual discovered worker sessions on
+  the target repo, then a 12h soak, before enabling draft PR writes.
 sla:
   daemon_recovery_p95_sec: 90
   approval_e2e_p95_min: 5   # post-GA hardening gate per ADR-0014
@@ -594,6 +589,69 @@ ApprovalGateway: ntfy → 操作员手机
 - notes: <一两句>
 ```
 
+### s_0007 — 2026-05-28T07:03:52Z — v2.3 Mission OS stateDir wiring
+
+- stage_in: V2.3.mission-os-runtime-routing → stage_out: V2.3.mission-os-runtime-routing
+- actor: codex
+- shipped:
+    - Shared daemon path helpers for `AEDEV_HOME` and `<AEDEV_HOME>/state`
+    - `Daemon.start()` now passes the resolved `stateDir` into `createServer()`, so `/intake`, `/intake/scan`, and `/missions/:id/run` write under the same root as scheduler-dispatched runs
+    - Server regression test proving default intake artifacts land in `<AEDEV_HOME>/state/prd`, not the home root
+- validation:
+    - `pnpm vitest run packages/daemon/src/server.test.ts packages/daemon/src/daemon.test.ts` PASS
+    - `pnpm typecheck` PASS
+    - `pnpm test` PASS — 91 files, 524 passed, 6 skipped
+    - `pnpm test:mission-os:dry-soak -- --iterations 3` PASS
+- holds_opened: 0 · holds_resolved: 0
+- not_done_remaining:
+    - Run a real 2h local soak against `/Users/lanston/projects/claude-code-247-v23` with actual discovered worker sessions
+    - After the 2h soak passes, run a 12h local soak before enabling draft PR writes
+    - Keep v2.3 merge disabled; auto-merge remains v2.4 scope
+
+### s_0006 — 2026-05-28T06:04:13Z — v2.3 runtime routing + intake
+
+- stage_in: V2.3.mission-os-base → stage_out: V2.3.mission-os-runtime-routing
+- branch: `codex/v2.3-mission-os`
+- shipped:
+    - Runtime worker-session discovery for `claude-cli` / `codex-cli` plus OpenAI/Gemini API availability in `@aedev/runner`
+    - Daemon scheduler and `/missions/:id/run` now instantiate `MissionRunner` with discovered worker sessions, so WorkerPoolRouter decisions apply on real runtime paths
+    - `AutonomousIntakeService` scans enabled repos with real GitHub issue / TODO / failing-test sources, dedupes by candidate marker, materializes missions safely, and exposes `/intake/scan`
+    - Mission OS dry-soak harness now exercises intake scan → mission materialization → approval → routed mission run end-to-end
+    - Added coverage for worker discovery, autonomous intake materialization/dedupe, intake scan API, and runtime HOLD behavior when no sessions are discoverable
+- validation:
+    - `pnpm typecheck` PASS
+    - `pnpm test` PASS — 91 files, 523 passed, 6 skipped
+    - `pnpm test:mission-os:dry-soak -- --iterations 3` PASS
+- holds_opened: 0 · holds_resolved: 0
+- not_done_remaining:
+    - Run a real 2h local soak against `/Users/lanston/projects/claude-code-247-v23` with actual discovered worker sessions
+    - After the 2h soak passes, run a 12h local soak before enabling draft PR writes
+    - Keep v2.3 merge disabled; auto-merge remains v2.4 scope
+
+### s_0005 — 2026-05-28T03:56:57Z — v2.3 Mission OS base
+
+- stage_in: GA.hardening → stage_out: V2.3.mission-os-base
+- branch: `codex/v2.3-mission-os` from `origin/main` (`f5f5cb9`)
+- adr_added: ADR-0016 (`docs/adr/0016-v2.3-mission-os.md`)
+- shipped:
+    - Codex CLI adapter + local CLI runner + `claude-cli` / `codex-cli` / `subscription-pool` runner modes
+    - WorkerPoolRouter with role preferences, dynamic 1–5 concurrency, session-pool HOLDs, and validator family separation
+    - MissionDesign schema + LeadAgent PRD/ADR/roadmap/task-DAG/checkpoint generation
+    - `aedev brainstorm` and `aedev mission draft` entrypoints plus `/brainstorm` and `/missions/:id/design`
+    - Mixed MissionIntakeSource classifier for manual / roadmap / GitHub issue / TODO / failing-test candidates
+    - BoundedMoveRunner with idempotency keys, timeout handling, evidence manifests, and recovery skip
+    - `redactForValidator()` + `assertDifferentFamily()` validator safety primitives
+    - DraftPrGate for daemon-only branch push + draft PR creation, blocked when remote writes disabled, repo disabled, or forbidden paths are touched
+    - Doc follow-up planner and v2.3 status/launchd scheduler defaults
+- validation:
+    - `pnpm install --frozen-lockfile` PASS
+    - `pnpm typecheck` PASS
+    - `pnpm test` PASS — 89 files, 510 passed, 6 skipped
+- holds_opened: 0 · holds_resolved: 0
+- not_done_remaining:
+    - Run 2h local dry soak, then 12h real local soak, before enabling draft PR writes
+    - Keep v2.3 merge disabled; auto-merge remains v2.4 scope
+
 ### s_0004 — 2026-05-27T18:15:00Z — post-GA residual close-out
 
 - stage_in: GA.maintenance → stage_out: GA.hardening
@@ -797,6 +855,8 @@ ApprovalGateway: ntfy → 操作员手机
 | 2026-05-27 | 1.4 | apply B8 + B9 amendments: hold.policy 3-segment naming and @aedev package namespace | operator + reviewer | proposals/applied/workbook-amend-2026-05-27-*.md |
 | 2026-05-27 | 1.5 | s_0003 A-class completion: ADR-0012/0013 Accepted on real-clock 30-min soak; 20/20 L3 PASS; v2.1.0 + v2.2.0 GA tags placed; release-pipeline GR8 refactor; §0 advanced to GA.maintenance | operator + claude (post-merge fix-ups) | ADR-0012, ADR-0013, evidence/stage-*/L3-validate/, evidence/stage-K{,2}/soak/ |
 | 2026-05-27 | 1.6 | s_0004 post-GA residual close-out: Node24 workflows, rollback drill launchd template/install, ADR-0014 approval SLA deferral, K/K2 30-min supersession note | claude (under operator instruction) | ADR-0014, scripts/launchd/com.claude247.rollback-drill.plist.tpl, docs/operations/rollback-drill-cadence.md |
+| 2026-05-28 | 1.7 | s_0005 v2.3 Mission OS base: Codex adapter, worker router, mission design, intake classifier, bounded moves, validator redaction, draft PR gate | codex | ADR-0016, `EXECUTION_WORKBOOK.md §9 s_0005` |
+| 2026-05-28 | 1.8 | s_0007 runtime-routing follow-up: daemon/server stateDir wiring normalized to `<AEDEV_HOME>/state`, regression test added, full validation green | codex | `EXECUTION_WORKBOOK.md §9 s_0007`, `packages/daemon/src/{paths,daemon,server}.ts` |
 
 ---
 

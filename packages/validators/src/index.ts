@@ -15,6 +15,10 @@ export type { GeminiValidatorOptions } from './gemini-validator.js'
 export { OpenAIValidator } from './openai-validator.js'
 export type { OpenAIValidatorOptions } from './openai-validator.js'
 export { buildEvidencePrompt, parseVerdictPayload } from './evidence-prompt.js'
+export { redactForValidator } from './redact.js'
+export type { RedactedEvidence } from './redact.js'
+export { assertDifferentFamily, FamilyConflictError } from './family-enforce.js'
+export type { ValidatorFamily } from './family-enforce.js'
 export {
   DefaultIndependentJudgeContextBuilder,
   StaticGitDiffFetcher,

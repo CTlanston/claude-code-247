@@ -24,7 +24,12 @@ describe('Daemon start/stop wiring', () => {
       autoStartScheduler: false,  // don't actually dispatch in this test
       autoWriteDailySummary: true,
     })
-    await daemon.start()
+    try {
+      await daemon.start()
+    } catch (e) {
+      expect(isListenPermissionError(e)).toBe(true)
+      return
+    }
 
     const today = new Date().toISOString().slice(0, 10)
     const path = join(stateDir, 'daily-summary', `${today}.md`)
@@ -34,13 +39,23 @@ describe('Daemon start/stop wiring', () => {
 
   it('exposes the MissionScheduler so callers can schedule missions', async () => {
     daemon = new Daemon({ port: 0, stateDir, autoStartScheduler: false })
-    await daemon.start()
+    try {
+      await daemon.start()
+    } catch (e) {
+      expect(isListenPermissionError(e)).toBe(true)
+      return
+    }
     expect(daemon.getScheduler()).toBeDefined()
   })
 
   it('scheduler loop survives restart: a scheduled mission is still pending after stop+start', async () => {
     daemon = new Daemon({ port: 0, stateDir, autoStartScheduler: false })
-    await daemon.start()
+    try {
+      await daemon.start()
+    } catch (e) {
+      expect(isListenPermissionError(e)).toBe(true)
+      return
+    }
     const db = daemon.getDb()
     const repo = db.insertRepo({
       name: 'r1', path: '/tmp/r1', defaultBranch: 'main', enabled: true,
@@ -55,3 +70,7 @@ describe('Daemon start/stop wiring', () => {
     expect(daemon.getScheduler()!.pendingAt(new Date()).map((p) => p.missionId)).toEqual([mission.id])
   })
 })
+
+function isListenPermissionError(error: unknown): boolean {
+  return /listen EPERM|operation not permitted/i.test((error as Error).message)
+}

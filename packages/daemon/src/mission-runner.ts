@@ -5,7 +5,7 @@ import { join } from 'path'
 import type {
   AedevDb, Mission, RunnerConfig, RunResult, Task, ValidatorResult, MergePolicyDecision,
 } from '@aedev/core'
-import { RunnerManager } from '@aedev/runner'
+import { RunnerManager, WorkerPoolRouter, type ModelFamily, type RouteDecision, type WorkerSession } from '@aedev/runner'
 import { MergePolicy, RiskScorer, type MergePolicyEvidence } from '@aedev/validators'
 import { BrowserQA, MockBrowserDriver, type BrowserQAResult } from '@aedev/qa'
 import type { PreviewAdapter, PreviewResult } from '@aedev/preview'
@@ -27,6 +27,9 @@ export interface MissionRunOptions {
   rolePipeline?: RolePipeline
   /** Custom runner — defaults to RunnerManager with `mode: mock`. */
   runner?: { runTask(task: Task): Promise<RunResult> }
+  workerRouter?: Pick<WorkerPoolRouter, 'decide'>
+  workerSessions?: WorkerSession[]
+  queueDepth?: number | (() => number)
 
   // Phase-4-onwards end-to-end glue (all injectable, all default to safe no-ops):
   validators?: MissionValidator[]
@@ -65,6 +68,8 @@ export interface MissionRunResult {
   riskScore: number
   riskLevel: 'low' | 'medium' | 'high'
   mergeDecision: MergePolicyDecision
+  routeDecision?: RouteDecision
+  validatorRouteDecision?: RouteDecision
   browserQAResult?: BrowserQAResult
   releaseResult?: ReleaseResult
 }
@@ -89,6 +94,9 @@ export class MissionRunner {
     this.db.updateMissionStatus(mission.id, 'running')
     this.db.insertEvent('mission.run_started', 'mission', mission.id, { evidenceDir })
 
+    let task: Task | undefined
+    let routeDecision: RouteDecision | undefined
+    let run: RunResult | undefined
     try {
       // 1. Role pipeline (PRD already on disk → architecture / design / tasks / etc.)
       const pipeline = this.opts.rolePipeline ?? new RolePipeline()
@@ -96,7 +104,7 @@ export class MissionRunner {
       await pipeline.run(mission, evidenceDir, { requiresUi })
 
       // 2. Builder task → worker run
-      const task = this.db.insertTask({
+      task = this.db.insertTask({
         missionId: mission.id,
         repoId: mission.repoId,
         title: `Implement mission: ${mission.title}`,
@@ -105,13 +113,29 @@ export class MissionRunner {
         attemptNumber: 1,
       })
 
-      const runner = this.opts.runner ?? new RunnerManager(this.db, this.opts.runnerConfig ?? {
-        mode: 'mock',
-        maxConcurrentWorkers: 1,
-        worktreeBaseDir: join(this.opts.stateDir, 'worktrees'),
-        outputBaseDir: join(this.opts.stateDir, 'evidence', 'tasks'),
+      routeDecision = this.routeRole('coder')
+      writeRouteDecision(evidenceDir, routeDecision)
+      this.db.insertEvent('mission.route_selected', 'mission', mission.id, {
+        role: 'coder',
+        provider: routeDecision.provider,
+        sessionId: routeDecision.sessionId ?? null,
+        concurrency: routeDecision.concurrency,
+        holdCode: routeDecision.holdCode ?? null,
+        reason: routeDecision.reason,
       })
-      const run = await runner.runTask(task)
+      if (!routeDecision.provider) {
+        return this.createHeldResult({
+          mission,
+          task,
+          evidenceDir,
+          routeDecision,
+          reason: routeDecision.reason,
+          holdCode: routeDecision.holdCode ?? 'HOLD-SESSION-POOL',
+        })
+      }
+
+      const runner = this.opts.runner ?? new RunnerManager(this.db, buildRunnerConfig(this.opts, routeDecision))
+      run = await runner.runTask(task)
       importTaskEvidence(run.evidenceDir, evidenceDir)
       ensureRequiredEvidence(evidenceDir)
 
@@ -159,6 +183,30 @@ export class MissionRunner {
       // 6. Validators (Gemini + OpenAI by default; injectable for tests)
       const validators = this.opts.validators ?? []
       const validatorResults: ValidatorResult[] = []
+      const validatorRouteDecision = validators.length > 0 ? this.routeRole('validator', routeDecision.provider) : undefined
+      if (validatorRouteDecision) {
+        writeRouteDecision(evidenceDir, validatorRouteDecision, 'validator-route.json')
+        this.db.insertEvent('mission.route_selected', 'mission', mission.id, {
+          role: 'validator',
+          provider: validatorRouteDecision.provider,
+          sessionId: validatorRouteDecision.sessionId ?? null,
+          concurrency: validatorRouteDecision.concurrency,
+          holdCode: validatorRouteDecision.holdCode ?? null,
+          reason: validatorRouteDecision.reason,
+        })
+        if (!validatorRouteDecision.provider) {
+          return this.createHeldResult({
+            mission,
+            task,
+            evidenceDir,
+            routeDecision,
+            validatorRouteDecision,
+            reason: validatorRouteDecision.reason,
+            holdCode: validatorRouteDecision.holdCode ?? 'HOLD-FAMILY-CONFLICT',
+            run,
+          })
+        }
+      }
       for (const v of validators) {
         try {
           validatorResults.push(await v.validate(task.id, bundle))
@@ -236,6 +284,8 @@ export class MissionRunner {
         riskScore: risk.score,
         riskLevel: risk.level,
         mergeDecision: decision,
+        ...(routeDecision !== undefined ? { routeDecision } : {}),
+        ...(validatorRouteDecision !== undefined ? { validatorRouteDecision } : {}),
         ...(browserQAResult !== undefined ? { browserQAResult } : {}),
         ...(releaseResult !== undefined ? { releaseResult } : {}),
       }
@@ -244,6 +294,75 @@ export class MissionRunner {
       this.db.insertEvent('mission.run_failed', 'mission', mission.id, { error: (e as Error).message })
       writeFileSync(join(evidenceDir, 'run-error.txt'), `${(e as Error).message}\n`)
       throw e
+    }
+  }
+
+  private routeRole(role: 'coder' | 'validator', reviewerProvider?: RouteDecision['provider']): RouteDecision {
+    const router = this.opts.workerRouter ?? (this.opts.workerSessions ? new WorkerPoolRouter(this.opts.workerSessions) : null)
+    if (!router) {
+      return {
+        provider: role === 'coder' ? resolveProviderFromMode(this.opts.runnerConfig?.mode ?? 'mock') : 'openai-api',
+        concurrency: 1,
+        reason: 'worker router not configured',
+      }
+    }
+    return router.decide({
+      role,
+      queueDepth: typeof this.opts.queueDepth === 'function' ? this.opts.queueDepth() : this.opts.queueDepth,
+      ...(role === 'validator' ? { reviewerFamily: providerToFamily(reviewerProvider) } : {}),
+    })
+  }
+
+  private createHeldResult(params: {
+    mission: Mission
+    task: Task
+    evidenceDir: string
+    routeDecision?: RouteDecision
+    validatorRouteDecision?: RouteDecision
+    reason: string
+    holdCode: string
+    run?: RunResult
+  }): MissionRunResult {
+    const run = params.run ?? {
+      runId: `held-${params.task.id}`,
+      taskId: params.task.id,
+      exitCode: 0,
+      evidenceDir: params.evidenceDir,
+      durationMs: 0,
+    }
+    writeFileSync(join(params.evidenceDir, 'run-hold.json'), JSON.stringify({
+      holdCode: params.holdCode,
+      reason: params.reason,
+      routeDecision: params.routeDecision,
+      validatorRouteDecision: params.validatorRouteDecision,
+    }, null, 2))
+    writeFileSync(join(params.evidenceDir, 'workbook-summary.md'), renderWorkbookSummary({
+      mission: params.mission,
+      run,
+      risk: { score: 0, level: 'low' },
+      validatorResults: [],
+      decision: 'WAITING',
+      status: 'waiting',
+    }))
+    this.db.updateMissionStatus(params.mission.id, 'paused')
+    this.db.updateTaskStatus(params.task.id, 'hold')
+    this.db.insertEvent('mission.run_held', 'mission', params.mission.id, {
+      taskId: params.task.id,
+      holdCode: params.holdCode,
+      reason: params.reason,
+    })
+    return {
+      missionId: params.mission.id,
+      taskId: params.task.id,
+      status: 'waiting',
+      evidenceDir: params.evidenceDir,
+      run,
+      validatorResults: [],
+      riskScore: 0,
+      riskLevel: 'low',
+      mergeDecision: 'WAITING',
+      ...(params.routeDecision !== undefined ? { routeDecision: params.routeDecision } : {}),
+      ...(params.validatorRouteDecision !== undefined ? { validatorRouteDecision: params.validatorRouteDecision } : {}),
     }
   }
 }
@@ -257,6 +376,53 @@ function buildTaskPrompt(mission: Mission, evidenceDir: string): string {
     `Evidence directory: ${evidenceDir}`,
     'Implement the smallest real change needed for this mission and produce plan, diff summary, tests, and done report.',
   ].filter(Boolean).join('\n\n')
+}
+
+function buildRunnerConfig(opts: MissionRunOptions, decision: RouteDecision): RunnerConfig {
+  const base: RunnerConfig = opts.runnerConfig ?? {
+    mode: 'mock',
+    maxConcurrentWorkers: 1,
+    worktreeBaseDir: join(opts.stateDir, 'worktrees'),
+    outputBaseDir: join(opts.stateDir, 'evidence', 'tasks'),
+  }
+  return {
+    ...base,
+    mode: providerToRunnerMode(decision.provider),
+    maxConcurrentWorkers: decision.concurrency,
+  }
+}
+
+function providerToRunnerMode(provider: RouteDecision['provider']): RunnerConfig['mode'] {
+  switch (provider) {
+    case 'claude-cli': return 'claude-cli'
+    case 'codex-cli': return 'codex-cli'
+    case 'mock': return 'mock'
+    default: return 'mock'
+  }
+}
+
+function resolveProviderFromMode(mode: RunnerConfig['mode']): RouteDecision['provider'] {
+  switch (mode) {
+    case 'claude-cli': return 'claude-cli'
+    case 'codex-cli': return 'codex-cli'
+    case 'mock': return 'mock'
+    default: return 'mock'
+  }
+}
+
+function providerToFamily(provider: RouteDecision['provider'] | undefined): ModelFamily | undefined {
+  switch (provider) {
+    case 'claude-cli': return 'anthropic'
+    case 'codex-cli':
+    case 'openai-api': return 'openai'
+    case 'gemini-api': return 'google'
+    case 'mock': return 'mock'
+    default: return undefined
+  }
+}
+
+function writeRouteDecision(evidenceDir: string, decision: RouteDecision, filename = 'worker-route.json'): void {
+  writeFileSync(join(evidenceDir, filename), JSON.stringify(decision, null, 2))
 }
 
 function copyPrdIntoEvidence(stateDir: string, evidenceDir: string, mission: Mission): void {

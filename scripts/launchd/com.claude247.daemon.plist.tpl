@@ -27,6 +27,8 @@
     <key>NODE_ENV</key><string>production</string>
     <key>AEDEV_HOME</key><string>@@AEDEV_HOME@@</string>
     <key>AEDEV_DAEMON_PORT</key><string>7247</string>
+    <key>AEDEV_SCHEDULER_INTERVAL_MS</key><string>60000</string>
+    <key>AEDEV_WORKER_MAX</key><string>5</string>
   </dict>
 </dict>
 </plist>
