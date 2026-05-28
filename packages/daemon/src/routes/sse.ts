@@ -17,6 +17,14 @@ export function registerSseRoutes(app: FastifyInstance, db: AedevDb): void {
     }
 
     send('connected', { ts: new Date().toISOString() })
+    for (const event of db.queryEvents({ limit: 100 })) {
+      send('event', { id: event.id, kind: event.type, payload: event.payload })
+    }
+    const url = new URL(req.url, 'http://localhost')
+    if (url.searchParams.get('from') === 'tail-100') {
+      raw.end()
+      return
+    }
 
     const timer = setInterval(() => {
       try {

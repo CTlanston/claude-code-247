@@ -11,6 +11,7 @@ import { registerIntakeRoutes } from './routes/intake.js'
 import { registerGitHubRoutes } from './routes/github.js'
 import { registerSseRoutes } from './routes/sse.js'
 import { registerMemoryRoutes } from './routes/memory.js'
+import { registerSmokeRoutes } from './routes/smoke.js'
 import { MissionRunner } from './mission-runner.js'
 
 export function createServer(
@@ -28,6 +29,7 @@ export function createServer(
   registerGitHubRoutes(app, db)
   registerSseRoutes(app, db)
   registerMemoryRoutes(app, db)
+  registerSmokeRoutes(app, db)
   app.get('/approvals', async () => ({ approvals: db.listApprovals() }))
   app.post<{ Params: { id: string } }>('/missions/:id/run', async (req, reply) => {
     try {

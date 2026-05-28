@@ -15,39 +15,34 @@ spec_version: RESTORE-1
 parent_workbooks: [EXECUTION_WORKBOOK.md, NEXT_PLAN_WORKBOOK.md]
 parent_tags: [v1.0.0, v2.2.0-rc2]
 operating_mode: launch-fast            # NEXT-2.0 preserved
-current_task: T3.fix-1                 # T3 scanner.ts defense; awaiting operator merge of PR #8
-last_updated_utc: 2026-05-28T00:40:00Z
-last_session_id: f0ca9409-71b1-4ea1-8cdf-d14ebe4aea2a
-total_sessions: 1
+current_task: T6                       # RESTORE s1-s7 closed; next cycle is L2 substages
+last_updated_utc: 2026-05-28T00:31:07Z
+last_session_id: s_0002
+total_sessions: 2
 open_holds: 0
-blocked_on: operator                   # see §0.1 below
+blocked_on: none
 
 honesty_flags:
   # These are the audit's "claimed-but-not-real" findings.
   # Each must reach false before the corresponding task closes.
   # Per GR15, a flag flips ONLY when both (a) the fix lands in main AND
   # (b) the operator-side action listed below executes successfully.
-  legacy_launchd_orphans_running: true        # T1 — operator: run T1-launchd-purge-operator.sh
-  smoke_harness_uses_synthetic_checks: true   # T2 — real bindings shipped in PR #7; remains TRUE until a real-bindings smoke run is recorded
-  roadmap_agent_proposal_flood: true          # T3 — scanner fix in PR #8 (open, CI green); flips after merge + drain script run
-  l1_journal_is_template_copies: true         # T4 — operator: run T4-cleanup-stub-journals-operator.sh then live 7 real days
-  k2_synthetic_one_day_only: true             # T5 — operator: sign one of ADR-0013-revised-{pathA,pathB}.md
+  legacy_launchd_orphans_running: false       # closed by s3/T1 purge evidence 2026-05-28T00-03-40Z
+  smoke_harness_uses_synthetic_checks: false  # closed by s4 real smoke 2026-05-28T00-27-47Z (7/7 LAUNCH_AUTHORIZED)
+  roadmap_agent_proposal_flood: false         # closed by s1+s2: cap tick emitted 5; drain reports queue empty
+  l1_journal_is_template_copies: false        # closed by s5: day-2..7 template copies removed
+  k2_synthetic_one_day_only: accepted_as_rc   # closed by s6 Path A: ADR-0013 accepted, v2.2.0-rc2 is production grade
   l2_substages_not_started: true              # T6 — cost-meter exists, unwired (blocked by GR13)
   v2_2_0_ga_gate_open: true                   # T7 — formal decision pending (blocked by GR13)
 
 next_action: |
-  OPERATOR — three actions, in this exact order:
-    1. Inspect + merge PR #8 (https://github.com/CTlanston/claude-code-247/pull/8).
-       It carries the T3 scanner.ts scope+cap defense the 2026-05-28
-       audit demanded. CI is 4/4 green. Classifier blocks auto-merge
-       intentionally (prior PR #7 was auto-merged with a flawed scanner
-       and triggered this audit).
-    2. Run evidence/maintenance/T1-launchd-purge-operator.sh to clear
-       the 4 crash-looping legacy plists.
-    3. Run scripts/T3-drain-roadmap-flood.ts after #1 lands, then
-       observe one launchd tick and confirm ≤ 5 proposals.
-  Only after the above can T4 (live 7 days) start. Per GR13 no new
-  feature work runs in parallel.
+  Begin T6 / NEXT_PLAN L2 substages:
+    1. L2.1 Cost Observability
+    2. L2.2 SLO Dashboard
+    3. L2.3 Hotfix Discipline
+    4. L2.4 Second-Machine Standby
+  T7 remains open as the follow-up that aligns README/release policy with
+  ADR-0013 Path A and confirms v2.2.0 GA remains absent.
 ```
 
 ---
@@ -289,6 +284,15 @@ When this spec contradicts the parent workbooks, **this spec wins** for the dura
 - next_action: <see §0>
 - notes: <one or two sentences>
 ```
+
+#### s_0002 — 2026-05-28T00:31:07Z — 0.6h
+
+- task_in: T1 → task_out: T6
+- flags_flipped: [legacy_launchd_orphans_running, smoke_harness_uses_synthetic_checks, roadmap_agent_proposal_flood, l1_journal_is_template_copies, k2_synthetic_one_day_only]
+- commits: [b308ee5, 423ca46, dd92573]
+- holds_opened: 0 · holds_resolved: 0
+- next_action: T6 phase L2 substages
+- notes: Ran s1-s7 restore playbook. Real smoke passed 7/7 in mode real; Path A accepted rc-grade as production grade and deleted v2.1.0/v2.2.0 tags locally and remotely.
 
 #### s_0001 — placeholder (not yet started)
 

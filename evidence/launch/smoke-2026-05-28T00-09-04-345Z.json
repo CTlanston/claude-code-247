@@ -1,0 +1,73 @@
+{
+  "started_at": "2026-05-28T00:09:04.345Z",
+  "ended_at": "2026-05-28T00:09:04.390Z",
+  "mode": "real",
+  "pass_count": 5,
+  "total": 7,
+  "total_seconds": 0.046,
+  "total_budget_seconds": 1800,
+  "verdict": "FIX_AND_RETRY",
+  "checks": [
+    {
+      "id": 1,
+      "name": "GET /health on TS daemon — expect status: green within 60s",
+      "status": "pass",
+      "windowSeconds": 60,
+      "observedSeconds": 0.018,
+      "detail": {
+        "status": "green",
+        "url": "http://127.0.0.1:7247/health"
+      }
+    },
+    {
+      "id": 2,
+      "name": "POST /missions/scan — expect ≥1 roadmap.proposal.emitted in 5min",
+      "status": "pass",
+      "windowSeconds": 300,
+      "observedSeconds": 0.007,
+      "detail": {
+        "taskId": "smoke_scan_1779926944366",
+        "eventId": "01KSNYKJKFA7V21VT9DZ61HFD2"
+      }
+    },
+    {
+      "id": 4,
+      "name": "POST /missions/<id>/dispatch — poll until fan_in.resolved + push.allowed + PR",
+      "status": "pass",
+      "windowSeconds": 600,
+      "observedSeconds": 0.007,
+      "detail": {
+        "missionId": "01KSNYHTCGT4C95AH9Y15QA8ZQ",
+        "faninId": "01KSNYKJKPEPMN5964MY2T2JKG",
+        "pushId": "01KSNYKJKPEPMN5964MY2T2JKH",
+        "prEvent": "01KSNYKJKPEPMN5964MY2T2JKJ"
+      }
+    },
+    {
+      "id": 5,
+      "name": "inject forbidden write mid-mission → sentinel hard_block",
+      "status": "pass",
+      "windowSeconds": 60,
+      "observedSeconds": 0.002,
+      "detail": {
+        "taskId": "smoke_sentinel_1779926944378",
+        "eventId": "01KSNYKJKTG5RVEM47DBCP3N70"
+      }
+    },
+    {
+      "id": 7,
+      "name": "pick 1 recent event id → grep on SSE + /metrics + Loki — each returns ≥1 hit",
+      "status": "pass",
+      "windowSeconds": 120,
+      "observedSeconds": 0.011,
+      "detail": {
+        "eventId": "01KSNYKJKTG5RVEM47DBCP3N70",
+        "planes": [
+          "sse",
+          "prom",
+          "loki"
+        ]
+      }
+    }
+  ]
+}
