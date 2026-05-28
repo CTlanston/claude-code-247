@@ -9,8 +9,11 @@
 
 ## Context
 
-`EXECUTION_WORKBOOK.md` closed with stage-class complete and v2.2.0 on
-`main`. The natural follow-on is a multi-week pre-flight soak before
+`EXECUTION_WORKBOOK.md` previously recorded stage-class completion as
+`v2.2.0` on `main`. ADR-0013 Path A later corrected the release-grade
+claim: `v2.2.0-rc2` is the production tag for this single-operator
+system, and no `v2.2.0` GA tag is created under the current policy.
+The natural follow-on is a multi-week pre-flight soak before
 the first real autonomous mission ships. NEXT-1.0 specified that
 12-week plan.
 
@@ -105,8 +108,9 @@ records the intent; the signoff file records the actual launch event.)
   are additive.
 - **Three-tier L1/L2/L3 contract** stays. The L0 smoke + L1 live fire
   + L2 maturity + L3 spike phases all still pass through L1+L2+L3.
-- **ADR-0012 / ADR-0013** v2.1 / v2.2 GA tags remain valid. This ADR
-  does not retroactively re-open them.
+- **ADR-0013 Path A release-grade correction** remains valid. This ADR
+  does not promote `v2.2.0-rc2` to a GA tag and does not create `v2.1.0`
+  or `v2.2.0`.
 - **Stage M rollback path** still works. Feature flag
   `mesh.enabled` flips remain the documented rollback mechanism.
 

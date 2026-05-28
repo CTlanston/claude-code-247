@@ -7,12 +7,10 @@
 > automatically — gated by your phone if anything bigger.
 >
 > **v1.0.0 GA shipped 2026-05-25** (with an owner-waived 24h soak gate).
-> **v2.0 is in design** — a TypeScript-only redesign that closes the
-> production-grade gaps (subscription session health, quota model,
-> closed-loop approval, push-time security, long-task resume, cross-platform
-> install, chaos resilience). The full plan lives in
-> [**V2_ARCHITECTURE.md**](V2_ARCHITECTURE.md) — read this first if you're
-> picking up the project.
+> **v2.2.0-rc2 is the current TypeScript production-grade tag** for this
+> single-operator system. Per
+> [ADR-0013 Path A](docs/adr/0013-rc-grade-is-prod-grade.md), no `v2.2.0`
+> GA tag is created under the current release policy.
 
 ## ⚡ Architecture today (v1.0.0) — dual kernel, single product
 
@@ -170,19 +168,24 @@ dispatcher T0; pass `--t0 2026-05-24T21:46Z` to override.
   the watchdog dashboard will auto-flip `soak.result` to `PASS` or
   `FAIL` once wall-clock crosses `2026-05-25T21:46Z`.
 - Pre-release history (`alpha.0` → `beta.2`) preserved on GitHub.
-- **`v2.0` design is locked** — single TypeScript daemon, Python
-  removed, HOLD as first-class state, closed-loop approval (Claude
-  Dispatch + Tailscale), push-time security gate, resumable moves,
-  cross-platform supervisor, chaos drills, real 24h+ soak. Plan and
-  acceptance gates in [V2_ARCHITECTURE.md](V2_ARCHITECTURE.md).
-  Estimated ~7 focused weeks of execution.
+- **`v2.2.0-rc2` is production grade for the TypeScript line** — single
+  TypeScript daemon, Python tree removed, HOLD as first-class state,
+  closed-loop approval (ntfy/Tailscale), push-time security gate,
+  resumable moves, cross-platform supervisor, chaos drills, Agent Mesh,
+  RoadmapAgent, and Sentinel. The formal policy is
+  [docs/operations/release-policy.md](docs/operations/release-policy.md).
+- **No `v2.1.0` or `v2.2.0` GA tag is expected** under the current policy.
+  The expected v2 release references are `v2.1.0-rc1`, `v2.1.0-rc2`,
+  `v2.2.0-rc1`, and `v2.2.0-rc2`.
 
 ## Documentation
 
-**v2.0 (in design):**
+**v2 TypeScript line:**
 
 - [**V2_ARCHITECTURE.md**](V2_ARCHITECTURE.md) — full v2.0 architecture and
   stage-by-stage implementation plan (start here)
+- [docs/operations/release-policy.md](docs/operations/release-policy.md) —
+  current release-grade and tag policy
 
 **v1.0.0 (current GA):**
 
