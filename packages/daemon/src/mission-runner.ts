@@ -463,6 +463,7 @@ function buildRunnerConfig(opts: MissionRunOptions, decision: RouteDecision): Ru
 
 function providerToRunnerMode(provider: RouteDecision['provider']): RunnerConfig['mode'] {
   switch (provider) {
+    case 'claude-docker': return 'claude-docker'
     case 'claude-cli': return 'claude-cli'
     case 'codex-cli': return 'codex-cli'
     case 'mock': return 'mock'
@@ -472,6 +473,7 @@ function providerToRunnerMode(provider: RouteDecision['provider']): RunnerConfig
 
 function resolveProviderFromMode(mode: RunnerConfig['mode']): RouteDecision['provider'] {
   switch (mode) {
+    case 'claude-docker': return 'claude-docker'
     case 'claude-cli': return 'claude-cli'
     case 'codex-cli': return 'codex-cli'
     case 'mock': return 'mock'
@@ -481,6 +483,7 @@ function resolveProviderFromMode(mode: RunnerConfig['mode']): RouteDecision['pro
 
 function providerToFamily(provider: RouteDecision['provider'] | undefined): ModelFamily | undefined {
   switch (provider) {
+    case 'claude-docker':
     case 'claude-cli': return 'anthropic'
     case 'codex-cli':
     case 'openai-api': return 'openai'
@@ -493,6 +496,7 @@ function providerToFamily(provider: RouteDecision['provider'] | undefined): Mode
 /** Map the coder provider to the auth_mode recorded in model_usage. */
 function coderProviderToAuthMode(provider: RouteDecision['provider'] | undefined): string {
   switch (provider) {
+    case 'claude-docker':
     case 'claude-cli': return 'local_claude_code'
     case 'codex-cli':
     case 'openai-api':

@@ -9,6 +9,7 @@ dist/
 
 # Node.js / pnpm
 node_modules/
+.pnpm-store/
 *.tsbuildinfo
 
 # Secrets — .env.example stays tracked

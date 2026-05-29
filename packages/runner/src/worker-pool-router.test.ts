@@ -24,6 +24,20 @@ describe('WorkerPoolRouter', () => {
     expect(decision.sessionId).toBe('claude-1')
   })
 
+  it('prefers claude-docker for dual-validator hard-gate coder work when available', () => {
+    const decision = new WorkerPoolRouter([
+      { id: 'docker-claude-1', provider: 'claude-docker', family: 'anthropic', healthy: true, active: 0 },
+      ...sessions,
+    ]).decide({
+      role: 'coder',
+      queueDepth: 5,
+      requiresIndependentValidators: true,
+    })
+
+    expect(decision.provider).toBe('claude-docker')
+    expect(decision.sessionId).toBe('docker-claude-1')
+  })
+
   it('holds dual-validator hard-gate coder work when Claude is unavailable', () => {
     const decision = new WorkerPoolRouter([
       { id: 'codex-1', provider: 'codex-cli', family: 'openai', healthy: true, active: 0 },

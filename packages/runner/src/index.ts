@@ -6,6 +6,7 @@ export type { RunnerMode, RunnerConfig, RunResult } from '@aedev/core'
 export { EvidenceWriter } from './evidence.js'
 export { MockRunner } from './mock-runner.js'
 export { DockerRunner } from './docker-runner.js'
+export { ClaudeDockerRunner } from './claude-docker-runner.js'
 export { WorktreeManager } from './worktree.js'
 export { ClaudeCodeAdapter } from './claude-adapter.js'
 export { CodexCliAdapter } from './codex-adapter.js'
@@ -35,6 +36,12 @@ export type {
 } from './worker-pool-router.js'
 export type { DiscoverWorkerSessionsOptions } from './worker-session-discovery.js'
 export type { DockerRunnerOptions } from './docker-runner.js'
+export type {
+  ClaudeDockerCredential,
+  ClaudeDockerRunnerOptions,
+  DockerExecRequest,
+  DockerExecResult,
+} from './claude-docker-runner.js'
 export { RunnerManager } from './runner-manager.js'
 export type { RunnerInterface } from './runner-interface.js'
 export { ChildProcessGitClient } from './git-client.js'

@@ -3,6 +3,7 @@ import { validateTaskTransition, nowIso } from '@aedev/core'
 import { Claude247Bridge, Claude247BridgeRunner } from '@aedev/claude247-bridge'
 import { MockRunner } from './mock-runner.js'
 import { DockerRunner } from './docker-runner.js'
+import { ClaudeDockerRunner } from './claude-docker-runner.js'
 import { LocalCliRunner } from './cli-runner.js'
 
 export class RunnerManager {
@@ -13,6 +14,7 @@ export class RunnerManager {
 
   getRunner(mode: RunnerConfig['mode']): RunnerInterface {
     if (mode === 'mock') return new MockRunner()
+    if (mode === 'claude-docker') return new ClaudeDockerRunner()
     if (mode === 'docker') return new DockerRunner()
     if (mode === 'claude-cli') return new LocalCliRunner('claude')
     if (mode === 'codex-cli') return new LocalCliRunner('codex')

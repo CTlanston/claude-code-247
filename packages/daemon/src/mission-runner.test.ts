@@ -261,6 +261,28 @@ describe('MissionRunner — workbook end-to-end glue', () => {
     expect(result.status).toBe('waiting')
   })
 
+  it('treats claude-docker as an Anthropic coder route for dual-family validation', async () => {
+    const mission = approveMission('Implement a low-risk docker Claude change')
+    const runner = new MissionRunner(db, {
+      stateDir,
+      rolePipeline: fakeRolePipeline(),
+      runner: fakeRunner({ taskEvidenceDir: makeTaskEvidence() }),
+      runnerConfig: {
+        mode: 'claude-docker',
+        maxConcurrentWorkers: 1,
+        worktreeBaseDir: join(stateDir, 'worktrees'),
+        outputBaseDir: join(stateDir, 'tasks'),
+      },
+      validators: [fakeValidator('gemini', 'pass'), fakeValidator('openai', 'pass')],
+      requiresUi: false,
+    })
+
+    const result = await runner.runMission(mission.id)
+
+    expect(result.routeDecision?.provider).toBe('claude-docker')
+    expect(result.mergeDecision).toBe('AUTO_MERGE')
+  })
+
   it('UI mission runs BrowserQA and reaches AUTO_MERGE when screenshots pass', async () => {
     const mission = approveMission('Build a polished landing page UI')
     const runner = new MissionRunner(db, {
