@@ -15,6 +15,7 @@ import type { OperatorRouteOptions } from './routes/operator.js'
 import { MissionRunner } from './mission-runner.js'
 import { discoverWorkerSessions } from '@aedev/runner'
 import { resolveStateDir } from './paths.js'
+import { createDefaultMissionValidatorFactory } from './validator-factory.js'
 
 export function createServer(
   db: AedevDb,
@@ -40,6 +41,7 @@ export function createServer(
       const runner = new MissionRunner(db, {
         stateDir,
         workerSessions: await discoverWorkerSessions(),
+        validatorFactory: createDefaultMissionValidatorFactory(),
       })
       return await runner.runMission(req.params.id)
     } catch (e) {

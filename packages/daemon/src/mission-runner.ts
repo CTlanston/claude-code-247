@@ -21,6 +21,13 @@ export interface MissionValidator {
   validate(taskId: string, bundle: Record<string, string>): Promise<ValidatorResult>
 }
 
+export interface MissionValidatorFactoryContext {
+  missionId: string
+  taskId: string
+}
+
+export type MissionValidatorFactory = (ctx: MissionValidatorFactoryContext) => MissionValidator[] | Promise<MissionValidator[]>
+
 export interface MissionRunOptions {
   stateDir: string
   runnerConfig?: RunnerConfig
@@ -33,6 +40,8 @@ export interface MissionRunOptions {
 
   // Phase-4-onwards end-to-end glue (all injectable, all default to safe no-ops):
   validators?: MissionValidator[]
+  /** Production default validator injection; called after the task id exists. */
+  validatorFactory?: MissionValidatorFactory
   riskFactors?: () => Promise<import('@aedev/validators').RiskFactors> | import('@aedev/validators').RiskFactors
   mergePolicy?: MergePolicy
   /** Browser QA driver — when `requiresUi=true` and this is set, runs against `smokeBaseUrl`. */
@@ -187,7 +196,8 @@ export class MissionRunner {
       Object.assign(bundle, readEvidenceBundle(evidenceDir))
 
       // 6. Validators (Gemini + OpenAI by default; injectable for tests)
-      const validators = this.opts.validators ?? []
+      const validators = this.opts.validators ??
+        await Promise.resolve(this.opts.validatorFactory?.({ missionId: mission.id, taskId: task.id }) ?? [])
       const validatorResults: ValidatorResult[] = []
       const validatorRouteDecision = validators.length > 0 ? this.routeRole('validator', routeDecision.provider) : undefined
       if (validatorRouteDecision) {
@@ -379,7 +389,8 @@ export class MissionRunner {
   }
 
   private requiresDualValidatorGate(): boolean {
-    return this.opts.requiresDualValidatorGate ?? ((this.opts.validators?.length ?? 0) >= 2)
+    return this.opts.requiresDualValidatorGate ??
+      (this.opts.validators ? this.opts.validators.length >= 2 : Boolean(this.opts.validatorFactory))
   }
 
   private createHeldResult(params: {

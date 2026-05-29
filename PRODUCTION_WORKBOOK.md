@@ -17,20 +17,22 @@ canonical_branch_family: codex/v24-vertical-slice
 design_adr: docs/adr/0018-production-hardening-loop.md
 latest_handoff: docs/handoff/production-handoff-latest.md
 current_stage: E2E-1_REAL_LOOP_PRELIVE_IMPLEMENTATION
-last_updated_utc: 2026-05-29T23:12:42Z
-last_session_id: s_0031
+last_updated_utc: 2026-05-29T23:40:00Z
+last_session_id: s_0032
 open_holds: 0
 blocked_on: none
 next_action: |
   E2E-1 is in pre-live implementation. ADR-0019 exists; model_usage persistence
   was already present at session start in local commit 6f0488a; s_0031 added the
   mock-tested claude-docker runner seam, runner/provider routing, and Anthropic
-  family/auth mapping. No live Docker image, Claude/OpenAI/Gemini token spend,
-  remote-write gate change, target draft PR, or merge was attempted. NEXT safe
-  slice = default OpenAI+Gemini validator factory and production constructor
-  injection through the approved secrets path. The outward live E2E-1 run on
-  CTlanston/multi-agent-brainstorm still requires explicit operator GO and must
-  reset allow_remote_writes=false afterward.
+  family/auth mapping; s_0032 added the default OpenAI+Gemini validator factory
+  and production constructor injection through the approved runtime secrets path.
+  No live Docker image, Claude/OpenAI/Gemini token spend, remote-write gate
+  change, target draft PR, or merge was attempted. NEXT safe slice = resolve the
+  live Claude Docker image/credential materialization path, or record
+  HOLD-CLAUDE-AUTH-IN-DOCKER if container subscription auth is not viable. The
+  outward live E2E-1 run on CTlanston/multi-agent-brainstorm still requires
+  explicit operator GO and must reset allow_remote_writes=false afterward.
 active_automations:
   - id: claude-code-247-v2-3-autonomous-continuation
     name: Claude Code 247 production hardening loop
@@ -262,10 +264,10 @@ because the same local binaries were missing. In `s_0029`,
 `pnpm test:cockpit:p3-remote-smoke` all passed.
 
 **Remaining:** E2E-1 is in pre-live implementation. ADR-0019, `model_usage`
-persistence, and the mock-tested `claude-docker` runner seam are present.
-Remaining local-safe work is default OpenAI+Gemini validator factory wiring
-through the approved secrets path. The outward live loop still requires
-explicit operator GO before enabling remote writes.
+persistence, the mock-tested `claude-docker` runner seam, and the default
+OpenAI+Gemini validator factory wiring are present. Remaining local-safe work is
+the live Claude Docker image/credential materialization path. The outward live
+loop still requires explicit operator GO before enabling remote writes.
 
 ### E2E-0_UNBLOCK_AND_BASELINE_GREEN
 
@@ -294,11 +296,14 @@ validation, persisted `model_usage`, and a live draft-only PR.
 
 **Status:** in progress. ADR-0019 is written; `model_usage` persistence exists;
 `s_0031` added the mock-tested `claude-docker` runner seam and route/family/auth
-mapping. Explicit operator GO is still required before any outward live run or
-remote-write enablement.
+mapping; `s_0032` added the default OpenAI+Gemini validator factory, task-time
+secret resolution, optional active grant enforcement, and daemon/server/operator
+constructor injection. Explicit operator GO is still required before any outward
+live run or remote-write enablement.
 
 **Latest evidence:**
 - `evidence/e2e/s1/claude-docker-runner-prelive-2026-05-29-s0031.md`
+- `evidence/e2e/s1/validator-factory-prelive-2026-05-29-s0032.md`
 
 **Acceptance:** see `EXECUTION_WORKBOOK.md` Stage E2E-1 and
 `docs/handoff/e2e-real-loop-plan-and-prompt.md`.

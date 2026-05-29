@@ -8,6 +8,7 @@ import { DailySummaryGenerator } from './daily-summary.js'
 import { MissionRunner } from './mission-runner.js'
 import { discoverWorkerSessions } from '@aedev/runner'
 import { resolveStateDir } from './paths.js'
+import { createDefaultMissionValidatorFactory } from './validator-factory.js'
 
 export const DEFAULT_PORT = 7247
 
@@ -62,6 +63,7 @@ export class Daemon {
         const runner = new MissionRunner(this.db, {
           stateDir: this.stateDir,
           workerSessions: await discoverWorkerSessions(),
+          validatorFactory: createDefaultMissionValidatorFactory(),
         })
         await runner.runMission(mission.id).catch((e) => {
           this.db.insertEvent('mission.scheduler_dispatch_error', 'mission', mission.id, {

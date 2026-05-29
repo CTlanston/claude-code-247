@@ -74,6 +74,16 @@ export type {
   SchedulerOptions,
   DispatchFn,
 } from './mission-scheduler.js'
+export {
+  buildDefaultMissionValidators,
+  createDefaultMissionValidatorFactory,
+  inspectDefaultMissionValidatorSecrets,
+} from './validator-factory.js'
+export type {
+  DefaultMissionValidatorFactoryOptions,
+  DefaultValidatorSecretStatus,
+  ValidatorSecretResolver,
+} from './validator-factory.js'
 export { InterruptionPolicy } from './interruption-policy.js'
 export type {
   InterruptionReason,

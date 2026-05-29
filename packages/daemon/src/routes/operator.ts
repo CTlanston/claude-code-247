@@ -4,12 +4,13 @@ import type { FastifyInstance } from 'fastify'
 import type { AedevDb, MissionArtifact, MissionDesign, OperatorChoice, Run, Task, ValidatorResult } from '@aedev/core'
 import { nowIso, validateMissionDesign } from '@aedev/core'
 import { ClaudeCodeAdapter, CodexCliAdapter, discoverWorkerSessions } from '@aedev/runner'
-import { GeminiValidator, OpenAIValidator, MockValidator } from '@aedev/validators'
+import { MockValidator } from '@aedev/validators'
 import { IntakeService } from '../intake.js'
 import { MissionRunner } from '../mission-runner.js'
 import { RolePipeline } from '../roles/role-pipeline.js'
 import type { DraftPrInfo, DraftPrRequest } from '../draft-pr-gate.js'
 import { DraftPrGate, DraftPrGateError } from '../draft-pr-gate.js'
+import { createDefaultMissionValidatorFactory, inspectDefaultMissionValidatorSecrets } from '../validator-factory.js'
 
 type Stage =
   | 'Intake'
@@ -815,8 +816,8 @@ async function runOperatorMission(db: AedevDb, stateDir: string, sessionId: stri
   const workerSessions = await discoverWorkerSessions()
   const forceMock = /^(1|true|yes)$/i.test(process.env['AEDEV_COCKPIT_FORCE_MOCK'] ?? '') ||
     (Boolean(process.env['VITEST']) && process.env['AEDEV_COCKPIT_FORCE_REAL'] !== '1')
-  const validators = buildCockpitValidators()
-  if (validators.length === 0) {
+  const validatorConfig = buildCockpitValidatorConfig(missionId)
+  if (validatorConfig.configuredCount === 0) {
     db.insertEvent('operator.validators_not_configured', 'mission', missionId, {
       status: 'not_configured',
       note: 'Gemini/OpenAI validator keys are not configured; merge remains WAITING/BLOCKED.',
@@ -824,20 +825,20 @@ async function runOperatorMission(db: AedevDb, stateDir: string, sessionId: stri
   }
   const runnerOpts = forceMock
     ? { runner: operatorDraftRunner(db, stateDir) }
-    : { workerSessions, runner: operatorLocalCliRunner(db, stateDir, workerSessions, validators.length >= 2) }
+    : { workerSessions, runner: operatorLocalCliRunner(db, stateDir, workerSessions, validatorConfig.configuredCount >= 2) }
   db.insertEvent('operator.worker_assigned', 'mission', missionId, {
     sessionId,
     mode: forceMock ? 'mock' : 'local-cli',
     availableSessions: workerSessions.length,
   })
-  if (validators.length > 0) {
-    db.insertEvent('operator.validator_started', 'mission', missionId, { sessionId, count: validators.length })
+  if (validatorConfig.configuredCount > 0) {
+    db.insertEvent('operator.validator_started', 'mission', missionId, { sessionId, count: validatorConfig.configuredCount })
   }
   const result = await new MissionRunner(db, {
     stateDir,
     rolePipeline: new RolePipeline(),
     ...runnerOpts,
-    validators,
+    ...validatorConfig.runnerOptions,
     riskFactors: () => ({
       touchesForbiddenPaths: false,
       diffLinesChanged: 0,
@@ -915,16 +916,19 @@ function operatorDraftRunner(db: AedevDb, stateDir: string) {
   }
 }
 
-function buildCockpitValidators() {
+function buildCockpitValidatorConfig(missionId: string) {
   if (/^(1|true|yes)$/i.test(process.env['AEDEV_COCKPIT_FAKE_VALIDATORS'] ?? '')) {
-    return [new MockValidator('pass')]
+    return {
+      configuredCount: 1,
+      runnerOptions: { validators: [new MockValidator('pass')] },
+    }
   }
-  const validators = []
-  const geminiKey = process.env['AEDEV_GEMINI_API_KEY'] ?? process.env['GEMINI_API_KEY'] ?? process.env['GOOGLE_API_KEY']
-  if (geminiKey) validators.push(new GeminiValidator({ apiKey: geminiKey }))
-  const openaiKey = process.env['AEDEV_OPENAI_API_KEY'] ?? process.env['OPENAI_API_KEY']
-  if (openaiKey) validators.push(new OpenAIValidator({ apiKey: openaiKey }))
-  return validators
+  const placeholderTaskId = `operator-${missionId}-pending`
+  const status = inspectDefaultMissionValidatorSecrets({ missionId, taskId: placeholderTaskId })
+  return {
+    configuredCount: status.configuredCount,
+    runnerOptions: { validatorFactory: createDefaultMissionValidatorFactory() },
+  }
 }
 
 function isTemplateRoadmapEnabled(): boolean {

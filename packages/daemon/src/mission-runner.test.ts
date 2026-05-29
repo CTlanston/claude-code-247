@@ -410,6 +410,29 @@ describe('MissionRunner — workbook end-to-end glue', () => {
     expect(readFileSync(join(result.evidenceDir, 'worker-route.json'), 'utf8')).toContain('"provider": "claude-cli"')
   })
 
+  it('uses a runtime validatorFactory after task creation and hard-gates coder routing', async () => {
+    const mission = approveMission('Implement a factory-backed dual-validator change')
+    const seenTaskIds: string[] = []
+    const runner = new MissionRunner(db, {
+      stateDir,
+      rolePipeline: fakeRolePipeline(),
+      runner: fakeRunner({ taskEvidenceDir: makeTaskEvidence() }),
+      workerSessions: workerSessions(),
+      validatorFactory: ({ taskId }) => {
+        seenTaskIds.push(taskId)
+        return [fakeValidator('gemini', 'pass'), fakeValidator('openai', 'pass')]
+      },
+      requiresUi: false,
+    })
+
+    const result = await runner.runMission(mission.id)
+
+    expect(result.routeDecision?.provider).toBe('claude-cli')
+    expect(result.validatorResults.map((v) => v.validator)).toEqual(['gemini', 'openai'])
+    expect(seenTaskIds).toEqual([result.taskId])
+    expect(result.mergeDecision).toBe('AUTO_MERGE')
+  })
+
   it('holds the mission when the worker router has no healthy coder session', async () => {
     const mission = approveMission('Implement a safe hold path')
     const runner = new MissionRunner(db, {
