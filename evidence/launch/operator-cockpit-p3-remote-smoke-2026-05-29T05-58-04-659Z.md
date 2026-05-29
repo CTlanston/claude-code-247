@@ -1,0 +1,22 @@
+# Operator Cockpit — P3 Live Remote-Write Smoke
+
+Date: 2026-05-29T05:58:13.462Z
+Repo: CTlanston/aedev-p3-smoke (disposable)
+Result: PASS
+Draft PR: #1 https://github.com/CTlanston/aedev-p3-smoke/pull/1 (state=open)
+
+## Timeline
+- cloned CTlanston/aedev-p3-smoke; base=main; branch=p3-smoke-2026-05-29T05-58-04-659Z
+- made a local commit on the branch (not pushed yet)
+- gate OFF -> blocked REMOTE_WRITES_DISABLED (expected)
+- confirmed: no remote branch exists after the blocked attempt
+- gate ON -> draft PR #1 https://github.com/CTlanston/aedev-p3-smoke/pull/1 (state=open, draft=true)
+- verified PR #1: isDraft=true state=OPEN mergedAt=null
+- idempotent re-run -> same PR #1; open PRs for branch = 1
+
+## Safety invariants
+- gate blocked with REMOTE_WRITES_DISABLED when off (no branch pushed); draft PR created when on; PR is a DRAFT and was never merged; idempotent re-run reused the same PR.
+
+## Notes
+- allow_remote_writes was passed true ONLY in-process for this disposable repo; no config file was modified, so the global default stays false.
+- No merge was performed. The draft PR is left open for inspection.
