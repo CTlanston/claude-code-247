@@ -1,17 +1,23 @@
 # Install
 
+The runtime is a **TypeScript daemon** (Fastify + dashboard) on **port 7247**,
+run under launchd. (The earlier Python `claude247` / port-8423 flow is retired —
+see `docs/aedev-prototype-status.md` for the parity history.)
+
 ## Prerequisites
 
 | Tool | Required | Notes |
 |---|---|---|
 | macOS 14+ | yes | launchd integration assumes a desktop user session |
-| Python 3.11+ (3.13 recommended) | yes | `pyproject.toml` declares the floor |
-| Docker Desktop | yes (for the `docker` runner backend) | the `local` backend works without it for dev/tests |
+| Node 20+ | yes | the daemon + scripts run on Node ≥ 20 |
+| pnpm 10+ | yes | `npm install -g pnpm` |
 | Git | yes | |
-| `gh` CLI | yes when PR creation is enabled | `brew install gh && gh auth login` |
-| Claude Code CLI | yes for the main worker path | `npm install -g @anthropic-ai/claude-code`; log in |
-| ntfy.sh app | optional | for phone notifications |
-| Qdrant | optional | only needed when `memory.vector.backend: qdrant` |
+| Claude Code CLI (`claude`) | yes for the worker path | `npm install -g @anthropic-ai/claude-code`; then log in |
+| Codex CLI (`codex`) | optional | worker fallback / planner |
+| Docker Desktop | optional | only for the Docker worker sandbox (not the default path) |
+| `gh` CLI | optional | needed later for the remote-write/draft-PR path (P3) |
+| Gemini / OpenAI API keys | optional | enable the dual external validators; absent ⇒ `not_configured` (never treated as pass) |
+| ntfy.sh app | optional | phone notifications |
 
 ## Steps
 
@@ -19,30 +25,41 @@
 git clone <this repo> ~/projects/claude-code-247
 cd ~/projects/claude-code-247
 
-# Create the venv, install the package + dev/test extras
-make install
+pnpm install
+pnpm typecheck
+pnpm test
 
-# Verify the environment
-make doctor
-# OR: claude247 doctor --with-claude-smoke   (slow; round-trips through `claude -p`)
+# Environment check (node/pnpm/deps + daemon/worker presence)
+bash scripts/doctor.sh
 
-# Initialize the runtime tree
-mkdir -p ~/.claude-code-247
+# Install the 24/7 daemon as a launchd user agent (port 7247)
+bash scripts/install_launchd.sh
 
-# Add your first repo
-.venv/bin/claude247 repo add
+# Verify it is up
+curl -fsS http://127.0.0.1:7247/health      # -> {"status":"green"}
+open http://127.0.0.1:7247                   # dashboard / Operator Cockpit
+```
 
-# Optional: install launchd jobs so the dashboard stays up 24/7
-scripts/install_launchd.sh
+Runtime state lives under `AEDEV_HOME` (the launchd job sets it to
+`~/.claude-code-247/aedev-daemon`; the code default when unset is `~/.aedev`):
 
-# Open the dashboard
-open http://127.0.0.1:8423
+```
+$AEDEV_HOME/
+  state.db               SQLite state (tasks, missions, runs, events, ...)
+  state/                 evidence bundles + daily summaries
+  logs/daemon.{out,err}.log
 ```
 
 ## Removing
 
 ```bash
-scripts/uninstall_launchd.sh             # unload jobs, keep plists
-scripts/uninstall_launchd.sh --purge     # also delete plists + logs
-make clean                                # delete venv + caches
+bash scripts/uninstall_launchd.sh            # unload the job, keep plist + state
+bash scripts/uninstall_launchd.sh --purge    # also delete the plist + logs (state DB kept)
 ```
+
+## Safety default
+
+`system.allow_remote_writes` defaults to **false** — the daemon will not `git
+push`, create PRs, or merge until you explicitly enable it *and* the repo is
+`enabled` in the registry. Keep it off until the remote-write path (plan stage
+P3) is wired and validated against a disposable repo.

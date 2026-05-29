@@ -1,17 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Stage F3: single daemon plist. Replaces v1's four-plist setup
-     (dashboard, orchestrator, dispatcher, backup) per workbook §3 F3.
-     The TS daemon at packages/daemon serves the dashboard at port 7247
-     and runs the dispatcher + scheduler inside one process. Backups
-     are now scripted via @aedev/supervisor's adapter, not via a
-     separate launchd job. -->
+<!-- Single daemon plist (Stage F3 + P1). Rendered by scripts/install_launchd.sh.
+     Runs the TS daemon entry packages/daemon/src/main.ts on port 7247, with the
+     dispatcher + scheduler inside one process. PATH is pinned so the worker can
+     find pnpm/node/git/claude/codex under launchd's minimal environment. -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
   <key>Label</key><string>com.claude247.daemon</string>
   <key>ProgramArguments</key>
   <array>
-    <string>@@NODE@@</string>
+    <string>@@PNPM@@</string>
+    <string>tsx</string>
     <string>@@DAEMON_ENTRY@@</string>
   </array>
   <key>WorkingDirectory</key><string>@@REPO_ROOT@@</string>
@@ -25,10 +24,11 @@
   <key>EnvironmentVariables</key>
   <dict>
     <key>NODE_ENV</key><string>production</string>
+    <key>HOME</key><string>@@HOME@@</string>
+    <key>PATH</key><string>@@PATH@@</string>
     <key>AEDEV_HOME</key><string>@@AEDEV_HOME@@</string>
     <key>AEDEV_DAEMON_PORT</key><string>7247</string>
     <key>AEDEV_SCHEDULER_INTERVAL_MS</key><string>60000</string>
-    <key>AEDEV_WORKER_MAX</key><string>5</string>
   </dict>
 </dict>
 </plist>
