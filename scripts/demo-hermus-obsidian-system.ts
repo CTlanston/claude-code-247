@@ -1,5 +1,5 @@
 import { execFile } from 'child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, writeFileSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import { promisify } from 'util'
@@ -13,7 +13,6 @@ const execFileAsync = promisify(execFile)
 const HOME = homedir()
 const STATE_DIR = process.env['AEDEV_HERMUS_DEMO_STATE'] ?? join(HOME, '.aedev-hermus-obsidian-system-demo')
 const HERMUS_ROOT = process.env['HERMUS_ROOT'] ?? '/Users/lanston/projects/hermus-agent'
-const PROJECTS_ROOT = process.env['HERMUS_PROJECTS_ROOT'] ?? '/Users/lanston/projects'
 const OBSIDIAN_VAULT = process.env['HERMUS_OBSIDIAN_VAULT'] ?? '/Users/lanston/Obsidian/Hermus'
 const LIVEDOC_ROOT = process.env['HERMUS_LIVEDOC_ROOT'] ?? '/Users/lanston/projects/LiveDoc'
 const LAUNCH_AGENT = join(HOME, 'Library', 'LaunchAgents', 'com.hermus.daily-brief.plist')

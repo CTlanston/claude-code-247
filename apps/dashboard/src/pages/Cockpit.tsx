@@ -12,18 +12,6 @@ import { useSSE } from '../hooks/useSSE.js'
 
 const DEFAULT_PROMPT = 'Brainstorm a low-risk improvement, produce PRD/ADR/roadmap, then execute to the draft PR/evidence gate.'
 const SESSION_STORAGE_KEY = 'operatorCockpitSessionId'
-const STAGE_LABELS: Record<string, string> = {
-  Intake: '输入 Intake',
-  Brainstorm: '共创 Brainstorm',
-  PRD: '方案 PRD',
-  ADR: '架构 ADR',
-  Roadmap: '路线 Roadmap',
-  Approved: '批准 Approved',
-  Worker: '执行 Worker',
-  Tests: '测试 Tests',
-  Validators: '验证 Validators',
-  'PR/Waiting/Blocked': '交付 Gate',
-}
 type GuidanceAction = { label: string; onClick: () => void; disabled: boolean }
 interface Guidance {
   kicker: string
