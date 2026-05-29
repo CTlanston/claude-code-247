@@ -56,6 +56,9 @@ export interface MissionRunOptions {
   sensitiveLane?: boolean
   /** Defaults true when two or more validators are configured. */
   requiresDualValidatorGate?: boolean
+
+  /** Optional long-lived cost roller (the daemon injects one); fed once per model.usage.recorded. */
+  costRoller?: { record(sample: { ts: string; costUsd: number; bucket?: string }): void }
 }
 
 export interface MissionRunResult {
@@ -140,6 +143,7 @@ export class MissionRunner {
       run = await runner.runTask(task)
       importTaskEvidence(run.evidenceDir, evidenceDir)
       ensureRequiredEvidence(evidenceDir)
+      this.persistModelUsage(mission.id, task.id, run, routeDecision.provider)
 
       // 3. Bundle the evidence dir for downstream gates
       const bundle = readEvidenceBundle(evidenceDir)
@@ -318,6 +322,62 @@ export class MissionRunner {
     })
   }
 
+  /**
+   * Persist real token usage from the coder run.  The local CLI / docker
+   * runners write `model-usage.json` into the run's evidence dir; we read it,
+   * record a row in `model_usage`, emit `model.usage.recorded` (event first /
+   * table write — GR#6 pattern: domain row + audit event), and feed an optional
+   * cost roller.  No-op when the runner produced no usage file (e.g. mock).
+   */
+  private persistModelUsage(
+    missionId: string,
+    taskId: string,
+    run: RunResult,
+    coderProvider: RouteDecision['provider'],
+  ): void {
+    const path = join(run.evidenceDir, 'model-usage.json')
+    if (!existsSync(path)) return
+    let parsed: Record<string, unknown>
+    try {
+      parsed = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>
+    } catch {
+      return
+    }
+    const inputTokens = Number(parsed['inputTokens'] ?? 0)
+    const outputTokens = Number(parsed['outputTokens'] ?? 0)
+    const costUsd = typeof parsed['costUsd'] === 'number' ? parsed['costUsd'] : null
+    const provider = typeof parsed['provider'] === 'string' ? parsed['provider'] : (coderProvider ?? 'unknown')
+    const model = typeof parsed['model'] === 'string' ? parsed['model'] : undefined
+    const authMode = coderProviderToAuthMode(coderProvider)
+    // model_usage.run_id FKs runs(id); injected/fake runners hand back a
+    // synthetic runId with no row, so only set it when the run actually exists.
+    const runId = this.db.getRun(run.runId) ? run.runId : undefined
+
+    const usage = this.db.insertModelUsage({
+      taskId,
+      ...(runId !== undefined ? { runId } : {}),
+      authMode,
+      provider,
+      inputTokens,
+      outputTokens,
+      ...(model !== undefined ? { model } : {}),
+      ...(costUsd !== null ? { costUsd } : {}),
+    })
+    this.db.insertEvent('model.usage.recorded', 'mission', missionId, {
+      taskId,
+      runId: runId ?? null,
+      usageId: usage.id,
+      provider,
+      authMode,
+      inputTokens,
+      outputTokens,
+      costUsd,
+    })
+    if (this.opts.costRoller && costUsd !== null) {
+      this.opts.costRoller.record({ ts: usage.createdAt, costUsd, bucket: missionId })
+    }
+  }
+
   private requiresDualValidatorGate(): boolean {
     return this.opts.requiresDualValidatorGate ?? ((this.opts.validators?.length ?? 0) >= 2)
   }
@@ -427,6 +487,18 @@ function providerToFamily(provider: RouteDecision['provider'] | undefined): Mode
     case 'gemini-api': return 'google'
     case 'mock': return 'mock'
     default: return undefined
+  }
+}
+
+/** Map the coder provider to the auth_mode recorded in model_usage. */
+function coderProviderToAuthMode(provider: RouteDecision['provider'] | undefined): string {
+  switch (provider) {
+    case 'claude-cli': return 'local_claude_code'
+    case 'codex-cli':
+    case 'openai-api':
+    case 'gemini-api': return 'api'
+    case 'mock': return 'mock'
+    default: return 'unknown'
   }
 }
 

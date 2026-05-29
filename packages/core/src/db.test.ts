@@ -59,4 +59,25 @@ describe('AedevDb', () => {
     const approved = db.listMemoryItems({ approved: true })
     expect(approved).toHaveLength(1)
   })
+
+  it('inserts and lists model_usage rows', () => {
+    const repo = db.insertRepo({ name: 'r', path: '/tmp/r', defaultBranch: 'main', enabled: true, testCommands: [], forbiddenPaths: [], riskRules: {}, mergePolicy: 'WAITING' })
+    const mission = db.insertMission({ repoId: repo.id, title: 'm', status: 'approved' })
+    const task = db.insertTask({ missionId: mission.id, repoId: repo.id, title: 't', prompt: 'p', status: 'pending', attemptNumber: 1 })
+    const run = db.insertRun({ taskId: task.id, runnerMode: 'docker', status: 'done' })
+    const usage = db.insertModelUsage({
+      taskId: task.id, runId: run.id, authMode: 'local_claude_code',
+      model: 'claude-opus-4-8', provider: 'claude-docker',
+      inputTokens: 1200, outputTokens: 340, costUsd: 0.07,
+    })
+    expect(usage.id).toBeDefined()
+    const all = db.listModelUsage()
+    expect(all).toHaveLength(1)
+    expect(all[0]?.inputTokens).toBe(1200)
+    expect(all[0]?.outputTokens).toBe(340)
+    expect(all[0]?.authMode).toBe('local_claude_code')
+    expect(all[0]?.provider).toBe('claude-docker')
+    expect(db.listModelUsage(task.id)).toHaveLength(1)
+    expect(db.listModelUsage('nonexistent')).toHaveLength(0)
+  })
 })
