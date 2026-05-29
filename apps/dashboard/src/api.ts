@@ -4,8 +4,68 @@ export interface ApiMission {
   id: string; title: string; status: string; description?: string
   githubPrUrl?: string; githubPrNumber?: number; createdAt: string
 }
+export interface ApiRepo {
+  id: string; name: string; path: string; enabled: boolean
+}
 export interface ApiTask {
   id: string; title: string; status: string; missionId: string; createdAt: string
+}
+export interface ApiOperatorSession {
+  id: string; repoId?: string; missionId?: string; title: string; prompt: string; status: string
+  createdAt: string; updatedAt: string
+}
+export interface ApiOperatorChoice {
+  id: string
+  label: string
+  labelEn: string
+  action: 'generate-roadmap' | 'ask-questions' | 'add-constraints'
+  prompt?: string
+}
+export interface ApiOperatorMessage {
+  id: string; sessionId: string; role: 'user' | 'assistant' | 'system'; content: string; choices?: ApiOperatorChoice[]; createdAt: string
+}
+export interface ApiEvent {
+  id: string; type: string; entityType?: string; entityId?: string; payload: Record<string, unknown>; createdAt: string
+}
+export interface ApiMissionArtifact {
+  id: string; missionId: string; type: string; path: string; title?: string; preview?: string | null; updatedAt: string
+}
+export interface ApiValidatorResult {
+  id: string; validator: string; verdict: string; summary?: string; createdAt: string
+}
+export interface ApiRun {
+  id: string; taskId: string; runnerMode: string; status: string; evidenceDir?: string; exitCode?: number
+}
+export interface ApiMissionOverview {
+  mission: ApiMission
+  stage: string
+  stages: Array<{ stage: string; status: string }>
+  tasks: ApiTask[]
+  runs: ApiRun[]
+  validators: ApiValidatorResult[]
+  artifacts: ApiMissionArtifact[]
+  approvals: ApiApproval[]
+  activeAgents: string[]
+  cliProvider: string
+  progress: number
+  holds: Array<{ type: string; payload: Record<string, unknown> }>
+  events: ApiEvent[]
+  evidenceDir?: string
+  validatorStatus?: string
+  validatorNote?: string | null
+  cost: {
+    mode: string
+    scope?: string
+    runCount: number
+    validatorCount: number
+    plannerTokens?: number | null
+    workerTokens?: number | null
+    totalTokens?: number | null
+    inputTokens: number | null
+    outputTokens: number | null
+    costUsd: number | null
+    note: string
+  }
 }
 export interface ApiApproval {
   id: string; entityType: string; entityId: string; requiredReason: string
@@ -29,6 +89,8 @@ async function post<T>(path: string, body: unknown = {}): Promise<T> {
 }
 
 export const api = {
+  getStatus: () => get<{ status: string; missionOs: { autonomy: string; workerConcurrency: { min: number; max: number } } }>('/status'),
+  getRepos: () => get<{ repos: ApiRepo[] }>('/repos').then((r) => r.repos),
   getMissions: () => get<{ missions: ApiMission[] }>('/missions').then((r) => r.missions),
   getTasks: () => get<{ tasks: ApiTask[] }>('/tasks').then((r) => r.tasks),
   getApprovals: () => get<{ approvals: ApiApproval[] }>('/approvals').then((r) => r.approvals),
@@ -38,4 +100,28 @@ export const api = {
   resumeMission: (id: string) => post(`/missions/${id}/status`, { status: 'running' }),
   cancelMission: (id: string) => post(`/missions/${id}/status`, { status: 'cancelled' }),
   approveMemory: (id: string) => post(`/memory/${id}/approve`, {}),
+  createOperatorSession: (body: { repoId?: string; title?: string; prompt: string }) =>
+    post<{ session: ApiOperatorSession; messages: ApiOperatorMessage[] }>('/operator/sessions', body),
+  getLatestOperatorSession: () =>
+    get<{ session: ApiOperatorSession | null; messages: ApiOperatorMessage[] }>('/operator/sessions?latest=1'),
+  getOperatorSession: (id: string) =>
+    get<{ session: ApiOperatorSession; messages: ApiOperatorMessage[] }>(`/operator/sessions/${id}`),
+  addOperatorMessage: (id: string, content: string) =>
+    post<{ message: ApiOperatorMessage; messages: ApiOperatorMessage[] }>(`/operator/sessions/${id}/messages`, { content }),
+  askQuestions: (id: string, prompt?: string) =>
+    post<{ session: ApiOperatorSession; messages: ApiOperatorMessage[] }>(`/operator/sessions/${id}/ask`, { prompt }),
+  generateRoadmap: (id: string) =>
+    post<{ session: ApiOperatorSession; mission?: ApiMission; artifacts?: ApiMissionArtifact[]; messages: ApiOperatorMessage[]; hold?: { code: string; reason: string } }>(`/operator/sessions/${id}/generate-roadmap`, {}),
+  approveRoadmap: (id: string) =>
+    post<{ session: ApiOperatorSession; mission: ApiMission; overview: ApiMissionOverview }>(`/operator/sessions/${id}/approve-roadmap`, {}),
+  startOperatorSession: (id: string) =>
+    post<{ session: ApiOperatorSession; result: { status: string; mergeDecision: string }; overview: ApiMissionOverview }>(`/operator/sessions/${id}/start`, {}),
+  pauseOperatorSession: (id: string) =>
+    post<{ session: ApiOperatorSession; overview: ApiMissionOverview }>(`/operator/sessions/${id}/pause`, {}),
+  resumeOperatorSession: (id: string) =>
+    post<{ session: ApiOperatorSession; overview: ApiMissionOverview }>(`/operator/sessions/${id}/resume`, {}),
+  createDraftPr: (id: string) =>
+    post<{ status: string; code?: string; reason?: string; pr?: { url: string; number: number }; overview: ApiMissionOverview }>(`/operator/sessions/${id}/create-pr`, {}),
+  getMissionOverview: (id: string) => get<ApiMissionOverview>(`/missions/${id}/overview`),
+  getRunLog: (missionId: string, runId: string) => get<{ text: string; logPath: string }>(`/missions/${missionId}/runs/${runId}/log`),
 }

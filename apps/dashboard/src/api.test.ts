@@ -33,4 +33,39 @@ describe('api', () => {
     const call = fetchMock.mock.calls[0]!
     expect(JSON.parse(call[1].body as string)).toEqual({ status: 'cancelled' })
   })
+
+  it('creates operator sessions and starts cockpit execution through the daemon API', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ session: { id: 's1' }, messages: [] }) })
+    vi.stubGlobal('fetch', fetchMock)
+    await api.createOperatorSession({ repoId: 'repo-1', title: 'T', prompt: 'Build it' })
+    await api.getLatestOperatorSession()
+    await api.getOperatorSession('s1')
+    expect(fetchMock).toHaveBeenCalledWith(`${DAEMON}/operator/sessions`, expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ repoId: 'repo-1', title: 'T', prompt: 'Build it' }),
+    }))
+    expect(fetchMock).toHaveBeenCalledWith(`${DAEMON}/operator/sessions?latest=1`)
+    expect(fetchMock).toHaveBeenCalledWith(`${DAEMON}/operator/sessions/s1`)
+
+    await api.generateRoadmap('s1')
+    await api.approveRoadmap('s1')
+    await api.startOperatorSession('s1')
+    await api.pauseOperatorSession('s1')
+    await api.resumeOperatorSession('s1')
+    await api.createDraftPr('s1')
+    await api.getRunLog('m1', 'r1')
+    expect(fetchMock).toHaveBeenCalledWith(`${DAEMON}/operator/sessions/s1/generate-roadmap`, expect.any(Object))
+    expect(fetchMock).toHaveBeenCalledWith(`${DAEMON}/operator/sessions/s1/approve-roadmap`, expect.any(Object))
+    expect(fetchMock).toHaveBeenCalledWith(`${DAEMON}/operator/sessions/s1/start`, expect.any(Object))
+    expect(fetchMock).toHaveBeenCalledWith(`${DAEMON}/operator/sessions/s1/pause`, expect.any(Object))
+    expect(fetchMock).toHaveBeenCalledWith(`${DAEMON}/operator/sessions/s1/resume`, expect.any(Object))
+    expect(fetchMock).toHaveBeenCalledWith(`${DAEMON}/operator/sessions/s1/create-pr`, expect.any(Object))
+    expect(fetchMock).toHaveBeenCalledWith(`${DAEMON}/missions/m1/runs/r1/log`)
+  })
+
+  it('loads mission overview for cockpit observability', async () => {
+    mockFetch({ mission: { id: 'm1' }, stage: 'Worker', stages: [], tasks: [], runs: [], validators: [], artifacts: [], cost: {} })
+    const overview = await api.getMissionOverview('m1')
+    expect(overview.stage).toBe('Worker')
+  })
 })

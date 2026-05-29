@@ -14,15 +14,20 @@ export interface EvidencePromptInput {
 
 const MAX_FILE_CHARS = 8000
 
-const EXPECTED_FILES = [
+const CORE_EVIDENCE_FILES = [
   'plan.md',
   'diff-summary.md',
   'test-summary.md',
   'done-report.md',
-  'screenshot-report.md',
-  'preview-url.txt',
   'risk-report.md',
 ] as const
+
+const OPTIONAL_GATE_FILES = [
+  'screenshot-report.md',
+  'preview-url.txt',
+] as const
+
+const EXPECTED_FILES = [...CORE_EVIDENCE_FILES, ...OPTIONAL_GATE_FILES] as const
 
 export function buildEvidencePrompt(input: EvidencePromptInput): string {
   const lines: string[] = []
@@ -35,9 +40,12 @@ export function buildEvidencePrompt(input: EvidencePromptInput): string {
   lines.push(`  { "verdict": "pass" | "fail" | "inconclusive", "summary": "<one-paragraph rationale>", "reasons": ["<bullet>", ...] }`)
   lines.push(``)
   lines.push(`Decision rules:`)
-  lines.push(`- "pass" only if all required evidence is present, tests pass, no secrets/forbidden paths, risk is low, and the diff matches the plan.`)
+  lines.push(`- "pass" only if all core evidence is present, tests pass, no secrets/forbidden paths, risk is low, and the diff matches the plan.`)
   lines.push(`- "fail" if there is a clear safety, correctness, or scope violation.`)
-  lines.push(`- "inconclusive" if evidence is incomplete or contradictory and you cannot decide.`)
+  lines.push(`- "inconclusive" if core evidence is incomplete or contradictory and you cannot decide.`)
+  lines.push(`- screenshot-report.md is required only for UI missions. Missing screenshots alone are not a red flag for a non-UI task.`)
+  lines.push(`- preview-url.txt is required only when external preview deployment is part of the mission. Missing preview alone is not a red flag for docs/backend-only work.`)
+  lines.push(`- Task ID is the worker task being validated. Evidence may also reference a parent Mission ID; that is expected and is not an ID mismatch by itself.`)
   lines.push(``)
   lines.push(`---`)
   lines.push(`Task ID: ${input.taskId}`)
@@ -46,7 +54,7 @@ export function buildEvidencePrompt(input: EvidencePromptInput): string {
   }
   lines.push(``)
 
-  for (const name of EXPECTED_FILES) {
+  for (const name of CORE_EVIDENCE_FILES) {
     const content = input.bundle[name]
     if (content === undefined) {
       lines.push(`### ${name}`)
@@ -59,6 +67,19 @@ export function buildEvidencePrompt(input: EvidencePromptInput): string {
       lines.push('```')
       lines.push(``)
     }
+  }
+
+  for (const name of OPTIONAL_GATE_FILES) {
+    const content = input.bundle[name]
+    lines.push(`### ${name} (optional gate evidence)`)
+    if (content === undefined) {
+      lines.push(`(absent; required only when the mission explicitly needs ${name === 'screenshot-report.md' ? 'UI screenshot evidence' : 'external preview deployment'})`)
+    } else {
+      lines.push('```')
+      lines.push(truncate(content, MAX_FILE_CHARS))
+      lines.push('```')
+    }
+    lines.push(``)
   }
 
   // Any extra files outside the expected list — surface but truncate harder.

@@ -12,6 +12,19 @@ describe('buildEvidencePrompt', () => {
     expect(prompt).toContain('Task ID: t')
   })
 
+  it('marks screenshot and preview evidence as optional gates by default', () => {
+    const prompt = buildEvidencePrompt({ taskId: 't', bundle: {} })
+    expect(prompt).toContain('### screenshot-report.md (optional gate evidence)')
+    expect(prompt).toContain('required only when the mission explicitly needs UI screenshot evidence')
+    expect(prompt).toContain('### preview-url.txt (optional gate evidence)')
+    expect(prompt).toContain('required only when the mission explicitly needs external preview deployment')
+  })
+
+  it('explains that task id and mission id may differ', () => {
+    const prompt = buildEvidencePrompt({ taskId: 'task-1', bundle: {} })
+    expect(prompt).toContain('Evidence may also reference a parent Mission ID')
+  })
+
   it('surfaces unknown files as "extra" so the model can still see them', () => {
     const prompt = buildEvidencePrompt({ taskId: 't', bundle: { 'plan.md': 'a', 'weird.json': '{}' } })
     expect(prompt).toContain('### weird.json (extra)')

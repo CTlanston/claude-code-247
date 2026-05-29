@@ -6,7 +6,7 @@ export default defineConfig({
   server: {
     port: 7248,
     proxy: {
-      '/api': { target: 'http://localhost:7247', rewrite: (p) => p.replace(/^\/api/, '') },
+      '/api': { target: process.env.AEDEV_DAEMON_URL ?? 'http://localhost:7247', rewrite: (p) => p.replace(/^\/api/, '') },
     },
   },
   build: { outDir: 'dist' },

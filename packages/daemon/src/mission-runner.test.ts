@@ -119,6 +119,33 @@ describe('MissionRunner — workbook end-to-end glue', () => {
     expect(summary).toContain('openai: pass')
   })
 
+  it('passes worker test evidence to validators instead of QA pending stubs', async () => {
+    const mission = approveMission('Refactor backend evidence merge')
+    const taskEvidenceDir = makeTaskEvidence('# Diff Summary\n\nDocs only.\n')
+    const validatingFake = (name: 'gemini' | 'openai'): MissionValidator => ({
+      async validate(taskId: string, bundle: Record<string, string>): Promise<ValidatorResult> {
+        expect(bundle['test-summary.md']).toContain('Tests passed.')
+        expect(bundle['test-summary.md']).not.toContain('Status:** Pending')
+        return {
+          id: `${name}-${taskId}`, taskId, runId: `${name}-run`, validator: name,
+          verdict: 'pass', summary: `${name} saw worker test evidence`, createdAt: new Date().toISOString(),
+        }
+      },
+    })
+    const runner = new MissionRunner(db, {
+      stateDir,
+      // Use the real RolePipeline so QA writes its pending test-summary stub first.
+      runner: fakeRunner({ taskEvidenceDir }),
+      validators: [validatingFake('gemini'), validatingFake('openai')],
+      requiresUi: false,
+    })
+
+    const result = await runner.runMission(mission.id)
+
+    expect(result.mergeDecision).toBe('AUTO_MERGE')
+    expect(readFileSync(join(result.evidenceDir, 'test-summary.md'), 'utf-8')).toContain('Tests passed.')
+  })
+
   it('WAITING when no validators are configured (safety default)', async () => {
     const mission = approveMission()
     const runner = new MissionRunner(db, {
@@ -263,6 +290,7 @@ describe('MissionRunner — workbook end-to-end glue', () => {
     const runner = new MissionRunner(db, {
       stateDir,
       rolePipeline: fakeRolePipeline(),
+      runner: fakeRunner({ taskEvidenceDir: makeTaskEvidence() }),
       workerSessions: workerSessions(),
       validators: [fakeValidator('gemini', 'pass'), fakeValidator('openai', 'pass')],
     })

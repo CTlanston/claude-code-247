@@ -1,7 +1,10 @@
 import Database from 'better-sqlite3'
 import { runMigrations } from './migrations.js'
 import { generateId, nowIso } from './ids.js'
-import type { Repo, Mission, Task, Run, Approval, Event, RiskScore, ValidatorResult, MemoryItem } from './schema.js'
+import type {
+  Repo, Mission, Task, Run, Approval, Event, RiskScore, ValidatorResult, MemoryItem,
+  OperatorSession, OperatorMessage, MissionArtifact,
+} from './schema.js'
 import type { RiskLevel, RunnerMode, ValidatorName, ValidatorVerdict } from './schema.js'
 
 export class AedevDb {
@@ -234,6 +237,13 @@ export class AedevDb {
     }))
   }
 
+  listRuns(taskId?: string): Run[] {
+    const rows = taskId
+      ? this.db.prepare('SELECT * FROM runs WHERE task_id = ? ORDER BY created_at DESC').all(taskId) as Record<string, unknown>[]
+      : this.db.prepare('SELECT * FROM runs ORDER BY created_at DESC').all() as Record<string, unknown>[]
+    return rows.map((r) => this.rowToRun(r))
+  }
+
   // --- Risk scores ---
   insertRiskScore(s: Omit<RiskScore, 'id'>): RiskScore {
     const id = generateId()
@@ -278,6 +288,102 @@ export class AedevDb {
       approved: r['approved'] === 1,
       createdAt: r['created_at'] as string,
     }))
+  }
+
+  // --- Operator cockpit ---
+  insertOperatorSession(s: Omit<OperatorSession, 'id' | 'createdAt' | 'updatedAt'>): OperatorSession {
+    const id = generateId(); const now = nowIso()
+    this.db.prepare(`INSERT INTO operator_sessions (id,repo_id,mission_id,title,prompt,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)`).run(
+      id, s.repoId ?? null, s.missionId ?? null, s.title, s.prompt, s.status, now, now
+    )
+    return { ...s, id, createdAt: now, updatedAt: now }
+  }
+
+  updateOperatorSession(id: string, updates: Partial<Pick<OperatorSession, 'missionId' | 'status' | 'title'>>): void {
+    const sets: string[] = []
+    const vals: unknown[] = []
+    if (updates.missionId !== undefined) { sets.push('mission_id = ?'); vals.push(updates.missionId) }
+    if (updates.status !== undefined) { sets.push('status = ?'); vals.push(updates.status) }
+    if (updates.title !== undefined) { sets.push('title = ?'); vals.push(updates.title) }
+    if (sets.length === 0) return
+    vals.push(nowIso(), id)
+    this.db.prepare(`UPDATE operator_sessions SET ${sets.join(', ')}, updated_at = ? WHERE id = ?`).run(...vals)
+  }
+
+  getOperatorSession(id: string): OperatorSession | undefined {
+    const row = this.db.prepare('SELECT * FROM operator_sessions WHERE id = ?').get(id) as Record<string, unknown> | undefined
+    return row ? this.rowToOperatorSession(row) : undefined
+  }
+
+  listOperatorSessions(): OperatorSession[] {
+    const rows = this.db.prepare('SELECT * FROM operator_sessions ORDER BY created_at DESC').all() as Record<string, unknown>[]
+    return rows.map((r) => this.rowToOperatorSession(r))
+  }
+
+  insertOperatorMessage(m: Omit<OperatorMessage, 'id' | 'createdAt'>): OperatorMessage {
+    const id = generateId(); const now = nowIso()
+    this.db.prepare(`INSERT INTO operator_messages (id,session_id,role,content,choices,created_at) VALUES (?,?,?,?,?,?)`).run(
+      id, m.sessionId, m.role, m.content, m.choices ? JSON.stringify(m.choices) : null, now
+    )
+    return { ...m, id, createdAt: now }
+  }
+
+  listOperatorMessages(sessionId: string): OperatorMessage[] {
+    const rows = this.db.prepare('SELECT * FROM operator_messages WHERE session_id = ? ORDER BY created_at ASC').all(sessionId) as Record<string, unknown>[]
+    return rows.map((r) => ({
+      id: r['id'] as string,
+      sessionId: r['session_id'] as string,
+      role: r['role'] as OperatorMessage['role'],
+      content: r['content'] as string,
+      ...(r['choices'] ? { choices: JSON.parse(r['choices'] as string) as OperatorMessage['choices'] } : {}),
+      createdAt: r['created_at'] as string,
+    }))
+  }
+
+  upsertMissionArtifact(a: Omit<MissionArtifact, 'id' | 'createdAt' | 'updatedAt'>): MissionArtifact {
+    const existing = this.db.prepare('SELECT * FROM mission_artifacts WHERE mission_id = ? AND type = ? AND path = ?').get(
+      a.missionId, a.type, a.path,
+    ) as Record<string, unknown> | undefined
+    const now = nowIso()
+    if (existing) {
+      this.db.prepare('UPDATE mission_artifacts SET title = ?, updated_at = ? WHERE id = ?').run(a.title ?? null, now, existing['id'])
+      return this.rowToMissionArtifact({ ...existing, title: a.title ?? null, updated_at: now })
+    }
+    const id = generateId()
+    this.db.prepare(`INSERT INTO mission_artifacts (id,mission_id,type,path,title,created_at,updated_at) VALUES (?,?,?,?,?,?,?)`).run(
+      id, a.missionId, a.type, a.path, a.title ?? null, now, now
+    )
+    return { ...a, id, createdAt: now, updatedAt: now }
+  }
+
+  listMissionArtifacts(missionId: string): MissionArtifact[] {
+    const rows = this.db.prepare('SELECT * FROM mission_artifacts WHERE mission_id = ? ORDER BY updated_at DESC').all(missionId) as Record<string, unknown>[]
+    return rows.map((r) => this.rowToMissionArtifact(r))
+  }
+
+  private rowToOperatorSession(r: Record<string, unknown>): OperatorSession {
+    return {
+      id: r['id'] as string,
+      repoId: r['repo_id'] as string | undefined,
+      missionId: r['mission_id'] as string | undefined,
+      title: r['title'] as string,
+      prompt: r['prompt'] as string,
+      status: r['status'] as string,
+      createdAt: r['created_at'] as string,
+      updatedAt: r['updated_at'] as string,
+    }
+  }
+
+  private rowToMissionArtifact(r: Record<string, unknown>): MissionArtifact {
+    return {
+      id: r['id'] as string,
+      missionId: r['mission_id'] as string,
+      type: r['type'] as MissionArtifact['type'],
+      path: r['path'] as string,
+      title: r['title'] as string | undefined,
+      createdAt: r['created_at'] as string,
+      updatedAt: r['updated_at'] as string,
+    }
   }
 
   // --- Events ---

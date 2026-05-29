@@ -3,15 +3,26 @@
  *  primitive runMigrations + raw SQL the scripts wrap. */
 import { describe, it, expect } from 'vitest'
 import Database from 'better-sqlite3'
-import { runMigrations, getMigrationVersion } from './migrations.js'
+import { MIGRATIONS, runMigrations, getMigrationVersion } from './migrations.js'
+
+const LATEST_MIGRATION = Math.max(...MIGRATIONS.map((m) => m.version))
+
+function rollbackToLegacyV1(db: Database.Database): void {
+  db.exec(`
+    DROP TABLE IF EXISTS mission_artifacts;
+    DROP TABLE IF EXISTS operator_messages;
+    DROP TABLE IF EXISTS operator_sessions;
+    DROP TABLE IF EXISTS event_log;
+  `)
+  db.prepare('DELETE FROM migrations WHERE version >= 3').run()
+}
 
 function freshV1Db(): Database.Database {
   const db = new Database(':memory:')
   db.pragma('foreign_keys = ON')
-  runMigrations(db) // up to current latest (includes v3)
-  // simulate "v1 GA" by removing v3
-  db.exec('DROP TABLE IF EXISTS event_log')
-  db.prepare('DELETE FROM migrations WHERE version = 3').run()
+  runMigrations(db) // up to current latest
+  // simulate "v1 GA" by removing additive v2.1+ tables
+  rollbackToLegacyV1(db)
   // insert a fake task chain so backfill has something to do
   db.prepare(`INSERT INTO repos (id,name,path,default_branch,enabled,test_commands,forbidden_paths,risk_rules,merge_policy,created_at,updated_at)
      VALUES ('r1','demo','/tmp/demo','main',1,'[]','[]','{}','WAITING','2026-05-01T00:00:00Z','2026-05-01T00:00:00Z')`).run()
@@ -41,7 +52,7 @@ describe('migrate · v1 → v2.1 → v1 round trip (Stage M L1)', () => {
       expect(tablesAfter.find((x) => x.name === t.name)).toBeDefined()
     }
     expect(tablesAfter.find((x) => x.name === 'event_log')).toBeDefined()
-    expect(getMigrationVersion(db)).toBe(3)
+    expect(getMigrationVersion(db)).toBe(LATEST_MIGRATION)
     db.close()
   })
 
@@ -52,8 +63,7 @@ describe('migrate · v1 → v2.1 → v1 round trip (Stage M L1)', () => {
        VALUES ('ev_legacy','heartbeat',NULL,NULL,'{}','2026-05-01T00:00:00Z')`).run()
     const beforeCount = (db.prepare('SELECT COUNT(*) AS n FROM events').get() as { n: number }).n
     runMigrations(db) // up
-    db.exec('DROP TABLE event_log')
-    db.prepare('DELETE FROM migrations WHERE version = 3').run()
+    rollbackToLegacyV1(db)
     // event_log gone:
     const has = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='event_log'").get() as { name?: string } | undefined
     expect(has).toBeUndefined()

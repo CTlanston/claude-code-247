@@ -15,26 +15,23 @@ schema_version: 1
 version_target: v2.3.0
 current_part: I            # I = v2.1 基座 · II = v2.2 Agent Mesh
 current_stage: V2.3        # Mission OS incremental autonomy
-current_substage: release-policy-aligned   # v2 tag policy aligned; phone approval checked; smoke blockers recorded
-last_updated_utc: 2026-05-28T14:24:44Z
-last_session_id: s_0008
-total_sessions: 8
+current_substage: operator-cockpit-verification-closed   # P1-P8 cockpit verification TODOs implemented and regression-tested
+last_updated_utc: 2026-05-28T23:38:46Z
+last_session_id: s_0009
+total_sessions: 9
 weeks_elapsed: 0
 weeks_remaining: 0
 open_holds: 0
 blocked_on: null
 next_action: |
-  v2 release state is now explicit: v1.0.0 is the only GA tag, and
-  v2.2.0-rc2 is production grade for single-operator infra per ADR-0013
-  Path A. Do not create v2.1.0/v2.2.0 GA tags under the current policy.
-
-  Validation this session: physical ntfy phone approval + HOLD resolve PASS
-  under evidence/approval-e2e; pnpm test:smoke PASS after starting Docker
-  Desktop and scoping the default smoke to current v2 external dependencies
-  (Claude CLI, Docker, Gemini, OpenAI). Legacy claude247 bridge smoke is now
-  explicit as pnpm test:smoke:legacy-claude247.
-  Next pass: decide whether the legacy claude247 bridge remains supported in
-  v2.3, then run the real 2h local soak with actual discovered worker sessions.
+  Operator Cockpit verification P1-P8 is closed: real CLI probes, AI-backed
+  roadmap generation by default, evidence-only validators, gated draft PR,
+  worker log endpoint, browser e2e harness, session persistence, and explicit
+  cost aggregation are implemented. Validation: pnpm test PASS (91 files,
+  535 passed, 6 skipped), pnpm typecheck PASS, dashboard build PASS, and
+  deterministic browser e2e PASS.
+  Next pass: run a real non-mock cockpit smoke with local Codex/Claude planner
+  and worker sessions, plus real Gemini/OpenAI validators if keys are present.
 sla:
   daemon_recovery_p95_sec: 90
   approval_e2e_p95_min: 5   # post-GA hardening gate per ADR-0014
@@ -588,6 +585,31 @@ ApprovalGateway: ntfy → 操作员手机
 - next_action: <见 §0>
 - notes: <一两句>
 ```
+
+### s_0009 — 2026-05-28T23:38:46Z — operator cockpit verification P1-P8
+
+- stage_in: V2.3.release-policy-aligned → stage_out: V2.3.operator-cockpit-verification-closed
+- actor: codex
+- shipped:
+    - P1 real CLI health probe for Codex/Claude sessions, including `probeStatus`, `probeError`, and `probedAt`; broken present CLI now routes to `HOLD-SESSION-POOL`
+    - P8 AI-backed roadmap generation by default with validated `MissionDesign` JSON and standalone `prd.md`, `adr.md`, `roadmap.md`, `task-dag.json`, and `design.json` artifacts
+    - P2 evidence-only validator wiring for Gemini/OpenAI with explicit `not_configured` overview state when keys are absent
+    - P3 gated `POST /operator/sessions/:id/create-pr` draft PR path; remote writes default blocked and no merge path added
+    - P4 `operator-run.log`, `operator.worker_log` events, and `GET /missions/:id/runs/:runId/log`
+    - P5 deterministic browser e2e harness `pnpm test:cockpit:e2e`
+    - P6 dashboard session restore from `localStorage` plus latest-session API
+    - P7 planner+worker usage aggregation with subscription-mode cost labeled unknown unless provider reports actual cost
+- validation:
+    - `pnpm test` PASS — 91 files, 535 passed, 6 skipped
+    - `pnpm typecheck` PASS
+    - `pnpm --dir apps/dashboard build` PASS
+    - `pnpm test:cockpit:e2e` PASS
+    - Real local API smoke with FORCE_MOCK/FORCE_TEMPLATE unset PASS — planner produced validated AI artifacts, `codex-cli` worker completed exit 0, mission paused at `PR/Waiting/Blocked`, no PR/merge
+- holds_opened: 0 · holds_resolved: 0
+- not_done_remaining:
+    - Run a real non-mock cockpit smoke with actual local Codex/Claude planner and worker sessions
+    - Run real Gemini/OpenAI validator smoke through Cockpit when API keys are present
+    - Keep draft PR writes disabled unless `allow_remote_writes=true` and an explicit real PR adapter/config path are reviewed
 
 ### s_0008 — 2026-05-28T14:24:44Z — release policy + real phone/smoke check
 

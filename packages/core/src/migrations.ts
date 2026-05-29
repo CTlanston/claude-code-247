@@ -171,6 +171,37 @@ CREATE INDEX IF NOT EXISTS idx_event_log_kind ON event_log(kind);
 CREATE INDEX IF NOT EXISTS idx_event_log_causation ON event_log(causation_id);
 `
 
+const V4_OPERATOR_COCKPIT_SQL = `
+CREATE TABLE IF NOT EXISTS operator_sessions (
+  id TEXT PRIMARY KEY,
+  repo_id TEXT REFERENCES repos(id),
+  mission_id TEXT REFERENCES missions(id),
+  title TEXT NOT NULL,
+  prompt TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'brainstorming',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS operator_messages (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES operator_sessions(id),
+  role TEXT NOT NULL,
+  content TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS mission_artifacts (
+  id TEXT PRIMARY KEY,
+  mission_id TEXT NOT NULL REFERENCES missions(id),
+  type TEXT NOT NULL,
+  path TEXT NOT NULL,
+  title TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_operator_messages_session ON operator_messages(session_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_mission_artifacts_mission ON mission_artifacts(mission_id, type);
+`
+
 export const MIGRATIONS: Migration[] = [
   { version: 1, name: 'initial-schema', up: INITIAL_SQL },
   { version: 2, name: 'add-github-fields', up: `
@@ -179,6 +210,8 @@ export const MIGRATIONS: Migration[] = [
   ALTER TABLE missions ADD COLUMN github_pr_number INTEGER;
 ` },
   { version: 3, name: 'event-log-v2', up: V3_EVENT_LOG_SQL },
+  { version: 4, name: 'operator-cockpit', up: V4_OPERATOR_COCKPIT_SQL },
+  { version: 5, name: 'operator-message-choices', up: `ALTER TABLE operator_messages ADD COLUMN choices TEXT;` },
 ]
 
 export function runMigrations(db: Database.Database): void {

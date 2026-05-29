@@ -11,6 +11,8 @@ export interface CodexRunOptions {
   extraArgs?: string[]
   ephemeral?: boolean
   json?: boolean
+  onStdout?: (chunk: string) => void
+  onStderr?: (chunk: string) => void
 }
 
 export interface CodexRunResult {
@@ -53,10 +55,11 @@ export class CodexCliAdapter {
       'exec',
       '--cd', workdir,
       '--sandbox', options.sandbox ?? 'workspace-write',
-      '--ask-for-approval', options.approvalPolicy ?? 'never',
+      '-c', `approval_policy="${options.approvalPolicy ?? 'never'}"`,
     ]
     if (options.json ?? true) argv.push('--json')
     if (options.ephemeral ?? true) argv.push('--ephemeral')
+    argv.push('--skip-git-repo-check')
     if (options.model) argv.push('--model', options.model)
     if (options.extraArgs?.length) argv.push(...options.extraArgs)
     argv.push('-')
@@ -89,8 +92,16 @@ export class CodexCliAdapter {
         }, 500)
       }, timeoutMs)
 
-      child.stdout?.on('data', (d: Buffer) => { stdout += d.toString() })
-      child.stderr?.on('data', (d: Buffer) => { stderr += d.toString() })
+      child.stdout?.on('data', (d: Buffer) => {
+        const chunk = d.toString()
+        stdout += chunk
+        options.onStdout?.(chunk)
+      })
+      child.stderr?.on('data', (d: Buffer) => {
+        const chunk = d.toString()
+        stderr += chunk
+        options.onStderr?.(chunk)
+      })
       child.stdin?.write(prompt)
       child.stdin?.end()
 
@@ -164,6 +175,13 @@ function extractTranscript(rawJson: Record<string, unknown>, stdout: string): st
       const obj = event as Record<string, unknown>
       for (const key of ['message', 'text', 'content', 'output']) {
         if (typeof obj[key] === 'string' && obj[key]) return obj[key]
+      }
+      const item = obj['item']
+      if (item && typeof item === 'object') {
+        const itemObj = item as Record<string, unknown>
+        for (const key of ['message', 'text', 'content', 'output']) {
+          if (typeof itemObj[key] === 'string' && itemObj[key]) return itemObj[key]
+        }
       }
     }
   }

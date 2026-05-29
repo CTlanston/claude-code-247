@@ -6,11 +6,12 @@ export interface SseState {
   missions: ApiMission[]
   tasks: ApiTask[]
   pendingApprovals: number
+  events: Array<{ id: string; kind: string; payload: unknown }>
 }
 
 export function useSSE(url: string): SseState {
   const [state, setState] = useState<SseState>({
-    connected: false, missions: [], tasks: [], pendingApprovals: 0,
+    connected: false, missions: [], tasks: [], pendingApprovals: 0, events: [],
   })
   const esRef = useRef<EventSource | null>(null)
 
@@ -18,6 +19,10 @@ export function useSSE(url: string): SseState {
     const es = new EventSource(url)
     esRef.current = es
     es.addEventListener('connected', () => setState((s) => ({ ...s, connected: true })))
+    es.addEventListener('event', (e: MessageEvent) => {
+      const d = JSON.parse(e.data as string) as { id: string; kind: string; payload: unknown }
+      setState((s) => ({ ...s, events: [d, ...s.events].slice(0, 100) }))
+    })
     es.addEventListener('state', (e: MessageEvent) => {
       const d = JSON.parse(e.data as string) as Omit<SseState, 'connected'>
       setState((s) => ({ ...s, ...d }))

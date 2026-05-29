@@ -72,4 +72,14 @@ describe('migrations (Stage A.2)', () => {
     expect(names).toContain('idx_event_log_kind')
     expect(names).toContain('idx_event_log_causation')
   })
+
+  it('v4 creates additive operator cockpit tables', () => {
+    const tables = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all() as { name: string }[]
+    const names = tables.map((t) => t.name)
+    expect(names).toContain('operator_sessions')
+    expect(names).toContain('operator_messages')
+    expect(names).toContain('mission_artifacts')
+  })
 })

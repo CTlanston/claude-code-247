@@ -18,12 +18,21 @@ import * as path from 'node:path'
 import * as os from 'node:os'
 import { runMigrations, getMigrationVersion } from './migrations.js'
 
+function rollbackToLegacyV1(db: Database.Database): void {
+  db.exec(`
+    DROP TABLE IF EXISTS mission_artifacts;
+    DROP TABLE IF EXISTS operator_messages;
+    DROP TABLE IF EXISTS operator_sessions;
+    DROP TABLE IF EXISTS event_log;
+  `)
+  db.prepare('DELETE FROM migrations WHERE version >= 3').run()
+}
+
 async function freshV1WithSeedData(): Promise<{ db: Database.Database; eventsBefore: number }> {
   const db = new Database(':memory:')
   db.pragma('foreign_keys = ON')
   runMigrations(db)
-  db.exec('DROP TABLE event_log')
-  db.prepare('DELETE FROM migrations WHERE version = 3').run()
+  rollbackToLegacyV1(db)
   db.prepare(`INSERT INTO repos (id,name,path,default_branch,enabled,test_commands,forbidden_paths,risk_rules,merge_policy,created_at,updated_at)
               VALUES ('r1','demo','/tmp/demo','main',1,'[]','[]','{}','WAITING','2026-05-01T00:00:00Z','2026-05-01T00:00:00Z')`).run()
   db.prepare(`INSERT INTO missions (id,repo_id,title,status,created_at,updated_at)
@@ -61,8 +70,7 @@ describe('migrate · rollback drill (Stage M L3 compressed)', () => {
         )
       }
       // rollback
-      db.exec('DROP TABLE event_log')
-      db.prepare('DELETE FROM migrations WHERE version = 3').run()
+      rollbackToLegacyV1(db)
       const elapsedMs = performance.now() - start
       const eventsAfter = (db.prepare('SELECT COUNT(*) AS n FROM events').get() as { n: number }).n
       const v = getMigrationVersion(db)
@@ -80,8 +88,7 @@ describe('migrate · rollback drill (Stage M L3 compressed)', () => {
     const before = await fs.stat(ndjsonPath)
     const { db } = await freshV1WithSeedData()
     runMigrations(db)
-    db.exec('DROP TABLE event_log')
-    db.prepare('DELETE FROM migrations WHERE version = 3').run()
+    rollbackToLegacyV1(db)
     db.close()
     const after = await fs.stat(ndjsonPath)
     expect(after.size).toBe(before.size)
@@ -95,8 +102,7 @@ describe('migrate · rollback drill (Stage M L3 compressed)', () => {
       runMigrations(db)
       const upMs = performance.now() - upStart
       const downStart = performance.now()
-      db.exec('DROP TABLE event_log')
-      db.prepare('DELETE FROM migrations WHERE version = 3').run()
+      rollbackToLegacyV1(db)
       const downMs = performance.now() - downStart
       expect(upMs).toBeLessThan(1000)
       expect(downMs).toBeLessThan(1000)
