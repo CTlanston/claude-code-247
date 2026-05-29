@@ -8,10 +8,30 @@ const sessions: WorkerSession[] = [
 ]
 
 describe('WorkerPoolRouter', () => {
-  it('routes coder work to Codex before Claude', () => {
+  it('routes coder work to Codex before Claude by default', () => {
     const decision = new WorkerPoolRouter(sessions).decide({ role: 'coder', queueDepth: 5 })
     expect(decision.provider).toBe('codex-cli')
     expect(decision.sessionId).toBe('codex-1')
+  })
+
+  it('routes dual-validator hard-gate coder work to Claude', () => {
+    const decision = new WorkerPoolRouter(sessions).decide({
+      role: 'coder',
+      queueDepth: 5,
+      requiresIndependentValidators: true,
+    })
+    expect(decision.provider).toBe('claude-cli')
+    expect(decision.sessionId).toBe('claude-1')
+  })
+
+  it('holds dual-validator hard-gate coder work when Claude is unavailable', () => {
+    const decision = new WorkerPoolRouter([
+      { id: 'codex-1', provider: 'codex-cli', family: 'openai', healthy: true, active: 0 },
+      { id: 'gemini-1', provider: 'gemini-api', family: 'google', healthy: true, active: 0 },
+    ]).decide({ role: 'coder', requiresIndependentValidators: true })
+
+    expect(decision.provider).toBeNull()
+    expect(decision.holdCode).toBe('HOLD-SESSION-POOL')
   })
 
   it('routes planner work to Claude before Codex', () => {

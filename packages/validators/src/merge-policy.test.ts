@@ -66,4 +66,18 @@ describe('MergePolicy', () => {
   it('low risk + 3 passes (all different validators) → AUTO_MERGE', () => {
     expect(mp.decide(5, [pass('gemini'), pass('openai'), pass('mock')])).toBe('AUTO_MERGE')
   })
+
+  it('WAITING when Codex-authored work has only one validator family independent of the coder', () => {
+    expect(mp.decide(10, [pass('gemini'), pass('openai')], {
+      coderFamily: 'openai',
+      requireIndependentValidatorFamilies: true,
+    })).toBe('WAITING')
+  })
+
+  it('AUTO_MERGE when Claude-authored work has Gemini and OpenAI independent passes', () => {
+    expect(mp.decide(10, [pass('gemini'), pass('openai')], {
+      coderFamily: 'anthropic',
+      requireIndependentValidatorFamilies: true,
+    })).toBe('AUTO_MERGE')
+  })
 })

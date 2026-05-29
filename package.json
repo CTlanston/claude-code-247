@@ -22,6 +22,7 @@
     "test:cockpit:e2e": "tsx scripts/operator-cockpit-e2e.ts",
     "test:cockpit:screens": "tsx scripts/operator-cockpit-screens.ts",
     "test:cockpit:real-smoke": "tsx scripts/operator-cockpit-real-smoke.ts",
+    "test:v24:s0": "tsx scripts/v24-vertical-slice-s0.ts",
     "demo:hermus-obsidian": "tsx scripts/demo-hermus-obsidian-system.ts",
     "test:e2e:sandbox": "tsx scripts/e2e-sandbox.ts",
     "test:hermus:mission": "tsx scripts/hermus-mission-smoke.ts",

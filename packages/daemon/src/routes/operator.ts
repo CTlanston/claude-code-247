@@ -801,7 +801,7 @@ async function runOperatorMission(db: AedevDb, stateDir: string, sessionId: stri
   }
   const runnerOpts = forceMock
     ? { runner: operatorDraftRunner(db, stateDir) }
-    : { workerSessions, runner: operatorLocalCliRunner(db, stateDir, workerSessions) }
+    : { workerSessions, runner: operatorLocalCliRunner(db, stateDir, workerSessions, validators.length >= 2) }
   db.insertEvent('operator.worker_assigned', 'mission', missionId, {
     sessionId,
     mode: forceMock ? 'mock' : 'local-cli',
@@ -934,10 +934,12 @@ function allowRemoteWritesEnabled(stateDir: string): boolean {
   })
 }
 
-function operatorLocalCliRunner(db: AedevDb, stateDir: string, sessions: Awaited<ReturnType<typeof discoverWorkerSessions>>) {
+function operatorLocalCliRunner(db: AedevDb, stateDir: string, sessions: Awaited<ReturnType<typeof discoverWorkerSessions>>, requireClaudeCoder = false) {
   return {
     async runTask(task: Task) {
-      const session = sessions.find((s) => s.healthy && s.provider === 'codex-cli') ?? sessions.find((s) => s.healthy && s.provider === 'claude-cli')
+      const session = requireClaudeCoder
+        ? sessions.find((s) => s.healthy && s.provider === 'claude-cli')
+        : sessions.find((s) => s.healthy && s.provider === 'codex-cli') ?? sessions.find((s) => s.healthy && s.provider === 'claude-cli')
       if (!session) throw new Error('HOLD-SESSION-POOL: no healthy Claude or Codex CLI session is available')
       const started = new Date().toISOString()
       const startedMs = Date.now()

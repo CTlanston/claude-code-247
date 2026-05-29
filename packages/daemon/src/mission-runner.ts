@@ -54,6 +54,8 @@ export interface MissionRunOptions {
   requiresUi?: boolean
   requiresPreview?: boolean
   sensitiveLane?: boolean
+  /** Defaults true when two or more validators are configured. */
+  requiresDualValidatorGate?: boolean
 }
 
 export interface MissionRunResult {
@@ -231,6 +233,8 @@ export class MissionRunner {
         sensitiveLane: this.opts.sensitiveLane ?? false,
         secretScanHit: false,
         forbiddenPathTouched: false,
+        coderFamily: providerToFamily(routeDecision.provider),
+        requireIndependentValidatorFamilies: this.requiresDualValidatorGate(),
       }
       const policy = this.opts.mergePolicy ?? new MergePolicy()
       const decision = policy.decide(risk.score, validatorResults, evidence)
@@ -309,8 +313,13 @@ export class MissionRunner {
     return router.decide({
       role,
       queueDepth: typeof this.opts.queueDepth === 'function' ? this.opts.queueDepth() : this.opts.queueDepth,
+      ...(role === 'coder' ? { requiresIndependentValidators: this.requiresDualValidatorGate() } : {}),
       ...(role === 'validator' ? { reviewerFamily: providerToFamily(reviewerProvider) } : {}),
     })
+  }
+
+  private requiresDualValidatorGate(): boolean {
+    return this.opts.requiresDualValidatorGate ?? ((this.opts.validators?.length ?? 0) >= 2)
   }
 
   private createHeldResult(params: {

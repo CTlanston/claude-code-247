@@ -37,7 +37,7 @@ export class RunnerManager {
     let result: RunResult
     try {
       const runner = this.getRunner(this.config.mode)
-      result = { ...await runner.run(task, this.config), runId: run.id }
+      result = { ...await runner.run(task, this.effectiveConfig(task)), runId: run.id }
       this.db.updateRun(run.id, { status: 'done', completedAt: nowIso(), exitCode: result.exitCode, evidenceDir: result.evidenceDir })
       validateTaskTransition('running', 'done')
       this.db.updateTaskStatus(task.id, 'done')
@@ -50,5 +50,16 @@ export class RunnerManager {
       throw e
     }
     return result
+  }
+
+  private effectiveConfig(task: Task): RunnerConfig {
+    const repo = this.db.getRepo(task.repoId)
+    if (!repo) return this.config
+    return {
+      ...this.config,
+      sourceRepoPath: this.config.sourceRepoPath ?? repo.path,
+      testCommands: this.config.testCommands ?? repo.testCommands,
+      forbiddenPaths: this.config.forbiddenPaths ?? repo.forbiddenPaths,
+    }
   }
 }
