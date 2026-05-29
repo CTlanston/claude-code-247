@@ -40,8 +40,6 @@ export type {
   DraftPrRequest,
   GitRemoteWriter,
 } from './draft-pr-gate.js'
-export { GhGitRemoteWriter, GhDraftPrCreator, defaultExec } from './remote-write-gh.js'
-export type { ExecFn, ExecResult } from './remote-write-gh.js'
 export {
   BoundedMoveRunner,
   moveIdempotencyKey,

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { Repo } from '@aedev/core'
-import { GhGitRemoteWriter, GhDraftPrCreator, type ExecFn, type ExecResult } from './remote-write-gh.js'
+import { GhGitRemoteWriter, GhDraftPrCreator, type ExecFn, type ExecResult } from '@aedev/runner'
 import { DraftPrGate } from './draft-pr-gate.js'
 
 const repo: Repo = {

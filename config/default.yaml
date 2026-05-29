@@ -11,7 +11,7 @@ system:
 
   # Where to bind the dashboard. Listen on loopback by default for safety.
   dashboard_host: 127.0.0.1
-  dashboard_port: 8423
+  dashboard_port: 7247
 
   # The orchestrator polls the command queue + task scheduler at this rate.
   poll_interval_seconds: 30
@@ -148,4 +148,3 @@ roadmap_agent:
   scope_paths:
     - "docs/roadmap.md"
   max_proposals_per_tick: 5
-

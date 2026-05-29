@@ -12,6 +12,7 @@ import {
 } from './index.js'
 
 const SECRET = 'a-very-strong-test-secret-for-hs256'
+const B64URL_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
 
 async function mkLog() {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'approval-v2-'))
@@ -38,12 +39,27 @@ describe('approval-v2 · token (Stage D L1)', () => {
       decision: 'approve', ttlMs: 5 * 60 * 1000,
     })
     const parts = tok.encoded.split('.')
-    // Flip a char in the signature segment — payload still decodes cleanly,
+    // Flip a high-order char in the signature segment — payload still decodes cleanly,
     // signature comparison fails deterministically.
-    const lastChar = parts[2].charAt(parts[2].length - 1)
-    const swap = lastChar === 'A' ? 'B' : 'A'
-    const tampered = parts[2].slice(0, -1) + swap
+    const firstChar = parts[2].charAt(0)
+    const swap = firstChar === 'A' ? 'B' : 'A'
+    const tampered = swap + parts[2].slice(1)
     const r = verifier.verify(`${parts[0]}.${parts[1]}.${tampered}`)
+    expect(r.ok).toBe(false)
+    expect(r.error).toBe('signature_mismatch')
+  })
+
+  it('case 2b: tamper — non-canonical signature aliases are rejected', () => {
+    const tok = signer.sign({
+      approvalId: 'appr_2b', taskId: 'task_d', actor: 'lanston',
+      decision: 'approve', ttlMs: 5 * 60 * 1000,
+    })
+    const parts = tok.encoded.split('.')
+    const lastIndex = B64URL_ALPHABET.indexOf(parts[2].charAt(parts[2].length - 1))
+    expect(lastIndex % 4).toBe(0)
+    const aliasLastChar = B64URL_ALPHABET.charAt(lastIndex + 1)
+    const nonCanonicalSig = parts[2].slice(0, -1) + aliasLastChar
+    const r = verifier.verify(`${parts[0]}.${parts[1]}.${nonCanonicalSig}`)
     expect(r.ok).toBe(false)
     expect(r.error).toBe('signature_mismatch')
   })

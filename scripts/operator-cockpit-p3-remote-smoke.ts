@@ -15,7 +15,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import type { Repo } from '@aedev/core'
-import { DraftPrGate, DraftPrGateError, GhGitRemoteWriter, GhDraftPrCreator } from '@aedev/daemon'
+import { DraftPrGate, DraftPrGateError } from '@aedev/daemon'
+import { GhGitRemoteWriter, GhDraftPrCreator } from '@aedev/runner'
 
 const SLUG = process.env['AEDEV_P3_REPO'] ?? 'CTlanston/aedev-p3-smoke'
 const [OWNER, NAME] = SLUG.split('/')

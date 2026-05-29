@@ -1,25 +1,26 @@
 /**
- * Real remote-write adapters for the DraftPrGate (P3).
+ * Worker-side remote-write adapters for the DraftPrGate.
  *
- * GitRemoteWriter  -> `git push` of an already-committed branch.
- * DraftPrCreator   -> `gh pr create --draft` (idempotent: reuses an open PR
- *                     for the same head branch instead of erroring).
- *
- * These only ever run when DraftPrGate is constructed with
- * allowRemoteWrites=true (the safety gate). They never merge.
- *
- * `exec` is injectable so the units are testable without touching git/gh.
+ * These adapters shell out to `git` and `gh`, so they intentionally live in
+ * the runner/side-effect plane rather than the daemon package.
  */
 import { execFile } from 'child_process'
 import type { Repo } from '@aedev/core'
-import type { DraftPrCreator, DraftPrInfo, GitRemoteWriter } from './draft-pr-gate.js'
 
 export interface ExecResult {
   stdout: string
   stderr: string
   code: number
 }
+
 export type ExecFn = (cmd: string, args: string[], opts?: { cwd?: string }) => Promise<ExecResult>
+
+export interface DraftPrInfo {
+  number: number
+  url: string
+  state: string
+  draft: true
+}
 
 export const defaultExec: ExecFn = (cmd, args, opts) =>
   new Promise((resolve) => {
@@ -29,19 +30,17 @@ export const defaultExec: ExecFn = (cmd, args, opts) =>
     })
   })
 
-export class GhGitRemoteWriter implements GitRemoteWriter {
+export class GhGitRemoteWriter {
   constructor(private readonly exec: ExecFn = defaultExec) {}
 
-  async pushBranch(repo: Repo, branch: string, _idempotencyKey: string): Promise<void> {
-    // `git push -u origin <branch>` is itself idempotent (re-pushing the same
-    // ref is a no-op / fast-forward). The branch must already be committed in
-    // repo.path with an `origin` remote pointing at the GitHub repo.
+  async pushBranch(repo: Repo, branch: string, idempotencyKey: string): Promise<void> {
+    void idempotencyKey
     const r = await this.exec('git', ['-C', repo.path, 'push', '-u', 'origin', branch])
     if (r.code !== 0) throw new Error(`git push failed for ${branch}: ${r.stderr.trim() || r.stdout.trim()}`)
   }
 }
 
-export class GhDraftPrCreator implements DraftPrCreator {
+export class GhDraftPrCreator {
   constructor(private readonly exec: ExecFn = defaultExec) {}
 
   async createDraftPr(req: {
@@ -54,7 +53,6 @@ export class GhDraftPrCreator implements DraftPrCreator {
   }): Promise<DraftPrInfo> {
     const slug = `${req.repo.githubOwner}/${req.repo.githubRepo}`
 
-    // Idempotency: if an open PR already exists for this head, reuse it.
     const existing = await this.exec('gh', ['pr', 'list', '--repo', slug, '--head', req.head, '--state', 'open', '--json', 'number,url,state,isDraft'])
     if (existing.code === 0 && existing.stdout.trim()) {
       const arr = JSON.parse(existing.stdout) as Array<{ number: number; url: string; state: string; isDraft: boolean }>

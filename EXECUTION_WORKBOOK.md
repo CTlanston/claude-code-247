@@ -12,25 +12,34 @@
 ```yaml
 # 这一块是机器读的。任何字段修改都要在 §9 留痕。
 schema_version: 1
-version_target: v2.4.0
-current_part: III          # III = v2.4 real vertical slice
-current_stage: V2.4        # Real target repo vertical slice
-current_substage: vertical-slice-s0-implemented   # ADR-0017 + S0 harness and routing gates implemented
-last_updated_utc: 2026-05-29T03:27:12Z
-last_session_id: s_0010
-total_sessions: 10
+version_target: production-usable-24x7
+current_part: III          # III = v2.4 real vertical slice -> production hardening
+current_stage: ProductionHardening
+current_substage: e2e-0-unblock-blocked-on-local-deps-and-gate-auth
+last_updated_utc: 2026-05-29T22:07:56Z
+last_session_id: s_0028
+total_sessions: 28
 weeks_elapsed: 0
 weeks_remaining: 0
-open_holds: 0
-blocked_on: null
+open_holds: 2
+blocked_on: HOLD-P2-LIVE-SMOKE-GATE-AUTH; HOLD-LOCAL-DEPS-RESTORE
 next_action: |
-  V2.4 is locked by ADR-0017. The vertical slice now has dual-family routing
-  discipline, repo-aware local CLI worktrees, objective validate/audit gates,
-  forbidden-path scan, local commit evidence, and the S0 harness for
-  CTlanston/multi-agent-brainstorm safe-copy runs. Next pass: run
-  `pnpm test:v24:s0` with a healthy local Claude session; Gemini/OpenAI keys
-  upgrade validator evidence when present, but missing keys must be recorded
-  honestly as HOLD-VALIDATOR-KEYS.
+  Real E2E loop is specced as Stages E2E-0/1/2 in §3 (target repo
+  CTlanston/multi-agent-brainstorm; coder = subscription Claude CLI inside Docker;
+  real OpenAI + Gemini dual-family; live draft PR draft-only; model_usage persisted).
+  FIRST clear the 2 open holds via Stage E2E-0: restore deps (s_0028: local
+  eslint/tsc/vitest/tsx binaries still missing; offline install missing
+  eslint@9.39.4; online frozen install blocked by registry.npmjs.org ENOTFOUND);
+  operator restores ~/.Codex-247/config.yaml + repos.yaml with
+  multi-agent-brainstorm enabled; repair gh auth for CTlanston. THEN Stage E2E-1:
+  write ADR-0019, wire claude-in-docker + default dual-family validators (keys
+  via SecretGrant/secrets-mcp) + persist model_usage + reuse remote-write-gh
+  draft PR; prove ONE real run with model_usage>0, two independent-family
+  validator verdicts, and an unmerged draft PR; reset allow_remote_writes=false
+  after. THEN Stage E2E-2: structured clarification gate (ADR-0020). Pre-research
+  deferred to a later stage (ADR-0021). open_holds must reach 0 before E2E-1 per
+  §3.99. Canonical plan + kickoff prompt:
+  docs/handoff/e2e-real-loop-plan-and-prompt.md.
 sla:
   daemon_recovery_p95_sec: 90
   approval_e2e_p95_min: 5   # post-GA hardening gate per ADR-0014
@@ -336,6 +345,58 @@ sla:
 - **L3** operator reviews S0 evidence and decides whether to proceed to P2 durable lease queue.
 - **退出 → V2.4-P2** S0 has real evidence, not synthetic soak claims.
 
+### Stage E2E-0 — Unblock & Baseline Green (前置, HOLD-clearing)
+
+- **目标** 清掉当前 2 个 open hold，把 baseline gate 跑绿，让真实闭环可启动。属 §3.99 HOLD-only 允许的工作。
+- **输入** §0 STATE（open_holds=2）；§9 s_0025–s_0027 hold recheck；`HOLD-LOCAL-DEPS-RESTORE` / `HOLD-P2-LIVE-SMOKE-GATE-AUTH`。
+- **交付**
+  - 恢复本地依赖：联网安装或补全 pnpm store（当前缺 `@eslint/config-array@0.21.2` 等 tarball）；`eslint/tsc/vitest/tsx` 二进制可用，锁文件无变更。
+  - 操作员恢复 `~/.Codex-247/config.yaml`、`~/.Codex-247/repos.yaml`，把 `CTlanston/multi-agent-brainstorm` 注册为 `enabled: true`（`allow_remote_writes` 暂保持 false）。
+  - 修复 `gh auth`（有效 CTlanston token，具备对目标 repo 开 draft PR 的权限）。
+  - evidence: `evidence/e2e/s0-unblock/`（install 日志、`gh auth status`、test/typecheck/lint 输出）。
+- **L1 Acceptance** `pnpm install --frozen-lockfile` PASS；`pnpm typecheck` PASS（0 err）；`pnpm lint` PASS；`pnpm test` PASS（0 fail/0 skip）；`gh auth status` 有效；目标 repo 在 `repos.yaml` 已 enabled。
+- **L2 Review** 独立 reviewer 复跑 `pnpm test`+`pnpm typecheck` 全绿；确认无为过 gate 而 `.skip/.only`。
+- **L3 Validate** 操作员确认 `~/.Codex-247/{config.yaml,repos.yaml}` 就位且 `gh` 能访问目标 repo。
+- **退出条件 → E2E-1** open_holds=0 且 baseline 全绿；§0 切 `current_stage: E2E-1`。
+- **坑** holds 清零前不得改产品代码（GR#2 / §3.99）；依赖恢复优先用完整 pnpm store，避免引入 lockfile 变更。
+
+### Stage E2E-1 — Real End-to-End Loop (dockerized Claude coder → dual-family → live draft PR → model_usage)
+
+- **目标** 在 `CTlanston/multi-agent-brainstorm` 上把"真 coder→证据→双家族验证→真 draft PR→token 核算"端到端**真实**跑通一次。coder=订阅 Claude CLI 跑在 Docker 容器内；验证=真 OpenAI+真 Gemini（独立家族）；PR=draft-only 绝不 merge；model_usage 真实落库。
+- **输入** ADR-0019（本 stage 先写）；ADR-0017；目标 repo `https://github.com/CTlanston/multi-agent-brainstorm.git`；只读副本 `/Users/lanston/Desktop/MCPs/muti-agent comm`；已有代码 `runner/{docker-runner,cli-runner,claude-adapter}.ts`、`validators/{openai,gemini}-validator.ts`+`merge-policy`/`family-enforce`、`cost-meter/*`、`daemon/src/remote-write-gh.ts`、`mission-runner.ts` seam。
+- **交付**
+  - `docs/adr/0019-real-e2e-loop-docker-claude-dual-family.md`。
+  - **Docker×Claude 接通**：扩展 `DockerRunner` 在容器内跑订阅 `claude` CLI；claude auth/session 以**只读**挂进容器；`claude --print --output-format json` 真写代码（GR#8：CLI 在 worker 容器内）。
+  - **mission-runner 接线**：`buildRunnerConfig`/`providerToRunnerMode` 把 coder route 映射到 claude-in-docker（不再默认 mock）；`validators` 默认注入真 `OpenAIValidator`+`GeminiValidator`，key 经 SecretGrant + secrets-mcp，不写死 env。
+  - **model_usage 落库**：解析 claude JSON usage（in/out tokens）→ `CostRoller.record`+`CostTagger` 计价 → 新事件 `model.usage.recorded` + `model_usage` view（GR#6 event→view；GR#4 双向兼容）。
+  - **dual-family 真验证**：coderFamily=anthropic；`MergePolicy` 要两个独立家族通过 → openai+google；冲突走已有 `HOLD-FAMILY-CONFLICT`。
+  - **live draft PR**：复用 `remote-write-gh.ts`，draft-only、title-hash 幂等（GR#5）、`mergedAt=null`、经 `DraftPrGate`。
+  - **首任务来源**：roadmap-agent/intake 扫 `multi-agent-brainstorm` 产候选 → 操作员确认一个（med-risk 上限，多文件可，med-risk 经 ApprovalGateway）。
+  - evidence: `evidence/e2e/s1/`（真实 plan.md/done-report.md/risk-report.md；真实 diff；两份独立家族 verdict；model_usage 数值；draft PR URL + mergedAt=null 证明；route-decision.json）。
+- **安全姿态** 仅对该 repo 临时 `allow_remote_writes=true`（单次，run 后复位 false）；draft-only、永不 auto-merge；`forbidden_paths`（`.env*` `secrets/**` `.github/**` `CLAUDE.md` `AGENTS.md`）强制；med/high risk 经 ApprovalGateway。
+- **L1 Acceptance**（客观）
+  - `pnpm test` PASS，含 `runner/docker-runner.test.ts`（claude-in-docker）、`daemon/remote-write-gh.test.ts`、`validators/merge-policy.test.ts`（双家族独立）、`mission-runner.test.ts`（真 validators 非空）、新 model_usage 测试；`pnpm typecheck` PASS。
+  - 一次真实 run：`runs≥1`、`validator_results≥2`（family∈{openai,google} 各一）、`model_usage≥1`（in/out tokens 非零）、一条 draft PR（URL 存在、`mergedAt=null`）。
+  - anti-slop：evidence 含真实 `plan.md`/`done-report.md`/`risk-report.md`（非 "Status: Pending" 桩）；verdict∈{pass,fail}（非全 inconclusive）。
+- **L2 Review** 独立 reviewer（非同家族）读 ADR-0019 + evidence + diff；独立 `git fetch` 复核 PR diff；确认未 merge、未碰 forbidden_paths、两份 verdict 来自独立家族；复算 model_usage 非桩。
+- **L3 Validate** 操作员在 cockpit/手机看 route→coder→validators→draft PR 全因果链；确认 draft PR 真存在于 `multi-agent-brainstorm` 且未合并；确认 `allow_remote_writes` 已复位 false。
+- **退出条件 → E2E-2** L1/L2/L3 全过，且系统**首次**记录到 `model_usage>0` 且双家族 `validator_results`；§0 记录里程碑。
+- **坑** ① claude auth 进容器务必**只读**、run 后不持久化；容器内无法订阅鉴权 → `HOLD-CLAUDE-AUTH-IN-DOCKER`，**不得静默改 API**。② coder=anthropic 时 openai+google 才算两家族。③ draft PR 用 title-hash 幂等，重跑复用不新建。④ 一次 commit 只引用 `[E2E-1]`；先写 ADR-0019。⑤ run 后必须复位 `allow_remote_writes=false`。
+
+### Stage E2E-2 — Structured Clarification Gate (AI-initiated, before coder)
+
+- **目标** coder 动手前，系统**主动**发起结构化多轮澄清（类 AskUserQuestion），把模糊 mission 收敛成**可验证 spec**，作为 PRD/coder 输入，降低返工与 slop。
+- **输入** ADR-0020（先写）；E2E-1 闭环；现有 `lead-agent.ts`（"Clarify mission intent" 任务但无强制 gate）、cockpit Conversation/Brainstorm。
+- **交付**
+  - `docs/adr/0020-structured-clarification-gate.md`。
+  - `ClarificationGate`：intake 后、role-pipeline 前插入；mission 模糊度/风险超阈值 → 生成 N 个结构化问题（选项式，operator 可多选/自填）→ 收集答复 → 落 `clarified-spec.md`（可验证验收点）→ 才放行 coder。
+  - 事件 `mission.clarification.{requested,answered,resolved}`；cockpit 渲染问题卡片 + 答复回流入 evidence；阈值策略入 `config/policies.yaml`。
+- **L1 Acceptance** 模糊 mission（缺验收点）被拦下并产 ≥1 组结构化问题；答复后产含可验证验收点的 `clarified-spec.md`；清晰 mission 不被无谓拦截（false-gate 率单测覆盖）；`pnpm test`+`typecheck` 绿。
+- **L2 Review** reviewer 注入 3 模糊+3 清晰 mission，确认召回/精确合理，且澄清答复真实进入 PRD/coder 输入。
+- **L3 Validate** 操作员在 cockpit 走一次真实多轮澄清，确认问题质量与 spec 落地。
+- **退出条件 → §0 backlog** 通过后，pre-research（预研阶段, ADR-0021）作为下一排定 stage。
+- **坑** 问题"少而关键"（每轮 ≤4 问）；不得无限提问阻塞；仅超阈值触发，清晰任务直通。
+
 ### Stage 3.99 — 不在主线但永远有效
 
 - **HOLD-only 模式** 任何 stage 进行中如 `open_holds > 0`，本会话只能处理 holds，不能推进 stage。
@@ -599,6 +660,459 @@ ApprovalGateway: ntfy → 操作员手机
 - next_action: <见 §0>
 - notes: <一两句>
 ```
+
+### s_0028 — 2026-05-29T22:07:56Z — E2E-0 unblock hold recheck
+
+- stage_in: ProductionHardening.p2-live-disposable-smoke-blocked-on-gate-auth-and-local-deps → stage_out: ProductionHardening.e2e-0-unblock-blocked-on-local-deps-and-gate-auth
+- actor: codex
+- shipped:
+    - rechecked `HOLD-LOCAL-DEPS-RESTORE` and `HOLD-P2-LIVE-SMOKE-GATE-AUTH` without product code changes
+    - confirmed local `eslint`, `tsc`, `vitest`, and `tsx` binaries are still missing
+    - confirmed offline pnpm restore is blocked by a missing `eslint@9.39.4` tarball
+    - confirmed frozen online pnpm restore cannot reach `registry.npmjs.org` from this sandbox (`ENOTFOUND`)
+    - confirmed `~/.Codex-247/config.yaml` and `~/.Codex-247/repos.yaml` are still missing
+    - confirmed `gh auth status` still reports an invalid active `CTlanston` token
+    - recorded that no remote branch push, draft PR creation, merge, or other remote write was attempted
+- validation:
+    - `CI=true pnpm install --offline --frozen-lockfile` FAIL — missing offline tarball for `eslint@9.39.4`
+    - `CI=true pnpm install --frozen-lockfile` FAIL — `ENOTFOUND registry.npmjs.org`, first fatal fetch `eslint@9.39.4`
+    - `bash scripts/doctor.sh` PASS required checks; daemon install/responding warnings only
+    - `rg "child_process" packages/daemon/src` PASS — no matches
+    - `pnpm lint` FAIL — `eslint: command not found`
+    - `pnpm typecheck` FAIL — `tsc: command not found`
+    - `pnpm test` FAIL — `vitest: command not found`
+    - `pnpm test:cockpit:p3-remote-smoke` FAIL before smoke execution — `tsx: command not found`; also blocked by remote-write gate/auth
+- evidence:
+    - `evidence/e2e/s0-unblock/hold-recheck-2026-05-29-s0028.md`
+- holds_opened: 0 · holds_resolved: 0
+- holds: `HOLD-P2-LIVE-SMOKE-GATE-AUTH` remains open; `HOLD-LOCAL-DEPS-RESTORE` remains open
+- commits: none; existing dirty prior-run P0/P1/P2/P4 docs/code remain uncommitted and must not be mixed into one slice commit
+- next_action: restore local dependencies with network or a complete pnpm store, rerun baseline gates, then operator restores `~/.Codex-247/config.yaml`, `~/.Codex-247/repos.yaml`, and valid `gh` auth before rerunning `pnpm test:cockpit:p3-remote-smoke`
+
+### s_0027 — 2026-05-29T21:36:43Z — P2 live smoke hold recheck
+
+- stage_in: ProductionHardening.p2-live-disposable-smoke-blocked-on-gate-auth-and-local-deps → stage_out: ProductionHardening.p2-live-disposable-smoke-blocked-on-gate-auth-and-local-deps
+- actor: codex
+- shipped:
+    - rechecked `HOLD-P2-LIVE-SMOKE-GATE-AUTH` and `HOLD-LOCAL-DEPS-RESTORE` without product code changes
+    - confirmed `~/.Codex-247/config.yaml` and `~/.Codex-247/repos.yaml` are still missing
+    - confirmed `gh auth status` still reports an invalid active `CTlanston` token
+    - confirmed local `eslint`, `tsc`, `vitest`, and `tsx` binaries are still missing
+    - confirmed offline pnpm restore is still blocked by a missing `@eslint/config-array@0.21.2` tarball
+    - recorded that no remote branch push, draft PR creation, merge, or other remote write was attempted
+- validation:
+    - `CI=true pnpm install --offline --frozen-lockfile` FAIL — missing offline tarball for `@eslint/config-array@0.21.2`
+    - `bash scripts/doctor.sh` PASS required checks; daemon install/responding warnings only
+    - `rg "child_process" packages/daemon/src` PASS — no matches
+    - `pnpm lint` FAIL — `eslint: command not found`
+    - `pnpm typecheck` FAIL — `tsc: command not found`
+    - `pnpm test` FAIL — `vitest: command not found`
+    - `pnpm test:cockpit:p3-remote-smoke` FAIL before smoke execution — `tsx: command not found`; also blocked by remote-write gate/auth
+- evidence:
+    - `evidence/production/p2-live-smoke-hold-recheck-2026-05-29-s0027.md`
+- holds_opened: 0 · holds_resolved: 0
+- holds: `HOLD-P2-LIVE-SMOKE-GATE-AUTH` remains open; `HOLD-LOCAL-DEPS-RESTORE` remains open
+- commits: none; existing dirty prior-run P0/P1/P2/P4 docs/code remain uncommitted and must not be mixed into one slice commit
+- next_action: restore local dependencies with network or a complete pnpm store, rerun baseline gates, then operator restores `~/.Codex-247/config.yaml`, `~/.Codex-247/repos.yaml`, and valid `gh` auth before rerunning `pnpm test:cockpit:p3-remote-smoke`
+
+### s_0026 — 2026-05-29T21:06:42Z — P2 live smoke hold recheck
+
+- stage_in: ProductionHardening.p2-live-disposable-smoke-blocked-on-gate-auth-and-local-deps → stage_out: ProductionHardening.p2-live-disposable-smoke-blocked-on-gate-auth-and-local-deps
+- actor: codex
+- shipped:
+    - rechecked `HOLD-P2-LIVE-SMOKE-GATE-AUTH` and `HOLD-LOCAL-DEPS-RESTORE` without product code changes
+    - confirmed `~/.Codex-247/config.yaml` and `~/.Codex-247/repos.yaml` are still missing
+    - confirmed `gh auth status` still reports an invalid active `CTlanston` token
+    - confirmed local `eslint`, `tsc`, `vitest`, and `tsx` binaries are still missing
+    - confirmed offline pnpm restore is still blocked by a missing `@eslint-community/eslint-utils@4.9.1` tarball
+    - recorded that no remote branch push, draft PR creation, merge, or other remote write was attempted
+- validation:
+    - `CI=true pnpm install --offline --frozen-lockfile` FAIL — missing offline tarball for `@eslint-community/eslint-utils@4.9.1`
+    - `bash scripts/doctor.sh` PASS required checks; daemon install/responding warnings only
+    - `rg "child_process" packages/daemon/src` PASS — no matches
+    - `pnpm lint` FAIL — `eslint: command not found`
+    - `pnpm typecheck` FAIL — `tsc: command not found`
+    - `pnpm test` FAIL — `vitest: command not found`
+    - `pnpm test:cockpit:p3-remote-smoke` FAIL before smoke execution — `tsx: command not found`; also blocked by remote-write gate/auth
+- evidence:
+    - `evidence/production/p2-live-smoke-hold-recheck-2026-05-29-s0026.md`
+- holds_opened: 0 · holds_resolved: 0
+- holds: `HOLD-P2-LIVE-SMOKE-GATE-AUTH` remains open; `HOLD-LOCAL-DEPS-RESTORE` remains open
+- commits: none; existing dirty prior-run P0/P1/P2/P4 docs/code remain uncommitted and must not be mixed into one slice commit
+- next_action: restore local dependencies with network or a complete pnpm store, rerun baseline gates, then operator restores `~/.Codex-247/config.yaml`, `~/.Codex-247/repos.yaml`, and valid `gh` auth before rerunning `pnpm test:cockpit:p3-remote-smoke`
+
+### s_0025 — 2026-05-29T20:36:26Z — P2 live smoke hold recheck
+
+- stage_in: ProductionHardening.p2-live-disposable-smoke-blocked-on-gate-auth-and-local-deps → stage_out: ProductionHardening.p2-live-disposable-smoke-blocked-on-gate-auth-and-local-deps
+- actor: codex
+- shipped:
+    - rechecked `HOLD-P2-LIVE-SMOKE-GATE-AUTH` and `HOLD-LOCAL-DEPS-RESTORE` without product code changes
+    - confirmed `~/.Codex-247/config.yaml` and `~/.Codex-247/repos.yaml` are still missing
+    - confirmed `gh auth status` still reports an invalid active `CTlanston` token
+    - confirmed local `eslint`, `tsc`, `vitest`, and `tsx` binaries are still missing
+    - confirmed offline pnpm restore is still blocked by a missing `@eslint/js@9.39.4` tarball
+    - recorded that no remote branch push, draft PR creation, merge, or other remote write was attempted
+- validation:
+    - `CI=true pnpm install --offline --frozen-lockfile` FAIL — missing offline tarball for `@eslint/js@9.39.4`
+    - `bash scripts/doctor.sh` PASS required checks; daemon install/responding warnings only
+    - `rg "child_process" packages/daemon/src` PASS — no matches
+    - `pnpm lint` FAIL — `eslint: command not found`
+    - `pnpm typecheck` FAIL — `tsc: command not found`
+    - `pnpm test` FAIL — `vitest: command not found`
+    - `pnpm test:cockpit:p3-remote-smoke` FAIL before smoke execution — `tsx: command not found`; also blocked by remote-write gate/auth
+- evidence:
+    - `evidence/production/p2-live-smoke-hold-recheck-2026-05-29-s0025.md`
+- holds_opened: 0 · holds_resolved: 0
+- holds: `HOLD-P2-LIVE-SMOKE-GATE-AUTH` remains open; `HOLD-LOCAL-DEPS-RESTORE` remains open
+- commits: none; existing dirty prior-run P0/P1/P2/P4 docs/code remain uncommitted and must not be mixed into one slice commit
+- next_action: restore local dependencies with network or a complete pnpm store, rerun baseline gates, then operator restores `~/.Codex-247/config.yaml`, `~/.Codex-247/repos.yaml`, and valid `gh` auth before rerunning `pnpm test:cockpit:p3-remote-smoke`
+
+### s_0024 — 2026-05-29T20:06:46Z — P2 live smoke hold recheck
+
+- stage_in: ProductionHardening.p2-live-disposable-smoke-blocked-on-gate-auth-and-local-deps → stage_out: ProductionHardening.p2-live-disposable-smoke-blocked-on-gate-auth-and-local-deps
+- actor: codex
+- shipped:
+    - rechecked `HOLD-P2-LIVE-SMOKE-GATE-AUTH` and `HOLD-LOCAL-DEPS-RESTORE` without product code changes
+    - confirmed `~/.Codex-247/config.yaml` and `~/.Codex-247/repos.yaml` are still missing
+    - confirmed `gh auth status` still reports an invalid active `CTlanston` token
+    - confirmed local `eslint`, `tsc`, `vitest`, and `tsx` binaries are still missing
+    - confirmed offline pnpm restore is still blocked by a missing `@eslint/js@9.39.4` tarball
+    - recorded that no remote branch push, draft PR creation, merge, or other remote write was attempted
+- validation:
+    - `CI=true pnpm install --offline --frozen-lockfile` FAIL — missing offline tarball for `@eslint/js@9.39.4`
+    - `bash scripts/doctor.sh` PASS required checks; daemon install/responding warnings only
+    - `rg "child_process" packages/daemon/src` PASS — no matches
+    - `pnpm lint` FAIL — `eslint: command not found`
+    - `pnpm typecheck` FAIL — `tsc: command not found`
+    - `pnpm test` FAIL — `vitest: command not found`
+    - `pnpm test:cockpit:p3-remote-smoke` FAIL before smoke execution — `tsx: command not found`; also blocked by remote-write gate/auth
+- evidence:
+    - `evidence/production/p2-live-smoke-hold-recheck-2026-05-29-s0024.md`
+- holds_opened: 0 · holds_resolved: 0
+- holds: `HOLD-P2-LIVE-SMOKE-GATE-AUTH` remains open; `HOLD-LOCAL-DEPS-RESTORE` remains open
+- commits: none; existing dirty prior-run P0/P1/P2/P4 docs/code remain uncommitted and must not be mixed into one slice commit
+- next_action: restore local dependencies with network or a complete pnpm store, rerun baseline gates, then operator restores `~/.Codex-247/config.yaml`, `~/.Codex-247/repos.yaml`, and valid `gh` auth before rerunning `pnpm test:cockpit:p3-remote-smoke`
+
+### s_0023 — 2026-05-29T19:36:58Z — P2 live smoke hold recheck
+
+- stage_in: ProductionHardening.p2-live-disposable-smoke-blocked-on-gate-auth-and-local-deps → stage_out: ProductionHardening.p2-live-disposable-smoke-blocked-on-gate-auth-and-local-deps
+- actor: codex
+- shipped:
+    - rechecked `HOLD-P2-LIVE-SMOKE-GATE-AUTH` and `HOLD-LOCAL-DEPS-RESTORE` without product code changes
+    - confirmed `~/.Codex-247/config.yaml` and `~/.Codex-247/repos.yaml` are still missing
+    - confirmed `gh auth status` still reports an invalid active `CTlanston` token
+    - confirmed local `eslint`, `tsc`, `vitest`, and `tsx` binaries are still missing
+    - confirmed offline pnpm restore is still blocked by a missing `@eslint-community/regexpp@4.12.2` tarball
+    - recorded that no remote branch push, draft PR creation, merge, or other remote write was attempted
+- validation:
+    - `CI=true pnpm install --offline --frozen-lockfile` FAIL — missing offline tarball for `@eslint-community/regexpp@4.12.2`
+    - `bash scripts/doctor.sh` PASS required checks; daemon install/responding warnings only
+    - `rg "child_process" packages/daemon/src` PASS — no matches
+    - `pnpm lint` FAIL — `eslint: command not found`
+    - `pnpm typecheck` FAIL — `tsc: command not found`
+    - `pnpm test` FAIL — `vitest: command not found`
+    - `pnpm test:cockpit:p3-remote-smoke` FAIL before smoke execution — `tsx: command not found`; also blocked by remote-write gate/auth
+- evidence:
+    - `evidence/production/p2-live-smoke-hold-recheck-2026-05-29-s0023.md`
+- holds_opened: 0 · holds_resolved: 0
+- holds: `HOLD-P2-LIVE-SMOKE-GATE-AUTH` remains open; `HOLD-LOCAL-DEPS-RESTORE` remains open
+- commits: none; existing dirty prior-run P0/P1/P2/P4 docs/code remain uncommitted and must not be mixed into one slice commit
+- next_action: restore local dependencies with network or a complete pnpm store, rerun baseline gates, then operator restores `~/.Codex-247/config.yaml`, `~/.Codex-247/repos.yaml`, and valid `gh` auth before rerunning `pnpm test:cockpit:p3-remote-smoke`
+
+### s_0022 — 2026-05-29T19:06:52Z — P2 live smoke hold recheck
+
+- stage_in: ProductionHardening.p2-live-disposable-smoke-blocked-on-gate-auth-and-local-deps → stage_out: ProductionHardening.p2-live-disposable-smoke-blocked-on-gate-auth-and-local-deps
+- actor: codex
+- shipped:
+    - rechecked `HOLD-P2-LIVE-SMOKE-GATE-AUTH` and `HOLD-LOCAL-DEPS-RESTORE` without product code changes
+    - confirmed `~/.Codex-247/config.yaml` and `~/.Codex-247/repos.yaml` are still missing
+    - confirmed `gh auth status` still reports an invalid active `CTlanston` token
+    - confirmed local `eslint`, `tsc`, `vitest`, and `tsx` binaries are still missing
+    - confirmed offline pnpm restore is still blocked by a missing `@eslint-community/eslint-utils@4.9.1` tarball
+    - recorded that no remote branch push, draft PR creation, merge, or other remote write was attempted
+- validation:
+    - `CI=true pnpm install --offline --frozen-lockfile` FAIL — missing offline tarball for `@eslint-community/eslint-utils@4.9.1`
+    - `bash scripts/doctor.sh` PASS required checks; daemon install/responding warnings only
+    - `rg "child_process" packages/daemon/src` PASS — no matches
+    - `pnpm lint` FAIL — `eslint: command not found`
+    - `pnpm typecheck` FAIL — `tsc: command not found`
+    - `pnpm test` FAIL — `vitest: command not found`
+    - `pnpm test:cockpit:p3-remote-smoke` FAIL before smoke execution — `tsx: command not found`; also blocked by remote-write gate/auth
+- evidence:
+    - `evidence/production/p2-live-smoke-hold-recheck-2026-05-29-s0022.md`
+- holds_opened: 0 · holds_resolved: 0
+- holds: `HOLD-P2-LIVE-SMOKE-GATE-AUTH` remains open; `HOLD-LOCAL-DEPS-RESTORE` remains open
+- commits: none; existing dirty prior-run P0/P1/P2/P4 docs/code remain uncommitted and must not be mixed into one slice commit
+- next_action: restore local dependencies with network or a complete pnpm store, rerun baseline gates, then operator restores `~/.Codex-247/config.yaml`, `~/.Codex-247/repos.yaml`, and valid `gh` auth before rerunning `pnpm test:cockpit:p3-remote-smoke`
+
+### s_0021 — 2026-05-29T18:36:51Z — P2 live smoke hold recheck
+
+- stage_in: ProductionHardening.p2-live-disposable-smoke-blocked-on-gate-auth-and-local-deps → stage_out: ProductionHardening.p2-live-disposable-smoke-blocked-on-gate-auth-and-local-deps
+- actor: codex
+- shipped:
+    - rechecked `HOLD-P2-LIVE-SMOKE-GATE-AUTH` and `HOLD-LOCAL-DEPS-RESTORE` without product code changes
+    - confirmed `~/.Codex-247/config.yaml` and `~/.Codex-247/repos.yaml` are still missing
+    - confirmed `gh auth status` still reports an invalid active `CTlanston` token
+    - confirmed local `eslint`, `tsc`, `vitest`, and `tsx` binaries are still missing
+    - confirmed offline pnpm restore is still blocked by a missing `eslint@9.39.4` tarball
+    - recorded that no remote branch push, draft PR creation, merge, or other remote write was attempted
+- validation:
+    - `CI=true pnpm install --offline --frozen-lockfile` FAIL — missing offline tarball for `eslint@9.39.4`
+    - `bash scripts/doctor.sh` PASS required checks; daemon install/responding warnings only
+    - `rg "child_process" packages/daemon/src` PASS — no matches
+    - `pnpm lint` FAIL — `eslint: command not found`
+    - `pnpm typecheck` FAIL — `tsc: command not found`
+    - `pnpm test` FAIL — `vitest: command not found`
+    - `pnpm test:cockpit:p3-remote-smoke` FAIL before smoke execution — `tsx: command not found`; also blocked by remote-write gate/auth
+- evidence:
+    - `evidence/production/p2-live-smoke-hold-recheck-2026-05-29-s0021.md`
+- holds_opened: 0 · holds_resolved: 0
+- holds: `HOLD-P2-LIVE-SMOKE-GATE-AUTH` remains open; `HOLD-LOCAL-DEPS-RESTORE` remains open
+- commits: none; existing dirty prior-run P0/P1/P2/P4 docs/code remain uncommitted and must not be mixed into one slice commit
+- next_action: restore local dependencies with network or a complete pnpm store, rerun baseline gates, then operator restores `~/.Codex-247/config.yaml`, `~/.Codex-247/repos.yaml`, and valid `gh` auth before rerunning `pnpm test:cockpit:p3-remote-smoke`
+
+### s_0020 — 2026-05-29T18:06:47Z — P2 live smoke hold recheck
+
+- stage_in: ProductionHardening.p2-live-disposable-smoke-blocked-on-gate-auth-and-local-deps → stage_out: ProductionHardening.p2-live-disposable-smoke-blocked-on-gate-auth-and-local-deps
+- actor: codex
+- shipped:
+    - rechecked `HOLD-P2-LIVE-SMOKE-GATE-AUTH` and `HOLD-LOCAL-DEPS-RESTORE` without product code changes
+    - confirmed `~/.Codex-247/config.yaml` and `~/.Codex-247/repos.yaml` are still missing
+    - confirmed `gh auth status` still reports an invalid active `CTlanston` token
+    - confirmed local `eslint`, `tsc`, `vitest`, and `tsx` binaries are still missing
+    - confirmed offline pnpm restore is still blocked by a missing `ms@2.1.3` tarball
+    - recorded that no remote branch push, draft PR creation, merge, or other remote write was attempted
+- validation:
+    - `CI=true pnpm install --offline --frozen-lockfile` FAIL — missing offline tarball for `ms@2.1.3`
+    - `bash scripts/doctor.sh` PASS required checks; daemon install/responding warnings only
+    - `rg "child_process" packages/daemon/src` PASS — no matches
+    - `pnpm lint` FAIL — `eslint: command not found`
+    - `pnpm typecheck` FAIL — `tsc: command not found`
+    - `pnpm test` FAIL — `vitest: command not found`
+    - `pnpm test:cockpit:p3-remote-smoke` FAIL before smoke execution — `tsx: command not found`; also blocked by remote-write gate/auth
+- evidence:
+    - `evidence/production/p2-live-smoke-hold-recheck-2026-05-29-s0020.md`
+- holds_opened: 0 · holds_resolved: 0
+- holds: `HOLD-P2-LIVE-SMOKE-GATE-AUTH` remains open; `HOLD-LOCAL-DEPS-RESTORE` remains open
+- commits: none; existing dirty prior-run P0/P1/P2/P4 docs/code remain uncommitted and must not be mixed into one slice commit
+- next_action: restore local dependencies with network or a complete pnpm store, rerun baseline gates, then operator restores `~/.Codex-247/config.yaml`, `~/.Codex-247/repos.yaml`, and valid `gh` auth before rerunning `pnpm test:cockpit:p3-remote-smoke`
+
+### s_0019 — 2026-05-29T17:36:35Z — P2 live smoke hold recheck
+
+- stage_in: ProductionHardening.p2-live-disposable-smoke-blocked-on-gate-auth-and-local-deps → stage_out: ProductionHardening.p2-live-disposable-smoke-blocked-on-gate-auth-and-local-deps
+- actor: codex
+- shipped:
+    - rechecked `HOLD-P2-LIVE-SMOKE-GATE-AUTH` and `HOLD-LOCAL-DEPS-RESTORE` without product code changes
+    - confirmed `~/.Codex-247/config.yaml` and `~/.Codex-247/repos.yaml` are still missing
+    - confirmed `gh auth status` still reports an invalid active `CTlanston` token
+    - confirmed local `eslint`, `tsc`, `vitest`, and `tsx` binaries are still missing
+    - confirmed offline pnpm restore is still blocked by a missing `@eslint-community/regexpp@4.12.2` tarball
+    - recorded that no remote branch push, draft PR creation, merge, or other remote write was attempted
+- validation:
+    - `CI=true pnpm install --offline --frozen-lockfile` FAIL — missing offline tarball for `@eslint-community/regexpp@4.12.2`
+    - `bash scripts/doctor.sh` PASS required checks; daemon install/responding warnings only
+    - `rg "child_process" packages/daemon/src` PASS — no matches
+    - `pnpm lint` FAIL — `eslint: command not found`
+    - `pnpm typecheck` FAIL — `tsc: command not found`
+    - `pnpm test` FAIL — `vitest: command not found`
+    - `pnpm test:cockpit:p3-remote-smoke` FAIL before smoke execution — `tsx: command not found`; also blocked by remote-write gate/auth
+- evidence:
+    - `evidence/production/p2-live-smoke-hold-recheck-2026-05-29-s0019.md`
+- holds_opened: 0 · holds_resolved: 0
+- holds: `HOLD-P2-LIVE-SMOKE-GATE-AUTH` remains open; `HOLD-LOCAL-DEPS-RESTORE` remains open
+- commits: none; existing dirty prior-run P0/P1/P2/P4 docs/code remain uncommitted and must not be mixed into one slice commit
+- next_action: restore local dependencies with network or a complete pnpm store, rerun baseline gates, then operator restores `~/.Codex-247/config.yaml`, `~/.Codex-247/repos.yaml`, and valid `gh` auth before rerunning `pnpm test:cockpit:p3-remote-smoke`
+
+### s_0018 — 2026-05-29T17:07:23Z — P2 live smoke hold recheck
+
+- stage_in: ProductionHardening.p2-live-disposable-smoke-blocked-on-gate-auth-and-local-deps → stage_out: ProductionHardening.p2-live-disposable-smoke-blocked-on-gate-auth-and-local-deps
+- actor: codex
+- shipped:
+    - rechecked `HOLD-P2-LIVE-SMOKE-GATE-AUTH` and `HOLD-LOCAL-DEPS-RESTORE` without product code changes
+    - confirmed `~/.Codex-247/config.yaml` and `~/.Codex-247/repos.yaml` are still missing
+    - confirmed `gh auth status` still reports an invalid active `CTlanston` token
+    - confirmed local `eslint`, `tsc`, `vitest`, and `tsx` binaries are still missing
+    - confirmed offline pnpm restore is still blocked by a missing `@eslint/js@9.39.4` tarball
+    - recorded that no remote branch push, draft PR creation, merge, or other remote write was attempted
+- validation:
+    - `CI=true pnpm install --offline --frozen-lockfile` FAIL — missing offline tarball for `@eslint/js@9.39.4`
+    - `bash scripts/doctor.sh` PASS required checks; daemon install/responding warnings only
+    - `rg "child_process" packages/daemon/src` PASS — no matches
+    - `pnpm lint` FAIL — `eslint: command not found`
+    - `pnpm typecheck` FAIL — `tsc: command not found`
+    - `pnpm test` FAIL — `vitest: command not found`
+    - `pnpm test:cockpit:p3-remote-smoke` FAIL before smoke execution — `tsx: command not found`; also blocked by remote-write gate/auth
+- evidence:
+    - `evidence/production/p2-live-smoke-hold-recheck-2026-05-29-s0018.md`
+- holds_opened: 0 · holds_resolved: 0
+- holds: `HOLD-P2-LIVE-SMOKE-GATE-AUTH` remains open; `HOLD-LOCAL-DEPS-RESTORE` remains open
+- commits: none; existing dirty prior-run P0/P1/P2/P4 docs/code remain uncommitted and must not be mixed into one slice commit
+- next_action: restore local dependencies with network or a complete pnpm store, rerun baseline gates, then operator restores `~/.Codex-247/config.yaml`, `~/.Codex-247/repos.yaml`, and valid `gh` auth before rerunning `pnpm test:cockpit:p3-remote-smoke`
+
+### s_0017 — 2026-05-29T16:24:58Z — P2 live smoke hold recheck
+
+- stage_in: ProductionHardening.p2-live-disposable-smoke-blocked-on-gate-auth → stage_out: ProductionHardening.p2-live-disposable-smoke-blocked-on-gate-auth-and-local-deps
+- actor: codex
+- shipped:
+    - rechecked `HOLD-P2-LIVE-SMOKE-GATE-AUTH` without product code changes
+    - confirmed `~/.Codex-247/config.yaml` and `~/.Codex-247/repos.yaml` are still missing
+    - confirmed `gh auth status` still reports an invalid active `CTlanston` token
+    - recorded that no remote branch push, draft PR creation, merge, or other remote write was attempted
+    - opened `HOLD-LOCAL-DEPS-RESTORE` because network-blocked `pnpm install` left local CLI tooling incomplete
+- validation:
+    - `pnpm install --frozen-lockfile` FAIL — non-TTY modules purge prompt
+    - `CI=true pnpm install --frozen-lockfile` FAIL — restricted network `ENOTFOUND registry.npmjs.org` after recreating `node_modules`
+    - `CI=true pnpm install --offline --frozen-lockfile` FAIL — missing offline tarball for `eslint-9.39.4.tgz`
+    - `bash scripts/doctor.sh` PASS required checks; daemon install/responding warnings only
+    - `rg "child_process" packages/daemon/src` PASS — no matches
+    - `pnpm lint` FAIL — `eslint: command not found`
+    - `pnpm typecheck` FAIL — `tsc: command not found`
+    - `pnpm test` FAIL — `vitest: command not found`
+    - `pnpm test:cockpit:p3-remote-smoke` FAIL before smoke execution — `tsx: command not found`; also blocked by remote-write gate/auth
+- evidence:
+    - `evidence/production/p2-live-smoke-hold-recheck-2026-05-29-s0017.md`
+- holds_opened: 1 · holds_resolved: 0
+- holds: `HOLD-P2-LIVE-SMOKE-GATE-AUTH` remains open; `HOLD-LOCAL-DEPS-RESTORE` open
+- commits: none; existing dirty prior-run P0/P1/P2/P4 docs/code remain uncommitted and must not be mixed into one slice commit
+- next_action: restore local dependencies, rerun baseline gates, then operator restores `~/.Codex-247/config.yaml`, `~/.Codex-247/repos.yaml`, and valid `gh` auth before rerunning `pnpm test:cockpit:p3-remote-smoke`
+
+### s_0016 — 2026-05-29T15:53:25Z — P2 live smoke hold recheck
+
+- stage_in: ProductionHardening.p2-live-disposable-smoke-blocked-on-gate-auth → stage_out: ProductionHardening.p2-live-disposable-smoke-blocked-on-gate-auth
+- actor: codex
+- shipped:
+    - rechecked `HOLD-P2-LIVE-SMOKE-GATE-AUTH` without product code changes
+    - confirmed `~/.Codex-247/config.yaml` and `~/.Codex-247/repos.yaml` are still missing
+    - confirmed `gh auth status` still reports an invalid active `CTlanston` token
+    - recorded that no remote branch push, draft PR creation, merge, or other remote write was attempted
+- validation:
+    - `bash scripts/doctor.sh` PASS required checks; daemon install/responding warnings only
+    - `pnpm lint` PASS
+    - `pnpm typecheck` PASS
+    - `pnpm test` PASS — 93 files passed; 554 tests passed, 6 skipped
+    - `rg "child_process" packages/daemon/src` PASS — no matches
+    - `pnpm test:cockpit:p3-remote-smoke` SKIPPED — remote-write gate/auth unavailable
+- evidence:
+    - `evidence/production/p2-live-smoke-hold-recheck-2026-05-29-s0016.md`
+- holds_opened: 0 · holds_resolved: 0
+- holds: `HOLD-P2-LIVE-SMOKE-GATE-AUTH` remains open
+- commits: none; existing dirty prior-run P0/P1/P2/P4 docs/code remain uncommitted and must not be mixed into one slice commit
+- next_action: operator restores `~/.Codex-247/config.yaml`, `~/.Codex-247/repos.yaml`, and valid `gh` auth, then rerun `pnpm test:cockpit:p3-remote-smoke`
+
+### s_0015 — 2026-05-29T15:23:25Z — P2 live smoke hold recheck
+
+- stage_in: ProductionHardening.p2-live-disposable-smoke-blocked-on-gate-auth → stage_out: ProductionHardening.p2-live-disposable-smoke-blocked-on-gate-auth
+- actor: codex
+- shipped:
+    - rechecked `HOLD-P2-LIVE-SMOKE-GATE-AUTH` without product code changes
+    - confirmed `~/.Codex-247/config.yaml` and `~/.Codex-247/repos.yaml` are still missing
+    - confirmed `gh auth status` still reports an invalid active `CTlanston` token
+    - recorded that no remote branch push, draft PR creation, merge, or other remote write was attempted
+- validation:
+    - `bash scripts/doctor.sh` PASS required checks; daemon install/responding warnings only
+    - `pnpm lint` PASS
+    - `pnpm typecheck` PASS
+    - `pnpm test` PASS — 93 files passed; 554 tests passed, 6 skipped
+    - `rg "child_process" packages/daemon/src` PASS — no matches
+    - `pnpm test:cockpit:p3-remote-smoke` SKIPPED — remote-write gate/auth unavailable
+- evidence:
+    - `evidence/production/p2-live-smoke-hold-recheck-2026-05-29-s0015.md`
+- holds_opened: 0 · holds_resolved: 0
+- holds: `HOLD-P2-LIVE-SMOKE-GATE-AUTH` remains open
+- commits: none; existing dirty prior-run P0/P1/P2/P4 docs/code remain uncommitted and must not be mixed into one slice commit
+- next_action: operator restores `~/.Codex-247/config.yaml`, `~/.Codex-247/repos.yaml`, and valid `gh` auth, then rerun `pnpm test:cockpit:p3-remote-smoke`
+
+### s_0014 — 2026-05-29T14:54:20Z — approval-v2 tamper hold resolution
+
+- stage_in: ProductionHardening.p2-live-disposable-smoke-blocked-on-gate-auth → stage_out: ProductionHardening.p2-live-disposable-smoke-blocked-on-gate-auth
+- actor: codex
+- shipped:
+    - resolved `HOLD-BASELINE-APPROVAL-V2-TAMPER` without advancing P2 or running remote-write smoke
+    - changed approval-v2 token verification to reject non-canonical base64url signature aliases before timing-safe comparison
+    - made the signature tamper test deterministic and added a non-canonical signature alias regression
+- validation:
+    - `pnpm vitest run packages/approval-v2/src/approval-v2.test.ts` PASS — 10 passed
+    - `bash scripts/doctor.sh` PASS required checks; daemon install/responding warnings only
+    - `pnpm lint` PASS
+    - `pnpm typecheck` PASS
+    - `pnpm test` PASS — 93 files passed; 554 tests passed, 6 skipped
+    - `rg "child_process" packages/daemon/src` PASS — no matches
+- evidence:
+    - `evidence/production/approval-v2-tamper-hold-resolved-2026-05-29.md`
+- holds_opened: 0 · holds_resolved: 1
+- holds: `HOLD-P2-LIVE-SMOKE-GATE-AUTH` remains open; `HOLD-BASELINE-APPROVAL-V2-TAMPER` resolved
+- commits: none; existing dirty prior-run P0/P1/P2/P4 docs/code remain uncommitted and must not be mixed into one slice commit
+- next_action: operator restores `~/.Codex-247/config.yaml`, `~/.Codex-247/repos.yaml`, and valid `gh` auth, then rerun `pnpm test:cockpit:p3-remote-smoke`
+
+### s_0013 — 2026-05-29T14:23:02Z — P2 live smoke gate/auth precheck
+
+- stage_in: ProductionHardening.p2-route-contract-done-next-live-disposable-smoke → stage_out: ProductionHardening.p2-live-disposable-smoke-blocked-on-gate-auth
+- actor: codex
+- shipped:
+    - recorded that the remaining P2 live disposable-repo smoke cannot run until remote-write gate/auth are available
+    - confirmed no remote branch push, draft PR creation, merge, or other remote write was attempted
+    - updated production workbook and latest handoff with the exact operator repair steps
+- validation:
+    - `test -f ~/.Codex-247/config.yaml` FAIL — missing
+    - `test -f ~/.Codex-247/repos.yaml` FAIL — missing
+    - `gh auth status` FAIL — active `CTlanston` token is invalid
+    - `bash scripts/doctor.sh` PASS required checks; daemon install/responding warnings only
+    - `pnpm lint` PASS
+    - `pnpm typecheck` PASS
+    - `pnpm vitest run packages/daemon/src/server.test.ts packages/daemon/src/draft-pr-gate.test.ts packages/daemon/src/remote-write-gh.test.ts` PASS — 27 passed
+    - `pnpm test` FAIL — `packages/approval-v2/src/approval-v2.test.ts` case 2 returned `ok=true` for a tampered token
+    - `pnpm test:cockpit:p3-remote-smoke` SKIPPED — remote-write gate/auth unavailable
+- evidence:
+    - `evidence/production/p2-live-smoke-blocked-2026-05-29.md`
+- holds_opened: 2 · holds_resolved: 0
+- holds: `HOLD-P2-LIVE-SMOKE-GATE-AUTH`, `HOLD-BASELINE-APPROVAL-V2-TAMPER`
+- commits: none; dirty state spans prior production slices and must not be mixed into one P2-only commit
+- next_action: resolve the `approval-v2` tamper-token baseline failure; operator restores `~/.Codex-247/config.yaml`, `~/.Codex-247/repos.yaml`, and valid `gh` auth, then rerun `pnpm test:cockpit:p3-remote-smoke`
+
+### s_0012 — 2026-05-29T13:55:43Z — P2 cockpit draft-PR route contract
+
+- stage_in: ProductionHardening.p0-p1-accepted-next-p2-cockpit-draft-pr → stage_out: ProductionHardening.p2-route-contract-done-next-live-disposable-smoke
+- actor: codex
+- shipped:
+    - `POST /operator/sessions/:id/create-pr` no longer has an `AEDEV_COCKPIT_FAKE_PR` / `example.invalid` success path
+    - daemon route now accepts an injected `OperatorDraftPrExecutor` instead of constructing daemon-owned git/gh subprocess adapters
+    - remote writes disabled returns `REMOTE_WRITES_DISABLED` before executor invocation
+    - remote writes enabled without executor returns `DRAFT_PR_EXECUTOR_UNAVAILABLE` and records `HOLD-DRAFT-PR-EXECUTOR`
+    - route tests cover disabled/no executor call, unavailable executor HOLD, injected executor reuse, and no fake `example.invalid` success
+- validation:
+    - `bash scripts/doctor.sh` PASS
+    - `pnpm lint` PASS
+    - `pnpm typecheck` PASS
+    - `pnpm vitest run packages/daemon/src/server.test.ts packages/daemon/src/draft-pr-gate.test.ts packages/daemon/src/remote-write-gh.test.ts` PASS — 27 passed
+    - `pnpm test` PASS — 93 files, 553 passed, 6 skipped
+    - `rg child_process packages/daemon/src` PASS — no matches
+- evidence:
+    - `evidence/production/p2-route-contract-2026-05-29.md`
+- holds_opened: 0 · holds_resolved: 0
+- commits: none; working tree already contained prior-run dirty P0/P1/P4 files, so no mixed-stage commit was made
+- not_done_remaining:
+    - P2 live disposable-repo smoke with explicit remote-write gate/auth, draft PR reuse evidence, and no merge
+
+### s_0011 — 2026-05-29T13:37:52Z — production hardening consolidation
+
+- stage_in: V2.4.vertical-slice-s0-implemented → stage_out: ProductionHardening.p0-p1-accepted-next-p2-cockpit-draft-pr
+- actor: codex
+- shipped:
+    - ADR-0018 records the production-hardening loop, canonical repo, automation topology, hygiene policy, and handoff surface
+    - `PRODUCTION_WORKBOOK.md` is now the canonical P0-P6 production-hardening queue
+    - `docs/handoff/production-handoff-latest.md` is the stable continuation handoff
+    - automations consolidated: main Claude Code 247 production loop + CommentPilot guard active; old v2.3 cron, thread heartbeat, and Hermus brief paused
+    - remote-write GitHub adapters moved from daemon source to the runner side-effect plane
+    - runtime tick churn and local self-dev launchd prototypes ignored; rollup evidence added
+    - initial config/status/doctor drift corrected for port 7247, `/health`, and v2.4 status
+- validation:
+    - `bash scripts/doctor.sh` PASS
+    - `pnpm lint` PASS
+    - `pnpm typecheck` PASS
+    - `pnpm test` PASS — 93 files, 551 passed, 6 skipped
+- holds_opened: 0 · holds_resolved: 0
+- not_done_remaining:
+    - Start P2 Cockpit draft-PR real side-effect path
 
 ### s_0010 — 2026-05-29T03:27:12Z — V2.4 vertical slice S0 implementation
 
@@ -926,6 +1440,7 @@ ApprovalGateway: ntfy → 操作员手机
 
 | 日期 | 版本 | 改动 | 由谁 | 引用 |
 |---|---|---|---|---|
+| 2026-05-29 | — | 规划：新增 §3 Stage E2E-0/1/2（真实端到端闭环：dockerized 订阅 Claude coder + OpenAI+Gemini 双家族 + model_usage 落库 + live draft PR 到 multi-agent-brainstorm）；更新 §0 next_action；需 ADR-0019/0020，pre-research 延后 ADR-0021；记 §1.3 ADR 编号注与实际已偏离（继续 0019+ 不重编号），ADR-0013 撞号与版本漂移为 housekeeping | operator-directed (Cowork architect) | `docs/handoff/e2e-real-loop-plan-and-prompt.md` |
 | 2026-05-26 | 1.0 | 初版；20 stage playbook；三级合约；HOLD 升级；evidence 格式 | architect | `Architecture Review.html` |
 | 2026-05-27 | 1.1 | s_0002: 20 stages L1-shipped; rc1 tags placed; F3 HOLDed | claude (under operator override) | `EXECUTION_WORKBOOK.md §9 s_0002` |
 | 2026-05-27 | 1.2 | s_0002 close-out: ADR-0011 override; F3 executed; full soaks; omnibus L2 PASS; rc2 tag for K | claude (under ADR-0011) | ADR-0011, M22c, M23, omnibus report |
@@ -937,6 +1452,23 @@ ApprovalGateway: ntfy → 操作员手机
 | 2026-05-28 | 1.8 | s_0007 runtime-routing follow-up: daemon/server stateDir wiring normalized to `<AEDEV_HOME>/state`, regression test added, full validation green | codex | `EXECUTION_WORKBOOK.md §9 s_0007`, `packages/daemon/src/{paths,daemon,server}.ts` |
 | 2026-05-28 | 1.9 | s_0008 release-policy alignment: v2.2.0-rc2 recorded as production grade, no v2 GA tags expected, real phone approval/HOLD evidence collected, smoke blockers recorded | codex | ADR-0013 Path A, `docs/operations/release-policy.md`, `evidence/approval-e2e/` |
 | 2026-05-29 | 2.0 | s_0010 V2.4 vertical-slice-first plan: ADR-0017, Claude coder hard gate, repo-aware local runner, S0 safe-copy harness | codex | ADR-0017, `scripts/v24-vertical-slice-s0.ts` |
+| 2026-05-29 | 2.1 | s_0011 ProductionHardening consolidation: ADR-0018, PRODUCTION_WORKBOOK, latest handoff, automation convergence, remote-write side-effect boundary | codex | ADR-0018, `PRODUCTION_WORKBOOK.md`, `docs/handoff/production-handoff-latest.md` |
+| 2026-05-29 | 2.2 | s_0012 P2 draft-PR route contract: fake PR success removed; injected side-effect executor contract; disabled/unavailable/idempotent route tests | codex | `packages/daemon/src/routes/operator.ts`, `packages/daemon/src/server.test.ts` |
+| 2026-05-29 | 2.3 | s_0013 P2 live smoke precheck blocked on missing remote-write config/registry, invalid GitHub CLI auth, and unrelated approval-v2 tamper-token baseline failure | codex | `PRODUCTION_WORKBOOK.md`, `docs/handoff/production-handoff-latest.md`, `evidence/production/p2-live-smoke-blocked-2026-05-29.md` |
+| 2026-05-29 | 2.4 | s_0014 approval-v2 tamper-token hold resolved; verifier rejects non-canonical signature aliases and full baseline suite is green | codex | `packages/approval-v2/src/token.ts`, `packages/approval-v2/src/approval-v2.test.ts`, `evidence/production/approval-v2-tamper-hold-resolved-2026-05-29.md` |
+| 2026-05-29 | 2.5 | s_0015 P2 live-smoke gate/auth hold rechecked; config/registry remain missing, gh auth remains invalid, and baseline suite is green | codex | `PRODUCTION_WORKBOOK.md`, `docs/handoff/production-handoff-latest.md`, `evidence/production/p2-live-smoke-hold-recheck-2026-05-29-s0015.md` |
+| 2026-05-29 | 2.6 | s_0016 P2 live-smoke gate/auth hold rechecked again; config/registry remain missing, gh auth remains invalid, and baseline suite is green | codex | `PRODUCTION_WORKBOOK.md`, `docs/handoff/production-handoff-latest.md`, `evidence/production/p2-live-smoke-hold-recheck-2026-05-29-s0016.md` |
+| 2026-05-29 | 2.7 | s_0017 P2 live-smoke gate/auth hold still open; restricted-network dependency reinstall left local tooling incomplete, so baseline gates now require dependency restore | codex | `PRODUCTION_WORKBOOK.md`, `docs/handoff/production-handoff-latest.md`, `evidence/production/p2-live-smoke-hold-recheck-2026-05-29-s0017.md` |
+| 2026-05-29 | 2.8 | s_0018 P2 live-smoke and local-deps holds still open; offline pnpm restore missing @eslint/js@9.39.4 and gate/auth remain unavailable | codex | `PRODUCTION_WORKBOOK.md`, `docs/handoff/production-handoff-latest.md`, `evidence/production/p2-live-smoke-hold-recheck-2026-05-29-s0018.md` |
+| 2026-05-29 | 2.9 | s_0019 P2 live-smoke and local-deps holds still open; offline pnpm restore missing @eslint-community/regexpp@4.12.2 and gate/auth remain unavailable | codex | `PRODUCTION_WORKBOOK.md`, `docs/handoff/production-handoff-latest.md`, `evidence/production/p2-live-smoke-hold-recheck-2026-05-29-s0019.md` |
+| 2026-05-29 | 3.0 | s_0020 P2 live-smoke and local-deps holds still open; offline pnpm restore missing ms@2.1.3 and gate/auth remain unavailable | codex | `PRODUCTION_WORKBOOK.md`, `docs/handoff/production-handoff-latest.md`, `evidence/production/p2-live-smoke-hold-recheck-2026-05-29-s0020.md` |
+| 2026-05-29 | 3.1 | s_0021 P2 live-smoke and local-deps holds still open; offline pnpm restore missing eslint@9.39.4 and gate/auth remain unavailable | codex | `PRODUCTION_WORKBOOK.md`, `docs/handoff/production-handoff-latest.md`, `evidence/production/p2-live-smoke-hold-recheck-2026-05-29-s0021.md` |
+| 2026-05-29 | 3.2 | s_0022 P2 live-smoke and local-deps holds still open; offline pnpm restore missing @eslint-community/eslint-utils@4.9.1 and gate/auth remain unavailable | codex | `PRODUCTION_WORKBOOK.md`, `docs/handoff/production-handoff-latest.md`, `evidence/production/p2-live-smoke-hold-recheck-2026-05-29-s0022.md` |
+| 2026-05-29 | 3.3 | s_0023 P2 live-smoke and local-deps holds still open; offline pnpm restore missing @eslint-community/regexpp@4.12.2 and gate/auth remain unavailable | codex | `PRODUCTION_WORKBOOK.md`, `docs/handoff/production-handoff-latest.md`, `evidence/production/p2-live-smoke-hold-recheck-2026-05-29-s0023.md` |
+| 2026-05-29 | 3.4 | s_0024 P2 live-smoke and local-deps holds still open; offline pnpm restore missing @eslint/js@9.39.4 and gate/auth remain unavailable | codex | `PRODUCTION_WORKBOOK.md`, `docs/handoff/production-handoff-latest.md`, `evidence/production/p2-live-smoke-hold-recheck-2026-05-29-s0024.md` |
+| 2026-05-29 | 3.5 | s_0026 P2 live-smoke and local-deps holds still open; offline pnpm restore missing @eslint-community/eslint-utils@4.9.1 and gate/auth remain unavailable | codex | `PRODUCTION_WORKBOOK.md`, `docs/handoff/production-handoff-latest.md`, `evidence/production/p2-live-smoke-hold-recheck-2026-05-29-s0026.md` |
+| 2026-05-29 | 3.6 | s_0027 P2 live-smoke and local-deps holds still open; offline pnpm restore missing @eslint/config-array@0.21.2 and gate/auth remain unavailable | codex | `PRODUCTION_WORKBOOK.md`, `docs/handoff/production-handoff-latest.md`, `evidence/production/p2-live-smoke-hold-recheck-2026-05-29-s0027.md` |
+| 2026-05-29 | 3.7 | s_0028 E2E-0/P2 holds still open; offline pnpm restore missing eslint@9.39.4, online restore blocked by registry DNS, and gate/auth remain unavailable | codex | `PRODUCTION_WORKBOOK.md`, `docs/handoff/production-handoff-latest.md`, `evidence/e2e/s0-unblock/hold-recheck-2026-05-29-s0028.md` |
 
 ---
 

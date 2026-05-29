@@ -407,34 +407,79 @@ describe('createServer', () => {
     }
   })
 
-  it('creates a gated draft PR only when remote writes and fake PR adapter are explicitly enabled', async () => {
+  it('keeps create-pr blocked when remote writes are disabled without calling the injected executor', async () => {
     const oldAllow = process.env['AEDEV_ALLOW_REMOTE_WRITES']
-    const oldFakePr = process.env['AEDEV_COCKPIT_FAKE_PR']
-    const oldFakeValidators = process.env['AEDEV_COCKPIT_FAKE_VALIDATORS']
-    process.env['AEDEV_ALLOW_REMOTE_WRITES'] = '1'
-    process.env['AEDEV_COCKPIT_FAKE_PR'] = '1'
-    process.env['AEDEV_COCKPIT_FAKE_VALIDATORS'] = '1'
+    process.env['AEDEV_ALLOW_REMOTE_WRITES'] = '0'
+    let executorCalls = 0
     try {
-      const app = createServer(db, new Date(), stateDir)
-      const created = await app.inject({ method: 'POST', url: '/operator/sessions', payload: { title: 'Draft PR', prompt: 'Reach draft PR gate' } })
-      const sessionId = created.json<{ session: { id: string } }>().session.id
-      const roadmap = await app.inject({ method: 'POST', url: `/operator/sessions/${sessionId}/generate-roadmap` })
-      const missionId = roadmap.json<{ mission: { id: string } }>().mission.id
-      await app.inject({ method: 'POST', url: `/operator/sessions/${sessionId}/approve-roadmap` })
-      const started = await app.inject({ method: 'POST', url: `/operator/sessions/${sessionId}/start` })
-      expect(started.json<{ overview: { validators: unknown[]; validatorStatus: string } }>().overview.validators.length).toBe(1)
-      expect(started.json<{ overview: { validatorStatus: string } }>().overview.validatorStatus).toBe('complete')
-      const startedEventTypes = started.json<{ overview: { events: Array<{ type: string }> } }>().overview.events.map((e) => e.type)
-      expect(startedEventTypes).toContain('operator.validator_started')
-      expect(startedEventTypes).toContain('operator.validator_done')
+      const app = createServer(db, new Date(), stateDir, {
+        draftPrExecutor: {
+          async openDraftPr() {
+            executorCalls += 1
+            return { number: 1, url: 'https://github.com/owner/repo/pull/1', state: 'open', draft: true }
+          },
+        },
+      })
+      const { sessionId } = await prepareCockpitMission(app)
       const pr = await app.inject({ method: 'POST', url: `/operator/sessions/${sessionId}/create-pr` })
       expect(pr.statusCode).toBe(200)
-      expect(pr.json<{ status: string; pr: { url: string } }>().status).toBe('created')
-      expect(db.getMission(missionId)?.githubPrUrl).toContain('example.invalid')
+      expect(pr.json<{ status: string; code: string }>().status).toBe('blocked')
+      expect(pr.json<{ code: string }>().code).toBe('REMOTE_WRITES_DISABLED')
+      expect(JSON.stringify(pr.json())).not.toContain('example.invalid')
+      expect(executorCalls).toBe(0)
     } finally {
       restoreEnv('AEDEV_ALLOW_REMOTE_WRITES', oldAllow)
-      restoreEnv('AEDEV_COCKPIT_FAKE_PR', oldFakePr)
-      restoreEnv('AEDEV_COCKPIT_FAKE_VALIDATORS', oldFakeValidators)
+    }
+  })
+
+  it('turns an enabled but unavailable draft PR executor into a visible HOLD, not fake success', async () => {
+    const oldAllow = process.env['AEDEV_ALLOW_REMOTE_WRITES']
+    process.env['AEDEV_ALLOW_REMOTE_WRITES'] = '1'
+    try {
+      const app = createServer(db, new Date(), stateDir)
+      const { sessionId, missionId } = await prepareCockpitMission(app)
+      const pr = await app.inject({ method: 'POST', url: `/operator/sessions/${sessionId}/create-pr` })
+      expect(pr.statusCode).toBe(200)
+      const body = pr.json<{ status: string; code: string; reason: string; overview: { holds: Array<{ payload: { holdCode?: string } }> } }>()
+      expect(body.status).toBe('blocked')
+      expect(body.code).toBe('DRAFT_PR_EXECUTOR_UNAVAILABLE')
+      expect(body.reason).toContain('remote-write executor is not configured')
+      expect(body.overview.holds.some((h) => h.payload.holdCode === 'HOLD-DRAFT-PR-EXECUTOR')).toBe(true)
+      expect(JSON.stringify(body)).not.toContain('example.invalid')
+      expect(db.getMission(missionId)?.githubPrUrl).toBeNull()
+    } finally {
+      restoreEnv('AEDEV_ALLOW_REMOTE_WRITES', oldAllow)
+    }
+  })
+
+  it('uses an injected side-effect executor for idempotent draft PR reuse without example.invalid', async () => {
+    const oldAllow = process.env['AEDEV_ALLOW_REMOTE_WRITES']
+    process.env['AEDEV_ALLOW_REMOTE_WRITES'] = '1'
+    const calls: string[] = []
+    try {
+      const app = createServer(db, new Date(), stateDir, {
+        draftPrExecutor: {
+          async openDraftPr(req) {
+            calls.push(req.missionId)
+            return { number: 12, url: 'https://github.com/owner/repo/pull/12', state: 'open', draft: true }
+          },
+        },
+      })
+      const { sessionId, missionId } = await prepareCockpitMission(app)
+      const first = await app.inject({ method: 'POST', url: `/operator/sessions/${sessionId}/create-pr` })
+      const second = await app.inject({ method: 'POST', url: `/operator/sessions/${sessionId}/create-pr` })
+      expect(first.json<{ status: string; pr: { url: string; number: number; draft: boolean } }>().status).toBe('created')
+      expect(second.json<{ status: string; pr: { url: string; number: number; draft: boolean } }>().pr).toEqual({
+        number: 12,
+        url: 'https://github.com/owner/repo/pull/12',
+        state: 'open',
+        draft: true,
+      })
+      expect(calls).toEqual([missionId, missionId])
+      expect(JSON.stringify(first.json())).not.toContain('example.invalid')
+      expect(db.getMission(missionId)?.githubPrUrl).toBe('https://github.com/owner/repo/pull/12')
+    } finally {
+      restoreEnv('AEDEV_ALLOW_REMOTE_WRITES', oldAllow)
     }
   })
 })
@@ -446,4 +491,16 @@ function isListenPermissionError(error: unknown): boolean {
 function restoreEnv(key: string, value: string | undefined): void {
   if (value === undefined) delete process.env[key]
   else process.env[key] = value
+}
+
+async function prepareCockpitMission(app: ReturnType<typeof createServer>): Promise<{ sessionId: string; missionId: string }> {
+  const created = await app.inject({ method: 'POST', url: '/operator/sessions', payload: { title: 'Draft PR', prompt: 'Reach draft PR gate' } })
+  const sessionId = created.json<{ session: { id: string } }>().session.id
+  const roadmap = await app.inject({ method: 'POST', url: `/operator/sessions/${sessionId}/generate-roadmap` })
+  const missionId = roadmap.json<{ mission: { id: string } }>().mission.id
+  await app.inject({ method: 'POST', url: `/operator/sessions/${sessionId}/approve-roadmap` })
+  const started = await app.inject({ method: 'POST', url: `/operator/sessions/${sessionId}/start` })
+  expect(started.statusCode).toBe(200)
+  expect(started.json<{ result: { status: string } }>().result.status).toBe('waiting')
+  return { sessionId, missionId }
 }
