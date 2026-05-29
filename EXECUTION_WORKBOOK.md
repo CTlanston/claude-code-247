@@ -15,30 +15,28 @@ schema_version: 1
 version_target: production-usable-24x7
 current_part: III          # III = v2.4 real vertical slice -> production hardening
 current_stage: ProductionHardening
-current_substage: e2e-0-unblock-blocked-on-local-deps-and-gate-auth
-last_updated_utc: 2026-05-29T22:07:56Z
-last_session_id: s_0028
-total_sessions: 28
+current_substage: e2e-0-complete-e2e-1-ready
+last_updated_utc: 2026-05-29T22:33:00Z
+last_session_id: s_0029
+total_sessions: 29
 weeks_elapsed: 0
 weeks_remaining: 0
-open_holds: 2
-blocked_on: HOLD-P2-LIVE-SMOKE-GATE-AUTH; HOLD-LOCAL-DEPS-RESTORE
+open_holds: 0
+blocked_on: none
 next_action: |
-  Real E2E loop is specced as Stages E2E-0/1/2 in §3 (target repo
-  CTlanston/multi-agent-brainstorm; coder = subscription Claude CLI inside Docker;
-  real OpenAI + Gemini dual-family; live draft PR draft-only; model_usage persisted).
-  FIRST clear the 2 open holds via Stage E2E-0: restore deps (s_0028: local
-  eslint/tsc/vitest/tsx binaries still missing; offline install missing
-  eslint@9.39.4; online frozen install blocked by registry.npmjs.org ENOTFOUND);
-  operator restores ~/.Codex-247/config.yaml + repos.yaml with
-  multi-agent-brainstorm enabled; repair gh auth for CTlanston. THEN Stage E2E-1:
-  write ADR-0019, wire claude-in-docker + default dual-family validators (keys
-  via SecretGrant/secrets-mcp) + persist model_usage + reuse remote-write-gh
-  draft PR; prove ONE real run with model_usage>0, two independent-family
-  validator verdicts, and an unmerged draft PR; reset allow_remote_writes=false
-  after. THEN Stage E2E-2: structured clarification gate (ADR-0020). Pre-research
-  deferred to a later stage (ADR-0021). open_holds must reach 0 before E2E-1 per
-  §3.99. Canonical plan + kickoff prompt:
+  E2E-0 COMPLETE (s_0029). Local deps restored (network back; `pnpm install
+  --frozen-lockfile` PASS, lockfile + package.json unchanged); baseline green
+  (typecheck 0-err 26/26, lint clean, vitest 554 passed / 6 env-gated smoke
+  skips). BOTH HOLDS RESOLVED: HOLD-LOCAL-DEPS-RESTORE (deps + baseline) and
+  HOLD-P2-LIVE-SMOKE-GATE-AUTH (gh auth valid as CTlanston; config + repos.yaml
+  present at canonical ~/.claude-code-247/ — prior s_0015–s_0028 rechecks looked
+  at a nonexistent ~/.Codex-247/ path; multi-agent-brainstorm registered enabled,
+  risk=medium, auto_merge=false, require_two_validators=true; live p3-remote-smoke
+  PASS -> draft PR aedev-p3-smoke#2, mergedAt=null). allow_remote_writes RESET to
+  false. open_holds=0. NEXT = Stage E2E-1 (real loop on
+  CTlanston/multi-agent-brainstorm: claude-in-docker coder + real OpenAI+Gemini
+  dual-family + persisted model_usage + live draft PR), GATED on operator GO for
+  the outward stage; write ADR-0019 first. Canonical plan:
   docs/handoff/e2e-real-loop-plan-and-prompt.md.
 sla:
   daemon_recovery_p95_sec: 90
@@ -660,6 +658,31 @@ ApprovalGateway: ntfy → 操作员手机
 - next_action: <见 §0>
 - notes: <一两句>
 ```
+
+### s_0029 — 2026-05-29T22:33:00Z — E2E-0 unblock COMPLETE (deps restored + both holds cleared)
+
+- stage_in: ProductionHardening.e2e-0-unblock-blocked-on-local-deps-and-gate-auth → stage_out: ProductionHardening.e2e-0-complete-e2e-1-ready
+- actor: claude (operator-directed autonomous E2E run)
+- l1: E2E-0 6/6 acceptance · l2: not_run (independent reviewer pending) · l3: operator-directed (repo link + gate posture)
+- shipped:
+    - restored local deps: network reachable again (registry.npmjs.org HTTP 200, was ENOTFOUND in s_0028); `pnpm install --frozen-lockfile` PASS (exit 0); pnpm-lock.yaml + package.json unchanged; eslint/tsc/vitest/tsx binaries linked
+    - baseline GREEN: `pnpm typecheck` 0-err (26/26 pkgs), `pnpm lint` clean, `pnpm test` 554 passed / 6 skipped (all 6 annotated `allow-skip: env-gated smoke` — the live tests E2E-1 turns on, not gate-dodging)
+    - operator-directed (Q1) carryover commit efc3ae6: landed prior-run P0–P4 WIP (remote-write-gh.ts daemon→runner move + daemon/approval/cli edits + docs/evidence) to get a clean base; labeled NOT-single-stage per GR#2
+    - registered CTlanston/multi-agent-brainstorm in ~/.claude-code-247/repos.yaml: enabled, risk=medium, auto_merge.enabled=false (NEVER merge), require_two_validators=true, CLAUDE.md forbidden_paths enforced; cloned to ~/projects/multi-agent-brainstorm (branch main)
+    - set ~/.claude-code-247/config.yaml allow_remote_writes=false (was true); timestamped backups saved (*.pre-e2e0-*.bak)
+    - ran live p3-remote-smoke (disposable repo, no config change): gate OFF blocked REMOTE_WRITES_DISABLED, gate ON draft PR #2, isDraft=true/mergedAt=null, idempotent reuse — PASS
+- validation:
+    - `pnpm install --frozen-lockfile` PASS · `pnpm typecheck` PASS · `pnpm lint` PASS · `pnpm test` PASS (554, 0 fail)
+    - `gh auth status` valid (CTlanston, scopes repo/workflow); `gh api repos/CTlanston/multi-agent-brainstorm .permissions` → push=true admin=true
+    - `pnpm test:cockpit:p3-remote-smoke` PASS (P3_EXIT=0)
+- evidence:
+    - evidence/e2e/s0-unblock/{pnpm-install,typecheck,lint,test,p3-remote-smoke}.log + gh-auth-status.txt
+    - evidence/launch/operator-cockpit-p3-remote-smoke-2026-05-29T22-31-59-325Z.md
+- finding: prior s_0015–s_0028 hold-recheck loop checked `~/.Codex-247/config.yaml` + repos.yaml — a path that has never existed; the real config is `~/.claude-code-247/`. That stale path kept HOLD-P2 artificially "config missing" across ~13 sessions.
+- holds_opened: 0 · holds_resolved: 2 (HOLD-LOCAL-DEPS-RESTORE, HOLD-P2-LIVE-SMOKE-GATE-AUTH)
+- holds: none open
+- commits: [efc3ae6 carryover; this E2E-0 state/evidence commit]
+- next_action: see §0 — Stage E2E-1 GATED on operator GO for the outward loop; write ADR-0019 first.
 
 ### s_0028 — 2026-05-29T22:07:56Z — E2E-0 unblock hold recheck
 

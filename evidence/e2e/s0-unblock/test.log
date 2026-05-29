@@ -1,0 +1,134 @@
+
+> aedev@0.0.1 test /Users/lanston/projects/claude-code-247
+> vitest run
+
+
+ RUN  v3.2.4 /Users/lanston/projects/claude-code-247
+
+ ✓ packages/daemon/src/release-pipeline.test.ts (9 tests) 51ms
+ ✓ packages/event-log/src/reducer.test.ts (11 tests) 29ms
+ ✓ packages/cost-meter/src/cost-meter.test.ts (15 tests) 11ms
+ ✓ packages/cli-robust/src/probe.test.ts (11 tests) 33ms
+ ✓ packages/roadmap-agent/src/scanner.test.ts (15 tests) 27ms
+ ✓ packages/approval-v2/src/approval-v2.test.ts (10 tests) 15ms
+ ✓ packages/moves/src/saga.test.ts (7 tests) 24ms
+ ✓ packages/roadmap-agent/src/e2e.test.ts (3 tests) 12ms
+ ✓ packages/daemon/src/mission-runner.test.ts (15 tests) 109ms
+ ✓ packages/daemon/src/roles/role-pipeline.test.ts (6 tests) 13ms
+ ✓ packages/interrupt-bus/src/interrupt-bus.test.ts (9 tests) 17ms
+ ✓ packages/daemon/src/premium-debugger.test.ts (14 tests) 3ms
+ ✓ packages/agent-mesh/src/agent-mesh.test.ts (8 tests) 12ms
+ ✓ packages/daemon/src/mission-intake-source.test.ts (8 tests) 8ms
+ ✓ packages/sentinel/src/llm-reviewer.test.ts (7 tests) 61ms
+ ✓ packages/daemon/src/remote-write-gh.test.ts (7 tests) 3ms
+ ✓ packages/security/src/redteam-round3.test.ts (3 tests) 14ms
+ ✓ packages/validators/src/gemini-validator.test.ts (8 tests | 1 skipped) 63ms
+ ✓ packages/core/src/rollback-drill.test.ts (3 tests) 9ms
+ ✓ packages/push-policy/src/push-policy.test.ts (8 tests) 13ms
+ ✓ packages/validators/src/openai-validator.test.ts (8 tests | 1 skipped) 10ms
+ ✓ packages/supervisor/src/supervisor.test.ts (11 tests) 2ms
+ ✓ packages/core/src/migrate.test.ts (5 tests) 9ms
+ ✓ packages/daemon/src/mission-scheduler.test.ts (9 tests) 10ms
+ ✓ packages/daemon/src/autonomous-intake.test.ts (2 tests) 11ms
+ ✓ packages/qa/src/browser-qa.test.ts (7 tests) 7ms
+ ✓ packages/chaos/src/chaos.test.ts (9 tests) 10ms
+ ✓ packages/agent-mesh/src/repair.test.ts (3 tests) 8ms
+ ✓ packages/roadmap-agent/src/roadmap.test.ts (8 tests) 7ms
+ ✓ packages/runner/src/docker-runner.test.ts (7 tests | 1 skipped) 1836ms
+   ✓ DockerRunner — real subprocess (fake docker) > returns a RunResult and writes evidence files on success  584ms
+   ✓ DockerRunner — real subprocess (fake docker) > returns the container exit code on failure and records meta  1090ms
+ ✓ packages/claude247-bridge/src/bridge.test.ts (11 tests | 2 skipped) 1711ms
+   ✓ Claude247Bridge — subprocess interop > enqueue() returns commandId/status/queuedAt from claude247 start --json  618ms
+   ✓ Claude247Bridge — subprocess interop > getTask() returns null when the CLI exits non-zero  1078ms
+ ✓ packages/runner/src/cli-runner.test.ts (2 tests) 349ms
+ ✓ packages/validators/src/merge-policy-evidence.test.ts (12 tests) 2ms
+ ✓ packages/core/src/launch-smoke-real.test.ts (9 tests) 2222ms
+   ✓ launch-smoke-real · realChecks (CC_RESTORE_SPEC T2) > case 3: check 2 — scan → mission → polls roadmap.proposal.emitted  2001ms
+ ✓ apps/dashboard/src/api.test.ts (6 tests) 4ms
+ ✓ packages/sentinel/src/sentinel.test.ts (6 tests) 24ms
+ ✓ packages/daemon/src/obs/obs.test.ts (6 tests) 2ms
+ ✓ packages/validators/src/merge-policy.test.ts (11 tests) 2ms
+ ✓ packages/core/src/migrations.test.ts (7 tests) 10ms
+ ✓ packages/daemon/src/intake.test.ts (9 tests) 23ms
+ ✓ packages/daemon/src/draft-pr-gate.test.ts (4 tests) 3ms
+ ✓ packages/core/src/launch-smoke.test.ts (6 tests) 963ms
+ ✓ packages/shadow/src/shadow-1day.test.ts (4 tests) 8ms
+ ✓ packages/daemon/src/interruption-policy.test.ts (8 tests) 2ms
+ ✓ packages/cli-robust/src/m1.test.ts (11 tests) 5ms
+ ✓ packages/daemon/src/product-memory.test.ts (6 tests) 15ms
+ ✓ packages/validators/src/git-fetch-context.test.ts (3 tests) 1ms
+ ✓ packages/chaos/src/guardrails.test.ts (8 tests) 4ms
+ ✓ packages/claude247-bridge/src/bridge-runner.test.ts (3 tests) 2463ms
+   ✓ Claude247BridgeRunner — happy path (Python kernel returned `merged`) > enqueues, polls, imports evidence, and returns exitCode 0 on merge  351ms
+   ✓ Claude247BridgeRunner — failure paths > returns exitCode 1 when Python task ends in `failed`  1199ms
+   ✓ Claude247BridgeRunner — failure paths > returns exitCode 1 when the task cannot be located within findTimeoutMs  910ms
+ ✓ packages/validators/src/evidence-prompt.test.ts (9 tests) 3ms
+ ✓ packages/chaos/src/real-effects.test.ts (4 tests) 293ms
+ ✓ packages/runner/src/worker-pool-router.test.ts (7 tests) 3ms
+ ✓ packages/github/src/github-sync.test.ts (3 tests) 11ms
+ ✓ packages/preview/src/preview-adapter.test.ts (9 tests) 2303ms
+   ✓ CloudflarePagesAdapter > extracts the pages.dev URL from a successful wrangler deploy  910ms
+   ✓ CloudflarePagesAdapter > returns error (not requiresSecretGrant) when wrangler exits non-zero  861ms
+   ✓ VercelAdapter > extracts the vercel.app URL from a successful deploy  522ms
+ ✓ packages/cli-robust/src/quota-oracle.test.ts (7 tests) 5ms
+ ✓ packages/core/src/db.test.ts (6 tests) 11ms
+ ✓ packages/daemon/src/memory/memory-compiler.test.ts (4 tests) 12ms
+ ✓ packages/runner/src/claude-adapter.test.ts (9 tests | 1 skipped) 3015ms
+   ✓ ClaudeCodeAdapter — real subprocess > strips ANTHROPIC_API_KEY in local_claude_code auth mode  1041ms
+   ✓ ClaudeCodeAdapter — real subprocess > defaults to local_claude_code even when ANTHROPIC_API_KEY is present  871ms
+   ✓ ClaudeCodeAdapter — real subprocess > passes ANTHROPIC_API_KEY through in anthropic_api auth mode  511ms
+ ✓ packages/core/src/mission-design.test.ts (4 tests) 6ms
+ ✓ packages/security/src/redteam.test.ts (6 tests) 9ms
+ ✓ packages/daemon/src/moves/move-runner.test.ts (4 tests) 32ms
+ ✓ packages/daemon/src/daemon.test.ts (3 tests) 53ms
+ ✓ packages/daemon/src/obs/alerts.test.ts (8 tests) 3ms
+ ✓ packages/daemon/src/daily-summary.test.ts (4 tests) 8ms
+ ✓ packages/shadow/src/diff.test.ts (5 tests) 2ms
+ ✓ packages/daemon/src/dashboard/status-board.test.ts (5 tests) 3ms
+ ✓ packages/daemon/src/dashboard/server.test.ts (4 tests) 41ms
+ ✓ packages/daemon/src/doc-followup.test.ts (2 tests) 2ms
+ ✓ packages/cli/src/commands/mission.test.ts (2 tests) 14ms
+ ✓ packages/runner/src/worker-session-discovery.test.ts (3 tests) 2ms
+ ✓ packages/runner/src/runner-manager.test.ts (2 tests) 110ms
+ ✓ packages/validators/src/redact.test.ts (2 tests) 1ms
+ ✓ packages/core/src/state-machine.test.ts (9 tests) 6ms
+ ✓ packages/daemon/src/lead-agent.test.ts (2 tests) 3ms
+ ✓ packages/daemon/src/memory/memory-injector.test.ts (3 tests) 10ms
+ ✓ packages/validators/src/risk-scorer.test.ts (4 tests) 2ms
+ ✓ packages/runner/src/mock-runner.test.ts (2 tests) 210ms
+ ✓ packages/core/src/repo-registry.test.ts (4 tests) 9ms
+ ✓ packages/runner/src/codex-adapter.test.ts (2 tests) 323ms
+ ✓ packages/runner/src/evidence.test.ts (3 tests) 5ms
+ ✓ packages/github/src/index.test.ts (3 tests) 2ms
+ ✓ packages/daemon/src/approval.test.ts (3 tests) 7ms
+ ✓ packages/validators/src/index.test.ts (2 tests) 1ms
+ ✓ packages/secrets/src/index.test.ts (2 tests) 4ms
+stdout | packages/cli/src/commands/init.test.ts > aedev init > creates expected directories
+aedev initialized at /tmp/claude-501/aedev-test-1780092882091
+
+ ✓ packages/runner/src/index.test.ts (2 tests) 1ms
+stdout | packages/cli/src/commands/init.test.ts > aedev init > is idempotent (safe to run twice)
+aedev initialized at /tmp/claude-501/aedev-test-1780092882095
+
+stdout | packages/cli/src/commands/init.test.ts > aedev init > is idempotent (safe to run twice)
+aedev initialized at /tmp/claude-501/aedev-test-1780092882095
+
+ ✓ packages/cli/src/commands/init.test.ts (2 tests) 9ms
+ ✓ packages/daemon/src/heartbeat.test.ts (2 tests) 5ms
+ ✓ packages/validators/src/family-enforce.test.ts (2 tests) 1ms
+ ✓ packages/validators/src/mock-validator.test.ts (2 tests) 1ms
+ ✓ packages/core/src/index.test.ts (1 test) 2ms
+ ✓ packages/cli/src/index.test.ts (2 tests) 1ms
+ ✓ packages/daemon/src/index.test.ts (2 tests) 1ms
+ ✓ packages/daemon/src/server.test.ts (16 tests) 68607ms
+   ✓ createServer > serves the real L0 smoke route contract  6539ms
+   ✓ createServer > runs the operator cockpit session flow through roadmap approval and evidence gate  10592ms
+   ✓ createServer > keeps create-pr blocked when remote writes are disabled without calling the injected executor  19265ms
+   ✓ createServer > turns an enabled but unavailable draft PR executor into a visible HOLD, not fake success  18900ms
+   ✓ createServer > uses an injected side-effect executor for idempotent draft PR reuse without example.invalid  12858ms
+
+ Test Files  93 passed (93)
+      Tests  554 passed | 6 skipped (560)
+   Start at  15:14:38
+   Duration  69.18s (transform 1.10s, setup 0ms, collect 4.38s, tests 85.40s, environment 7ms, prepare 3.71s)
+

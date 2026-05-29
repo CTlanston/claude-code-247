@@ -1,0 +1,13 @@
+
+> aedev@0.0.1 test:cockpit:p3-remote-smoke /Users/lanston/projects/claude-code-247
+> tsx scripts/operator-cockpit-p3-remote-smoke.ts
+
+[p3] cloned CTlanston/aedev-p3-smoke; base=main; branch=p3-smoke-2026-05-29T22-31-59-325Z
+[p3] made a local commit on the branch (not pushed yet)
+[p3] gate OFF -> blocked REMOTE_WRITES_DISABLED (expected)
+[p3] confirmed: no remote branch exists after the blocked attempt
+[p3] gate ON -> draft PR #2 https://github.com/CTlanston/aedev-p3-smoke/pull/2 (state=open, draft=true)
+[p3] verified PR #2: isDraft=true state=OPEN mergedAt=null
+[p3] idempotent re-run -> same PR #2; open PRs for branch = 1
+[p3] evidence report: /Users/lanston/projects/claude-code-247/evidence/launch/operator-cockpit-p3-remote-smoke-2026-05-29T22-31-59-325Z.md
+[p3] PASS — real remote-write path works and stayed safe
