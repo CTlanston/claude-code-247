@@ -144,6 +144,46 @@ export interface MemoryItem {
   createdAt: string
 }
 
+export interface OperatorSession {
+  id: string
+  repoId?: string
+  missionId?: string
+  title: string
+  prompt: string
+  status: string
+  createdAt: string
+  updatedAt: string
+}
+
+export type OperatorChoiceAction = 'generate-roadmap' | 'ask-questions' | 'add-constraints'
+
+export interface OperatorChoice {
+  id: string
+  label: string
+  labelEn: string
+  action: OperatorChoiceAction
+  prompt?: string
+}
+
+export interface OperatorMessage {
+  id: string
+  sessionId: string
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  choices?: OperatorChoice[]
+  createdAt: string
+}
+
+export interface MissionArtifact {
+  id: string
+  missionId: string
+  type: 'prd' | 'adr' | 'roadmap' | 'evidence' | 'report' | 'other'
+  path: string
+  title?: string
+  createdAt: string
+  updatedAt: string
+}
+
 export interface SecretGrant {
   id: string
   secretName: string

@@ -440,11 +440,18 @@ function copyPrdIntoEvidence(stateDir: string, evidenceDir: string, mission: Mis
 
 function importTaskEvidence(taskEvidenceDir: string, missionEvidenceDir: string): void {
   if (!existsSync(taskEvidenceDir)) return
+  const workerAuthoritativeEvidence = new Set([
+    'plan.md',
+    'diff-summary.md',
+    'test-summary.md',
+    'done-report.md',
+    'transcript-summary.md',
+  ])
   for (const entry of readdirSync(taskEvidenceDir)) {
     const src = join(taskEvidenceDir, entry)
     if (!statSync(src).isFile()) continue
     const dest = join(missionEvidenceDir, entry)
-    if (!existsSync(dest)) copyFileSync(src, dest)
+    if (!existsSync(dest) || workerAuthoritativeEvidence.has(entry)) copyFileSync(src, dest)
   }
 }
 

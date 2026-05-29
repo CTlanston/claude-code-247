@@ -10,6 +10,9 @@ export interface WorkerSession {
   family: ModelFamily
   healthy: boolean
   active: number
+  probeStatus?: 'ok' | 'failed' | 'skipped'
+  probeError?: string
+  probedAt?: string
 }
 
 export interface RouteRequest {

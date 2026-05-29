@@ -25,6 +25,8 @@ export interface ClaudeRunOptions {
   /** Defaults to local subscription auth. API mode must be explicit. */
   authMode?: ClaudeAuthMode
   extraArgs?: string[]
+  onStdout?: (chunk: string) => void
+  onStderr?: (chunk: string) => void
 }
 
 export interface ClaudeRunResult {
@@ -133,8 +135,16 @@ export class ClaudeCodeAdapter {
         }, 500)
       }, timeoutMs)
 
-      child.stdout?.on('data', (d: Buffer) => { stdout += d.toString() })
-      child.stderr?.on('data', (d: Buffer) => { stderr += d.toString() })
+      child.stdout?.on('data', (d: Buffer) => {
+        const chunk = d.toString()
+        stdout += chunk
+        options.onStdout?.(chunk)
+      })
+      child.stderr?.on('data', (d: Buffer) => {
+        const chunk = d.toString()
+        stderr += chunk
+        options.onStderr?.(chunk)
+      })
 
       child.stdin?.write(prompt)
       child.stdin?.end()

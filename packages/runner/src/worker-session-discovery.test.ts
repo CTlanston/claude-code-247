@@ -9,6 +9,7 @@ describe('discoverWorkerSessions', () => {
         GEMINI_API_KEY: 'gemini-key',
       },
       commandAvailable: async (command) => command === 'codex',
+      probeSessions: false,
     })
 
     expect(sessions.map((session) => session.provider)).toEqual([
@@ -26,8 +27,25 @@ describe('discoverWorkerSessions', () => {
         OPENAI_API_KEY: 'openai-key',
       },
       commandAvailable: async () => true,
+      probeSessions: false,
     })
 
     expect(sessions.map((session) => session.provider)).toEqual(['claude-cli'])
+  })
+
+  it('marks a present-but-broken CLI unhealthy after probe failure', async () => {
+    const sessions = await discoverWorkerSessions({
+      env: { AEDEV_DISABLE_CLAUDE_CLI: '1' },
+      commandAvailable: async (command) => command === 'codex',
+      runProbe: async () => ({ ok: false, error: 'auth expired' }),
+    })
+
+    expect(sessions).toHaveLength(1)
+    expect(sessions[0]).toMatchObject({
+      provider: 'codex-cli',
+      healthy: false,
+      probeStatus: 'failed',
+      probeError: 'auth expired',
+    })
   })
 })
