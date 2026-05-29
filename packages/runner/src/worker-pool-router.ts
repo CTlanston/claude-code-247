@@ -19,6 +19,8 @@ export interface RouteRequest {
   role: AgentRole
   reviewerFamily?: ModelFamily
   queueDepth?: number
+  /** True when the downstream gate requires two validators independent of the coder family. */
+  requiresIndependentValidators?: boolean
 }
 
 export interface RouteDecision {
@@ -49,7 +51,10 @@ export class WorkerPoolRouter {
       return { provider: null, concurrency, holdCode: 'HOLD-SESSION-POOL', reason: 'no healthy local or API sessions' }
     }
 
-    const preferences = ROLE_PREFERENCES[req.role]
+    const preferences =
+      req.role === 'coder' && req.requiresIndependentValidators
+        ? ['claude-cli' as const]
+        : ROLE_PREFERENCES[req.role]
     for (const provider of preferences) {
       const session = healthy
         .filter((s) => s.provider === provider)

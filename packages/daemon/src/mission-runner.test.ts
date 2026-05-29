@@ -174,6 +174,46 @@ describe('MissionRunner — workbook end-to-end glue', () => {
     expect(result.status).toBe('blocked')
   })
 
+  it('routes dual-validator hard-gate coder work to Claude', async () => {
+    const mission = approveMission('Implement a low-risk dual-validator change')
+    const runner = new MissionRunner(db, {
+      stateDir,
+      rolePipeline: fakeRolePipeline(),
+      runner: fakeRunner({ taskEvidenceDir: makeTaskEvidence() }),
+      workerSessions: workerSessions(),
+      validators: [fakeValidator('gemini', 'pass'), fakeValidator('openai', 'pass')],
+      requiresUi: false,
+    })
+
+    const result = await runner.runMission(mission.id)
+
+    expect(result.routeDecision?.provider).toBe('claude-cli')
+    expect(result.mergeDecision).toBe('AUTO_MERGE')
+  })
+
+  it('does not treat OpenAI validator as independent when Codex authored the work', async () => {
+    const mission = approveMission('Implement a low-risk Codex-authored change')
+    const runner = new MissionRunner(db, {
+      stateDir,
+      rolePipeline: fakeRolePipeline(),
+      runner: fakeRunner({ taskEvidenceDir: makeTaskEvidence() }),
+      runnerConfig: {
+        mode: 'codex-cli',
+        maxConcurrentWorkers: 1,
+        worktreeBaseDir: join(stateDir, 'worktrees'),
+        outputBaseDir: join(stateDir, 'tasks'),
+      },
+      validators: [fakeValidator('gemini', 'pass'), fakeValidator('openai', 'pass')],
+      requiresUi: false,
+    })
+
+    const result = await runner.runMission(mission.id)
+
+    expect(result.routeDecision?.provider).toBe('codex-cli')
+    expect(result.mergeDecision).toBe('WAITING')
+    expect(result.status).toBe('waiting')
+  })
+
   it('UI mission runs BrowserQA and reaches AUTO_MERGE when screenshots pass', async () => {
     const mission = approveMission('Build a polished landing page UI')
     const runner = new MissionRunner(db, {
@@ -285,7 +325,7 @@ describe('MissionRunner — workbook end-to-end glue', () => {
     expect(summary).toMatch(/Decision:[*\s]*AUTO_MERGE/)
   })
 
-  it('routes coder work through WorkerPoolRouter and records the route decision', async () => {
+  it('routes dual-validator coder work through WorkerPoolRouter and records the Claude route decision', async () => {
     const mission = approveMission('Implement the routing glue')
     const runner = new MissionRunner(db, {
       stateDir,
@@ -297,8 +337,8 @@ describe('MissionRunner — workbook end-to-end glue', () => {
 
     const result = await runner.runMission(mission.id)
 
-    expect(result.routeDecision?.provider).toBe('codex-cli')
-    expect(readFileSync(join(result.evidenceDir, 'worker-route.json'), 'utf8')).toContain('"provider": "codex-cli"')
+    expect(result.routeDecision?.provider).toBe('claude-cli')
+    expect(readFileSync(join(result.evidenceDir, 'worker-route.json'), 'utf8')).toContain('"provider": "claude-cli"')
   })
 
   it('holds the mission when the worker router has no healthy coder session', async () => {

@@ -12,26 +12,25 @@
 ```yaml
 # 这一块是机器读的。任何字段修改都要在 §9 留痕。
 schema_version: 1
-version_target: v2.3.0
-current_part: I            # I = v2.1 基座 · II = v2.2 Agent Mesh
-current_stage: V2.3        # Mission OS incremental autonomy
-current_substage: operator-cockpit-verification-closed   # P1-P8 cockpit verification TODOs implemented and regression-tested
-last_updated_utc: 2026-05-28T23:38:46Z
-last_session_id: s_0009
-total_sessions: 9
+version_target: v2.4.0
+current_part: III          # III = v2.4 real vertical slice
+current_stage: V2.4        # Real target repo vertical slice
+current_substage: vertical-slice-s0-implemented   # ADR-0017 + S0 harness and routing gates implemented
+last_updated_utc: 2026-05-29T03:27:12Z
+last_session_id: s_0010
+total_sessions: 10
 weeks_elapsed: 0
 weeks_remaining: 0
 open_holds: 0
 blocked_on: null
 next_action: |
-  Operator Cockpit verification P1-P8 is closed: real CLI probes, AI-backed
-  roadmap generation by default, evidence-only validators, gated draft PR,
-  worker log endpoint, browser e2e harness, session persistence, and explicit
-  cost aggregation are implemented. Validation: pnpm test PASS (91 files,
-  535 passed, 6 skipped), pnpm typecheck PASS, dashboard build PASS, and
-  deterministic browser e2e PASS.
-  Next pass: run a real non-mock cockpit smoke with local Codex/Claude planner
-  and worker sessions, plus real Gemini/OpenAI validators if keys are present.
+  V2.4 is locked by ADR-0017. The vertical slice now has dual-family routing
+  discipline, repo-aware local CLI worktrees, objective validate/audit gates,
+  forbidden-path scan, local commit evidence, and the S0 harness for
+  CTlanston/multi-agent-brainstorm safe-copy runs. Next pass: run
+  `pnpm test:v24:s0` with a healthy local Claude session; Gemini/OpenAI keys
+  upgrade validator evidence when present, but missing keys must be recorded
+  honestly as HOLD-VALIDATOR-KEYS.
 sla:
   daemon_recovery_p95_sec: 90
   approval_e2e_p95_min: 5   # post-GA hardening gate per ADR-0014
@@ -322,6 +321,21 @@ sla:
 - **L3** 操作员签字；feature flag 一键切回 v2.1 验证成功。
 - **退出 → 项目完结**
 
+### Stage V2.4 — Real Target Vertical Slice · thin first
+
+- **目标** 在 `CTlanston/multi-agent-brainstorm` 的安全副本上跑通一个真实任务的端到端薄片：Claude coder、TS objective gates、forbidden-path scan、local commit、evidence/token 记录；不 push、不开 PR、不 merge。
+- **输入** ADR-0017；目标 repo URL `https://github.com/CTlanston/multi-agent-brainstorm.git`；受保护原 checkout `/Users/lanston/Desktop/MCPs/muti-agent comm` 只读参考。
+- **交付**
+  - `docs/adr/0017-v2.4-vertical-slice-dual-validation.md`
+  - `scripts/v24-vertical-slice-s0.ts`
+  - worker routing: dual-validation hard-gate coder work routes to local Claude
+  - repo-aware local CLI runner: safe clone/worktree, objective gates, forbidden-path scan, local commit evidence, model usage evidence
+  - evidence under `evidence/v24/s0/`
+- **L1** `pnpm test -- packages/runner/src/worker-pool-router.test.ts packages/runner/src/cli-runner.test.ts packages/validators/src/merge-policy.test.ts packages/daemon/src/mission-runner.test.ts` PASS; `pnpm typecheck` PASS; `pnpm test:v24:s0` produces a real report or an honest HOLD.
+- **L2** independent reviewer checks ADR-0017, evidence bundle, changed-path scan, and confirms no push/PR/merge occurred.
+- **L3** operator reviews S0 evidence and decides whether to proceed to P2 durable lease queue.
+- **退出 → V2.4-P2** S0 has real evidence, not synthetic soak claims.
+
 ### Stage 3.99 — 不在主线但永远有效
 
 - **HOLD-only 模式** 任何 stage 进行中如 `open_holds > 0`，本会话只能处理 holds，不能推进 stage。
@@ -585,6 +599,26 @@ ApprovalGateway: ntfy → 操作员手机
 - next_action: <见 §0>
 - notes: <一两句>
 ```
+
+### s_0010 — 2026-05-29T03:27:12Z — V2.4 vertical slice S0 implementation
+
+- stage_in: V2.3.operator-cockpit-verification-closed → stage_out: V2.4.vertical-slice-s0-implemented
+- actor: codex
+- shipped:
+    - ADR-0017 records the V2.4 model C, vertical-slice-first order, and dual-family validator discipline
+    - dual-validator hard-gate coder routing now selects `claude-cli`; Codex-authored work cannot satisfy OpenAI as an independent validator family
+    - local CLI runner now clones a source repo into a per-task worktree, runs objective validate/audit commands, scans forbidden paths, writes model usage, and creates a local-only commit
+    - `scripts/v24-vertical-slice-s0.ts` clones `CTlanston/multi-agent-brainstorm` into a safe copy with spaces in the path and runs S0 without push/PR/merge
+- validation:
+    - targeted V2.4 tests PASS — 35/35 (`worker-pool-router`, `cli-runner`, `merge-policy`, `mission-runner`)
+    - `pnpm typecheck` PASS
+    - `pnpm test` PASS — 92 files, 544 passed, 6 skipped
+    - `pnpm test:v24:s0` real run PASS to evidence gate: Claude coder exit 0, `bash scripts/validate.sh` PASS, Gemini PASS, OpenAI PASS, risk 0, decision WAITING (no push/PR/merge)
+    - safe copy `/Users/lanston/projects/multi-agent-brainstorm v24 slice` remained clean on `main...origin/main`
+- holds_opened: 0 · holds_resolved: 0
+- not_done_remaining:
+    - Run `pnpm test:v24:s0` with healthy local Claude
+    - Add P2 durable lease queue after S0 evidence is reviewed
 
 ### s_0009 — 2026-05-28T23:38:46Z — operator cockpit verification P1-P8
 
@@ -902,6 +936,7 @@ ApprovalGateway: ntfy → 操作员手机
 | 2026-05-28 | 1.7 | s_0005 v2.3 Mission OS base: Codex adapter, worker router, mission design, intake classifier, bounded moves, validator redaction, draft PR gate | codex | ADR-0016, `EXECUTION_WORKBOOK.md §9 s_0005` |
 | 2026-05-28 | 1.8 | s_0007 runtime-routing follow-up: daemon/server stateDir wiring normalized to `<AEDEV_HOME>/state`, regression test added, full validation green | codex | `EXECUTION_WORKBOOK.md §9 s_0007`, `packages/daemon/src/{paths,daemon,server}.ts` |
 | 2026-05-28 | 1.9 | s_0008 release-policy alignment: v2.2.0-rc2 recorded as production grade, no v2 GA tags expected, real phone approval/HOLD evidence collected, smoke blockers recorded | codex | ADR-0013 Path A, `docs/operations/release-policy.md`, `evidence/approval-e2e/` |
+| 2026-05-29 | 2.0 | s_0010 V2.4 vertical-slice-first plan: ADR-0017, Claude coder hard gate, repo-aware local runner, S0 safe-copy harness | codex | ADR-0017, `scripts/v24-vertical-slice-s0.ts` |
 
 ---
 

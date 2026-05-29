@@ -14,6 +14,10 @@ export interface MergePolicyEvidence {
   forbiddenPathTouched?: boolean
   /** True if the mission is in a sensitive lane (auth/payment/security/deploy). */
   sensitiveLane?: boolean
+  /** Model family that authored the candidate diff. */
+  coderFamily?: 'anthropic' | 'openai' | 'google' | 'mock'
+  /** When true, two passing validators must be from families other than coderFamily. */
+  requireIndependentValidatorFamilies?: boolean
 }
 
 export class MergePolicy {
@@ -62,9 +66,17 @@ export class MergePolicy {
     const hasInconclusive = validatorResults.some((r) => r.verdict === 'inconclusive')
     if (hasInconclusive) return 'WAITING'
 
-    // 6. Need at least two independent passing validators
+    // 6. Need at least two passing validators, and when a coder family is
+    // known for a dual-validation hard gate, both passes must be independent
+    // of that family.  Example: Codex(OpenAI) coder + OpenAI validator counts
+    // as same-family and cannot satisfy a "two independent verdicts" gate.
     const passes = validatorResults.filter((r) => r.verdict === 'pass')
     if (passes.length < 2) return 'WAITING'
+    if (evidence.requireIndependentValidatorFamilies ?? Boolean(evidence.coderFamily)) {
+      const independentPasses = passes.filter((r) => validatorFamily(r.validator) !== evidence.coderFamily)
+      const independentFamilies = new Set(independentPasses.map((r) => validatorFamily(r.validator)))
+      if (independentPasses.length < 2 || independentFamilies.size < 2) return 'WAITING'
+    }
 
     // 7. UI gate — screenshot evidence required
     if (evidence.requiresScreenshots) {
@@ -84,6 +96,16 @@ export class MergePolicy {
 
     // 11. Low risk + dual pass + UI/preview gates satisfied — safe to auto-merge
     return 'AUTO_MERGE'
+  }
+}
+
+function validatorFamily(name: ValidatorResult['validator']): 'anthropic' | 'openai' | 'google' | 'mock' {
+  switch (name) {
+    case 'gemini': return 'google'
+    case 'openai':
+    case 'codex': return 'openai'
+    case 'mock':
+    default: return 'mock'
   }
 }
 

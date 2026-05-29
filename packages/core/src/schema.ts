@@ -212,6 +212,16 @@ export interface RunnerConfig {
   maxConcurrentWorkers: number
   worktreeBaseDir: string
   outputBaseDir: string
+  /**
+   * Optional source checkout to copy/clone into the per-task worktree before a
+   * local CLI worker runs.  Used by V2.4 vertical slices so the worker edits a
+   * safe repo copy instead of an empty scratch directory.
+   */
+  sourceRepoPath?: string
+  testCommands?: string[]
+  forbiddenPaths?: string[]
+  createLocalCommit?: boolean
+  branchPrefix?: string
 }
 
 export interface RunResult {
