@@ -15,16 +15,16 @@ schema_version: 1
 version_target: production-usable-24x7
 current_part: III          # III = v2.4 real vertical slice -> production hardening
 current_stage: ProductionHardening
-current_substage: e2e-0-complete-e2e-1-ready
-last_updated_utc: 2026-05-29T22:33:00Z
-last_session_id: s_0029
-total_sessions: 29
+current_substage: e2e-0-reconciled-e2e-1-ready
+last_updated_utc: 2026-05-29T22:39:00Z
+last_session_id: s_0030
+total_sessions: 30
 weeks_elapsed: 0
 weeks_remaining: 0
 open_holds: 0
 blocked_on: none
 next_action: |
-  E2E-0 COMPLETE (s_0029). Local deps restored (network back; `pnpm install
+  E2E-0 COMPLETE and handoff-reconciled (s_0029/s_0030). Local deps restored (network back; `pnpm install
   --frozen-lockfile` PASS, lockfile + package.json unchanged); baseline green
   (typecheck 0-err 26/26, lint clean, vitest 554 passed / 6 env-gated smoke
   skips). BOTH HOLDS RESOLVED: HOLD-LOCAL-DEPS-RESTORE (deps + baseline) and
@@ -33,7 +33,8 @@ next_action: |
   at a nonexistent ~/.Codex-247/ path; multi-agent-brainstorm registered enabled,
   risk=medium, auto_merge=false, require_two_validators=true; live p3-remote-smoke
   PASS -> draft PR aedev-p3-smoke#2, mergedAt=null). allow_remote_writes RESET to
-  false. open_holds=0. NEXT = Stage E2E-1 (real loop on
+  false. s_0030 reconciled PRODUCTION_WORKBOOK + latest handoff only; no product
+  code changed. open_holds=0. NEXT = Stage E2E-1 (real loop on
   CTlanston/multi-agent-brainstorm: claude-in-docker coder + real OpenAI+Gemini
   dual-family + persisted model_usage + live draft PR), GATED on operator GO for
   the outward stage; write ADR-0019 first. Canonical plan:
@@ -658,6 +659,29 @@ ApprovalGateway: ntfy → 操作员手机
 - next_action: <见 §0>
 - notes: <一两句>
 ```
+
+### s_0030 — 2026-05-29T22:39:00Z — E2E-0 closeout reconciled (production workbook + latest handoff)
+
+- stage_in: ProductionHardening.e2e-0-complete-e2e-1-ready → stage_out: ProductionHardening.e2e-0-reconciled-e2e-1-ready
+- actor: codex (autonomous production-hardening loop)
+- l1: docs closeout 3/3 (PRODUCTION_WORKBOOK aligned, latest handoff aligned, EXECUTION §0/§9 aligned) · l2: not_run · l3: not_run
+- shipped:
+    - reconciled `PRODUCTION_WORKBOOK.md` from stale `s_0028` blocked state to E2E-1 ADR/precheck-ready state
+    - updated `docs/handoff/production-handoff-latest.md` to point at `5371e03`, resolved holds, green E2E-0 evidence, and the gated E2E-1 next action
+    - preserved the explicit outward-loop gate: no live target PR, no config mutation, no remote write, and no product code change in this session
+- validation:
+    - `bash scripts/doctor.sh` PASS (required checks; daemon install/responding warnings only)
+    - `pnpm lint` PASS
+    - `pnpm typecheck` PASS
+    - `pnpm test` PASS (93 files, 554 passed, 6 env-gated smoke skips)
+- evidence:
+    - `evidence/e2e/s0-unblock/{pnpm-install,typecheck,lint,test,p3-remote-smoke}.log`
+    - `evidence/e2e/s0-unblock/gh-auth-status.txt`
+    - `evidence/launch/operator-cockpit-p3-remote-smoke-2026-05-29T22-31-59-325Z.md`
+- holds_opened: 0 · holds_resolved: 0
+- holds: none open
+- commits: [docs-only E2E-0 closeout reconciliation commit; see `git log -1 --oneline`]
+- next_action: E2E-1 ADR/precheck slice — write ADR-0019 first; do not run outward live loop or enable remote writes until explicit operator GO.
 
 ### s_0029 — 2026-05-29T22:33:00Z — E2E-0 unblock COMPLETE (deps restored + both holds cleared)
 
@@ -1463,6 +1487,8 @@ ApprovalGateway: ntfy → 操作员手机
 
 | 日期 | 版本 | 改动 | 由谁 | 引用 |
 |---|---|---|---|---|
+| 2026-05-29 | 3.9 | s_0030 E2E-0 closeout reconciliation: PRODUCTION_WORKBOOK and latest handoff aligned with s_0029/5371e03; next action remains gated E2E-1 ADR/precheck | codex | `PRODUCTION_WORKBOOK.md`, `docs/handoff/production-handoff-latest.md`, `EXECUTION_WORKBOOK.md §9 s_0030` |
+| 2026-05-29 | 3.8 | s_0029 E2E-0 complete: dependencies restored, both holds cleared, baseline green, gh/config/repo gate verified, disposable P3 draft-PR smoke passed | claude | `evidence/e2e/s0-unblock/`, `evidence/launch/operator-cockpit-p3-remote-smoke-2026-05-29T22-31-59-325Z.md` |
 | 2026-05-29 | — | 规划：新增 §3 Stage E2E-0/1/2（真实端到端闭环：dockerized 订阅 Claude coder + OpenAI+Gemini 双家族 + model_usage 落库 + live draft PR 到 multi-agent-brainstorm）；更新 §0 next_action；需 ADR-0019/0020，pre-research 延后 ADR-0021；记 §1.3 ADR 编号注与实际已偏离（继续 0019+ 不重编号），ADR-0013 撞号与版本漂移为 housekeeping | operator-directed (Cowork architect) | `docs/handoff/e2e-real-loop-plan-and-prompt.md` |
 | 2026-05-26 | 1.0 | 初版；20 stage playbook；三级合约；HOLD 升级；evidence 格式 | architect | `Architecture Review.html` |
 | 2026-05-27 | 1.1 | s_0002: 20 stages L1-shipped; rc1 tags placed; F3 HOLDed | claude (under operator override) | `EXECUTION_WORKBOOK.md §9 s_0002` |

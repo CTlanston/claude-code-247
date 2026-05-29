@@ -16,21 +16,20 @@ canonical_repo: /Users/lanston/projects/claude-code-247
 canonical_branch_family: codex/v24-vertical-slice
 design_adr: docs/adr/0018-production-hardening-loop.md
 latest_handoff: docs/handoff/production-handoff-latest.md
-current_stage: E2E-0_UNBLOCK_AND_BASELINE_GREEN
-last_updated_utc: 2026-05-29T22:07:56Z
-last_session_id: s_0028
-open_holds: 2
-blocked_on: HOLD-P2-LIVE-SMOKE-GATE-AUTH; HOLD-LOCAL-DEPS-RESTORE
+current_stage: E2E-1_REAL_LOOP_ADR_AND_PRECHECK
+last_updated_utc: 2026-05-29T22:39:00Z
+last_session_id: s_0030
+open_holds: 0
+blocked_on: none
 next_action: |
-  Continue E2E-0 hold clearing only. s_0028 confirmed local tooling is still
-  incomplete: eslint/tsc/vitest/tsx are missing, offline pnpm restore is blocked
-  by a missing eslint@9.39.4 tarball, and frozen online install cannot reach
-  registry.npmjs.org from this sandbox (ENOTFOUND). Remote-write prerequisites
-  are also still missing: ~/.Codex-247/config.yaml and repos.yaml are absent,
-  and gh auth reports an invalid CTlanston token. Restore dependencies with
-  network access or a complete pnpm store, rerun the baseline suite, then after
-  operator gate/auth repair run pnpm test:cockpit:p3-remote-smoke and record
-  evidence.
+  E2E-0 is complete as of s_0029 / 5371e03: local dependencies were restored,
+  baseline gates passed, gh auth is valid as CTlanston, canonical
+  ~/.claude-code-247 config/repos are present, multi-agent-brainstorm is
+  enabled, and allow_remote_writes is reset false. s_0030 reconciled this
+  workbook and the latest handoff only. NEXT = E2E-1 ADR/precheck slice:
+  write ADR-0019 for the real E2E loop and inspect the existing DockerRunner,
+  Claude adapter, validator, model_usage, and remote-write seams. Do not run
+  the outward live loop or enable remote writes until explicit operator GO.
 active_automations:
   - id: claude-code-247-v2-3-autonomous-continuation
     name: Claude Code 247 production hardening loop
@@ -150,9 +149,13 @@ dependency restore is still blocked by a missing
 holds; gate/auth is still missing, local test binaries are still absent, and
 offline dependency restore is still blocked by a missing
 `@eslint/config-array@0.21.2` tarball. `s_0028` rechecked both open holds under
-E2E-0; gate/auth is still missing, local test binaries are still absent,
-offline restore is blocked by a missing `eslint@9.39.4` tarball, and frozen
-online install is blocked by sandbox DNS/network failure to `registry.npmjs.org`.
+E2E-0; gate/auth was still missing, local test binaries were still absent,
+offline restore was blocked by a missing `eslint@9.39.4` tarball, and frozen
+online install was blocked by sandbox DNS/network failure to `registry.npmjs.org`.
+`s_0029` completed E2E-0: dependencies were restored, the full baseline passed,
+canonical `~/.claude-code-247` config/repos were verified, `gh` auth was valid,
+the target repo was registered enabled with auto-merge disabled, and the
+disposable P3 draft-PR smoke passed without merging.
 
 **Acceptance:**
 - `/operator/sessions/:id/create-pr` never returns `example.invalid`.
@@ -181,6 +184,13 @@ online install is blocked by sandbox DNS/network failure to `registry.npmjs.org`
 - `evidence/production/p2-live-smoke-hold-recheck-2026-05-29-s0026.md`
 - `evidence/production/p2-live-smoke-hold-recheck-2026-05-29-s0027.md`
 - `evidence/e2e/s0-unblock/hold-recheck-2026-05-29-s0028.md`
+- `evidence/e2e/s0-unblock/pnpm-install.log`
+- `evidence/e2e/s0-unblock/typecheck.log`
+- `evidence/e2e/s0-unblock/lint.log`
+- `evidence/e2e/s0-unblock/test.log`
+- `evidence/e2e/s0-unblock/gh-auth-status.txt`
+- `evidence/e2e/s0-unblock/p3-remote-smoke.log`
+- `evidence/launch/operator-cockpit-p3-remote-smoke-2026-05-29T22-31-59-325Z.md`
 
 **Validation so far:** `bash scripts/doctor.sh`, `pnpm lint`,
 `pnpm typecheck`, focused draft-PR route/gate tests, focused approval-v2 tests,
@@ -241,16 +251,50 @@ passed, but offline restore failed because the local pnpm store is missing
 `pnpm test:cockpit:p3-remote-smoke` still fail before product validation
 because the same local binaries are missing.
 In `s_0028`, `bash scripts/doctor.sh` and the daemon boundary check still
-passed, but offline restore failed because the local pnpm store is missing
-`eslint@9.39.4`; frozen online install also failed because this sandbox cannot
-resolve `registry.npmjs.org`; `pnpm lint`, `pnpm typecheck`, `pnpm test`, and
-`pnpm test:cockpit:p3-remote-smoke` still fail before product validation
-because the same local binaries are missing.
+passed, but offline restore failed because the local pnpm store was missing
+`eslint@9.39.4`; frozen online install also failed because the sandbox could
+not resolve `registry.npmjs.org`; `pnpm lint`, `pnpm typecheck`, `pnpm test`,
+and `pnpm test:cockpit:p3-remote-smoke` failed before product validation
+because the same local binaries were missing. In `s_0029`,
+`pnpm install --frozen-lockfile`, `pnpm typecheck`, `pnpm lint`, `pnpm test`
+(93 files, 554 passed, 6 env-gated smoke skips), `gh auth status`, and
+`pnpm test:cockpit:p3-remote-smoke` all passed.
 
-**Remaining:** restore local dependencies, rerun the baseline suite, then after
-operator repairs the safety gate/auth, run live
-`scripts/operator-cockpit-p3-remote-smoke.ts` against a disposable repo with
-remote writes explicitly enabled and no merge.
+**Remaining:** E2E-1 must start with ADR-0019 and a precheck/implementation
+plan for Dockerized subscription-Claude execution, real OpenAI+Gemini
+validators, persisted `model_usage`, and draft-only PR reuse. The outward live
+loop still requires explicit operator GO before enabling remote writes.
+
+### E2E-0_UNBLOCK_AND_BASELINE_GREEN
+
+**Goal:** clear the dependency and gate/auth holds before starting the real E2E
+loop.
+
+**Status:** accepted in `s_0029`; handoff reconciled in `s_0030`.
+
+**Acceptance:**
+- `pnpm install --frozen-lockfile` passed with unchanged package and lock files.
+- `pnpm typecheck`, `pnpm lint`, and `pnpm test` passed.
+- `gh auth status` is valid as `CTlanston`.
+- `~/.claude-code-247/config.yaml` and `repos.yaml` exist; target repo
+  `CTlanston/multi-agent-brainstorm` is enabled; `allow_remote_writes=false`.
+- Disposable P3 remote-write smoke created/reused a draft PR and confirmed
+  `mergedAt=null`.
+
+**Evidence:** `evidence/e2e/s0-unblock/` and
+`evidence/launch/operator-cockpit-p3-remote-smoke-2026-05-29T22-31-59-325Z.md`.
+
+### E2E-1_REAL_LOOP_ADR_AND_PRECHECK
+
+**Goal:** connect and prove one real loop on `CTlanston/multi-agent-brainstorm`:
+Dockerized subscription-Claude coder, real OpenAI+Gemini dual-family
+validation, persisted `model_usage`, and a live draft-only PR.
+
+**Status:** ready, not started. Requires ADR-0019 first and explicit operator
+GO before any outward live run or remote-write enablement.
+
+**Acceptance:** see `EXECUTION_WORKBOOK.md` Stage E2E-1 and
+`docs/handoff/e2e-real-loop-plan-and-prompt.md`.
 
 ### P3_SECRETS_GRANT_SERVICE
 

@@ -1,66 +1,61 @@
 # Production Handoff Latest
 
-Date: 2026-05-29T22:07:56Z
-Session: s_0028
+Date: 2026-05-29T22:39:00Z
+Session: s_0030
 Canonical repo: `/Users/lanston/projects/claude-code-247`
 Branch: `codex/v24-vertical-slice`
+Head: docs closeout commit (run `git log -1 --oneline` for the exact hash)
 Workbook: [PRODUCTION_WORKBOOK.md](../../PRODUCTION_WORKBOOK.md)
 Design ADR: [ADR-0018](../adr/0018-production-hardening-loop.md)
 
 ## Current State
 
 - The v24 repository is the only Claude Code 247 production-hardening target.
-- Current slice is E2E-0 hold clearing: restore local dependencies, restore
-  remote-write config/registry, and repair GitHub auth before any product code.
+- E2E-0 is complete: local dependencies are restored, baseline gates are green,
+  GitHub auth is valid, and the target repo is registered in canonical config.
+- Current slice is E2E-1 ADR/precheck. Do not run the outward live loop or
+  enable remote writes until explicit operator GO.
 - Active automations remain consolidated to the main Claude Code 247 hardening
   loop and the CommentPilot guard.
-- Existing P0/P1/P2/P4 dirty work from prior runs is preserved; do not make a
-  mixed commit across workbook slices.
+- Worktree was clean after `5371e03`; `s_0030` updated docs/handoff state only.
 
 ## Latest Changes
 
-- `HOLD-LOCAL-DEPS-RESTORE` was rechecked and remains open.
-- `HOLD-P2-LIVE-SMOKE-GATE-AUTH` was rechecked and remains open.
-- No product code was changed in `s_0028`; no branch push, draft PR creation,
-  merge, or other remote write was attempted.
-- The latest known full green baseline remains `s_0016`; `s_0028` could not
-  rerun the baseline because local dependencies remain incomplete.
-- P2 route contract remains implemented for
-  `POST /operator/sessions/:id/create-pr`.
-- E2E-0 remains blocked by dependency and operator-auth prerequisites.
+- `s_0029` committed E2E-0 evidence as `5371e03`
+  (`[E2E-0] unblock + baseline green; both holds cleared; accept 6/6`).
+- `HOLD-LOCAL-DEPS-RESTORE` is resolved: `pnpm install --frozen-lockfile`
+  passed and eslint/tsc/vitest/tsx binaries are linked.
+- `HOLD-P2-LIVE-SMOKE-GATE-AUTH` is resolved: `gh auth status` is valid as
+  `CTlanston`; canonical `~/.claude-code-247/config.yaml` and `repos.yaml` are
+  present; `multi-agent-brainstorm` is enabled; global `allow_remote_writes` is
+  reset to `false`.
+- Disposable P3 smoke passed: gate-off blocked remote writes, gate-on created a
+  draft PR, and an idempotent rerun reused the same draft PR with
+  `mergedAt=null`.
+- `s_0030` reconciled this latest handoff and `PRODUCTION_WORKBOOK.md`; no
+  product code changed.
 
 ## Blockers
 
-- `~/.Codex-247/config.yaml` is missing, so
-  `system.allow_remote_writes=true` is not configured.
-- `~/.Codex-247/repos.yaml` is missing, so no target repo can be confirmed as
-  `enabled: true`.
-- `gh auth status` reports the active `CTlanston` token is invalid and requires
-  re-authentication.
-- Local `eslint`, `tsc`, `vitest`, and `tsx` binaries are missing.
-- `CI=true pnpm install --offline --frozen-lockfile` is blocked by a missing
-  offline tarball for `eslint@9.39.4`.
-- `CI=true pnpm install --frozen-lockfile` is blocked by restricted sandbox
-  network/DNS (`ENOTFOUND registry.npmjs.org`).
+- No open holds.
+- E2E-1 outward execution is gated on explicit operator GO. Until then, the next
+  safe work is ADR-0019 plus local seam inspection/tests.
+- Remote writes must remain disabled by default. Only the approved E2E-1 live
+  run may temporarily enable them for the target repo, and it must reset the
+  gate to `false` afterward.
 
 ## Validation
 
-- `CI=true pnpm install --offline --frozen-lockfile` - FAIL, missing offline
-  tarball for `eslint@9.39.4`.
-- `CI=true pnpm install --frozen-lockfile` - FAIL, cannot resolve
-  `registry.npmjs.org`; first fatal fetch was `eslint@9.39.4`.
-- `bash scripts/doctor.sh` - PASS required checks; warns daemon not
-  installed/responding. Note: doctor reports dependencies installed despite
-  missing local tool binaries.
-- Boundary check: `rg "child_process" packages/daemon/src` - PASS, no matches.
-- `pnpm lint` - FAIL, `eslint: command not found`.
-- `pnpm typecheck` - FAIL, `tsc: command not found`.
-- `pnpm test` - FAIL, `vitest: command not found`.
-- `test -f ~/.Codex-247/config.yaml` - FAIL, missing.
-- `test -f ~/.Codex-247/repos.yaml` - FAIL, missing.
-- `gh auth status` - FAIL, active `CTlanston` token invalid.
-- `pnpm test:cockpit:p3-remote-smoke` - FAIL before smoke execution,
-  `tsx: command not found`; also blocked by remote-write gate/auth.
+- `pnpm install --frozen-lockfile` - PASS.
+- `pnpm typecheck` - PASS.
+- `pnpm lint` - PASS.
+- `pnpm test` - PASS, 93 files, 554 passed, 6 env-gated smoke skips.
+- `gh auth status` - PASS, logged in to `github.com` as `CTlanston`.
+- `pnpm test:cockpit:p3-remote-smoke` - PASS, draft PR #2 in
+  `CTlanston/aedev-p3-smoke`, `isDraft=true`, `mergedAt=null`, idempotent reuse.
+- `s_0030` validation: `bash scripts/doctor.sh`, `pnpm lint`,
+  `pnpm typecheck`, and `pnpm test` all passed. Full test result: 93 files,
+  554 passed, 6 env-gated smoke skips.
 
 ## Evidence
 
@@ -82,13 +77,17 @@ Design ADR: [ADR-0018](../adr/0018-production-hardening-loop.md)
 - `evidence/production/p2-live-smoke-hold-recheck-2026-05-29-s0026.md`
 - `evidence/production/p2-live-smoke-hold-recheck-2026-05-29-s0027.md`
 - `evidence/e2e/s0-unblock/hold-recheck-2026-05-29-s0028.md`
+- `evidence/e2e/s0-unblock/pnpm-install.log`
+- `evidence/e2e/s0-unblock/typecheck.log`
+- `evidence/e2e/s0-unblock/lint.log`
+- `evidence/e2e/s0-unblock/test.log`
+- `evidence/e2e/s0-unblock/gh-auth-status.txt`
+- `evidence/e2e/s0-unblock/p3-remote-smoke.log`
+- `evidence/launch/operator-cockpit-p3-remote-smoke-2026-05-29T22-31-59-325Z.md`
 
 ## Next Action
 
-First restore local dependencies with network access or a complete pnpm store,
-then rerun `bash scripts/doctor.sh`, `pnpm lint`, `pnpm typecheck`, and
-`pnpm test`. Operator also needs to repair the remote-write prerequisites:
-create/restore `~/.Codex-247/config.yaml`, create/restore
-`~/.Codex-247/repos.yaml` with the target repo `enabled: true`, and refresh
-`gh` auth for `github.com`. Then run `pnpm test:cockpit:p3-remote-smoke`,
-verify draft PR creation/reuse, confirm no merge, and record evidence.
+Start E2E-1 with an ADR/precheck slice: write ADR-0019, inspect the existing
+DockerRunner, Claude adapter, validator, `model_usage`, and draft-PR seams, and
+prepare local tests for the real loop. Do not run the live outward path, open a
+target draft PR, or enable remote writes until explicit operator GO.
