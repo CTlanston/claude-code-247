@@ -1,11 +1,74 @@
-# aedev Phased Roadmap
+# claude-code-247 Roadmap
 
-**Status:** Phase 0 in progress  
-**Date:** 2026-05-25
+**Version target:** v2.4.0 — real vertical slice (ADR-0017)
+**Last honest re-plan:** 2026-05-29 (self-dev tick 20260529T131839Z)
 
-This document describes the ten implementation phases for aedev. Each phase
-builds on the previous one. Phases are gated — a phase is not started until
-the acceptance criteria for the prior phase are verified.
+The ten-phase "aedev" build plan that bootstrapped this system is preserved
+below as the **Historical build plan**. It is design history, not current
+state — Phases 0–9 are long since superseded by the v2.1→v2.4 work tracked in
+`EXECUTION_WORKBOOK.md §0/§9` and the ADR series (`docs/adr/0010`–`0017`).
+
+---
+
+## Current honest state (verified 2026-05-29)
+
+Grounded in the working tree, ADR-0017, and the §9 session log. Items are only
+marked DONE where re-verified this tick or honestly attributed to a prior log.
+
+### DONE (verified this tick)
+
+- **Three-plane runtime is live.** Daemon answers `GET /operator/sessions` on
+  `:7247`; Operator Cockpit serves on `:7248`.
+- **Workbook end-to-end acceptance 18/18** via `pnpm test:workbook` (mocked
+  worker/validators; proves the PLAN→IMPLEMENT→review→risk→merge-decision spine
+  end-to-end).
+
+### DONE (per s_0010 session log — not re-run this tick)
+
+- Full suite `pnpm test` 544 passed / 6 skipped; `pnpm typecheck` clean.
+- `WorkerPoolRouter` routes dual-validator coder work to `claude-cli`; local
+  CLI runner clones a source repo into a per-task worktree, reruns objective
+  validate/audit gates, scans forbidden paths, writes model usage, and creates
+  a **local-only** commit (no push/PR/merge).
+
+### PARTIAL
+
+- **V2.4 vertical slice S0.** The `scripts/v24-vertical-slice-s0.ts` harness
+  exists and passed "to evidence gate" in the s_0010 run, but has **not** been
+  run against a healthy local Claude this tick. A full real run is the open gate.
+- **Validators.** Gemini/OpenAI are wired evidence-only; real verdicts require
+  `AEDEV_GEMINI_API_KEY` / `AEDEV_OPENAI_API_KEY`. Missing keys must be recorded
+  as `HOLD-VALIDATOR-KEYS`, not papered over.
+- **Cockpit draft-PR path.** Gated `POST .../create-pr` exists but remote writes
+  default-blocked; no reviewed real PR adapter/config path yet.
+
+### NOT STARTED
+
+- **P2 durable lease queue** (claim/lease/heartbeat for crash-safe task pickup).
+- **Real push / PR / merge** to a target repo. Auto-merge is explicitly out of
+  scope for V2.4 (ADR-0017).
+- **Real multi-hour local soak** against an actual discovered worker session.
+
+---
+
+## Next 3 priorities (highest value first)
+
+1. **Run `pnpm test:v24:s0` with a healthy local Claude session.** This is the
+   §0 `next_action` and the open S0 gate. Record the real result honestly —
+   session holds, quota errors, or missing validator keys (`HOLD-VALIDATOR-KEYS`)
+   are all valid evidence per ADR-0017, not failures to hide.
+2. **Add the P2 durable lease queue** once S0 evidence is reviewed: durable
+   claim/lease/heartbeat so a crashed worker's task is re-leased, not lost.
+3. **Design the gated draft-PR path for the real target repo.** Requires
+   `allow_remote_writes=true` + enabled repo + explicit operator approval and a
+   reviewed PR adapter. Keep it behind the gate; do not enable merge.
+
+---
+
+## Historical build plan (Phases 0–9)
+
+> Superseded design history from the initial 2026-05-25 build plan. Retained
+> for reference; current state is the section above.
 
 ---
 

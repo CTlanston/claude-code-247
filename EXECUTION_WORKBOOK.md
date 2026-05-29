@@ -16,21 +16,21 @@ version_target: v2.4.0
 current_part: III          # III = v2.4 real vertical slice
 current_stage: V2.4        # Real target repo vertical slice
 current_substage: vertical-slice-s0-implemented   # ADR-0017 + S0 harness and routing gates implemented
-last_updated_utc: 2026-05-29T03:27:12Z
-last_session_id: s_0010
-total_sessions: 10
+last_updated_utc: 2026-05-29T13:18:39Z
+last_session_id: s_0011
+total_sessions: 11
 weeks_elapsed: 0
 weeks_remaining: 0
 open_holds: 0
 blocked_on: null
 next_action: |
-  V2.4 is locked by ADR-0017. The vertical slice now has dual-family routing
-  discipline, repo-aware local CLI worktrees, objective validate/audit gates,
-  forbidden-path scan, local commit evidence, and the S0 harness for
-  CTlanston/multi-agent-brainstorm safe-copy runs. Next pass: run
-  `pnpm test:v24:s0` with a healthy local Claude session; Gemini/OpenAI keys
-  upgrade validator evidence when present, but missing keys must be recorded
-  honestly as HOLD-VALIDATOR-KEYS.
+  Honest baseline re-established in docs/roadmap.md (self-dev tick
+  20260529T131839Z): system verified live (daemon :7247, cockpit :7248,
+  workbook 18/18). The single open V2.4 gate is unchanged: run
+  `pnpm test:v24:s0` with a healthy local Claude session and record the real
+  result honestly — session holds, quota errors, or missing Gemini/OpenAI keys
+  (HOLD-VALIDATOR-KEYS) are all valid evidence per ADR-0017, not failures to
+  hide. After S0 evidence is reviewed, build the P2 durable lease queue.
 sla:
   daemon_recovery_p95_sec: 90
   approval_e2e_p95_min: 5   # post-GA hardening gate per ADR-0014
@@ -599,6 +599,23 @@ ApprovalGateway: ntfy → 操作员手机
 - next_action: <见 §0>
 - notes: <一两句>
 ```
+
+### s_0011 — 2026-05-29T13:18:39Z — self-dev tick: honest roadmap re-plan
+
+- stage_in: V2.4.vertical-slice-s0-implemented → stage_out: V2.4.vertical-slice-s0-implemented (no substage change)
+- actor: claude-self-dev (tick 20260529T131839Z)
+- shipped:
+    - Rewrote `docs/roadmap.md`: the stale "aedev Phase 0 in progress" header (dated 2026-05-25) was actively misleading. Replaced the top with an honest DONE/PARTIAL/NOT-STARTED state for V2.4 plus the next 3 priorities; preserved the original Phase 0–9 catalogue below as a clearly labelled historical build plan.
+- validation:
+    - `curl :7247/operator/sessions` UP; `curl :7248/` UP (both planes live)
+    - `pnpm install --frozen-lockfile` clean (fresh worktree had no node_modules)
+    - `pnpm test:workbook` PASS — 18/18 end-to-end acceptance
+    - NOT re-run this tick: full `pnpm test` and `pnpm typecheck` (relied on s_0010 log: 544 passed / 6 skipped, typecheck clean). No source code changed, so suite risk is nil.
+- holds_opened: 0 · holds_resolved: 0
+- not_done_remaining:
+    - Run `pnpm test:v24:s0` with a healthy local Claude (the open S0 gate)
+    - Add P2 durable lease queue after S0 evidence is reviewed
+    - Design gated draft-PR path for the real target repo (behind allow_remote_writes + approval)
 
 ### s_0010 — 2026-05-29T03:27:12Z — V2.4 vertical slice S0 implementation
 
