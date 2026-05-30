@@ -504,6 +504,9 @@ async function spawnDocker(bin: string, req: DockerExecRequest): Promise<DockerE
 
     child.stdout?.on('data', (d: Buffer) => { stdout += d.toString() })
     child.stderr?.on('data', (d: Buffer) => { stderr += d.toString() })
+    // A container that exits fast can close stdin before we finish writing;
+    // swallow the resulting EPIPE (the real outcome is the exit code).
+    child.stdin?.on('error', () => {})
     child.stdin?.write(req.stdin)
     child.stdin?.end()
 

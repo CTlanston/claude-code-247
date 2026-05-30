@@ -144,6 +144,9 @@ function spawnProbe(opts: {
     }, opts.timeoutMs)
     child.stdout?.on('data', (d: Buffer) => { stdout += d.toString() })
     child.stderr?.on('data', (d: Buffer) => { stderr += d.toString() })
+    // A broken/fast-exiting CLI probe can close stdin before we finish writing;
+    // swallow the resulting EPIPE (the real outcome is the exit code).
+    child.stdin?.on('error', () => {})
     child.stdin?.write(opts.stdin)
     child.stdin?.end()
     const settle = (result: ProbeResult): void => {
