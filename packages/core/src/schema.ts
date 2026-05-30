@@ -4,6 +4,7 @@ export type RunStatus = 'pending' | 'running' | 'done' | 'failed'
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected'
 export type SecretGrantStatus = 'active' | 'expired' | 'revoked'
 export type RunnerMode =
+  | 'claude-docker'
   | 'docker'
   | 'local'
   | 'mock'

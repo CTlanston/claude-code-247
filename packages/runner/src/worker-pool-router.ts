@@ -1,7 +1,7 @@
 import os from 'node:os'
 import type { AgentRole } from '@aedev/core'
 
-export type ProviderId = 'claude-cli' | 'codex-cli' | 'gemini-api' | 'openai-api' | 'mock'
+export type ProviderId = 'claude-docker' | 'claude-cli' | 'codex-cli' | 'gemini-api' | 'openai-api' | 'mock'
 export type ModelFamily = 'anthropic' | 'openai' | 'google' | 'mock'
 
 export interface WorkerSession {
@@ -53,7 +53,7 @@ export class WorkerPoolRouter {
 
     const preferences =
       req.role === 'coder' && req.requiresIndependentValidators
-        ? ['claude-cli' as const]
+        ? ['claude-docker' as const, 'claude-cli' as const]
         : ROLE_PREFERENCES[req.role]
     for (const provider of preferences) {
       const session = healthy

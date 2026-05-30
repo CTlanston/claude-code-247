@@ -11,12 +11,102 @@
 > single-operator system. Per
 > [ADR-0013 Path A](docs/adr/0013-rc-grade-is-prod-grade.md), no `v2.2.0`
 > GA tag is created under the current release policy.
+>
+> **Latest:** `v2.4.0-patch1` — the core value loop has now run **end-to-end on
+> real LLM work** for the first time (see the **🆕 v2.4.0-patch1** section just
+> below). The architecture has converged to a **TypeScript-only, event-sourced,
+> three-plane** design per
+> [ADR-0010](docs/adr/0010-three-plane-event-sourced.md); the dual-kernel
+> section further down is retained as v1.0.0 history.
+
+## 🆕 v2.4.0-patch1 — real end-to-end loop proven (E2E-Harvest)
+
+The core value loop has now run **end-to-end on real LLM work** for the first
+time: a subscription Claude coder running **inside Docker** writes real code →
+evidence is collected → two **independent validator families** (OpenAI + Gemini)
+judge it on evidence only → a real **draft PR** is opened on GitHub →
+token/cost usage is persisted. Architecture decision:
+[ADR-0019](docs/adr/0019-real-e2e-loop-docker-claude-dual-family.md).
+
+> Current stage: `ProductionHardened_v2.4_Ready` (see
+> [EXECUTION_WORKBOOK.md §0](EXECUTION_WORKBOOK.md)). This is a single-operator
+> system; `system.allow_remote_writes` defaults to `false` and gates **every**
+> outward write — `git push`, PR creation, and merge alike.
+
+### What's new in the technical surface
+
+- **claude-in-Docker runner** —
+  [`packages/runner/src/claude-docker-runner.ts`](packages/runner/src/claude-docker-runner.ts)
+  runs the subscription Claude CLI inside a container against a per-task git
+  worktree, honoring the image's `/entrypoint.sh` contract (writes
+  `/workspace/prompt.txt`; sets `CLAUDE_ROLE` / `CLAUDE_MODEL` /
+  `CLAUDE_PERMISSION_MODE` / `CLAUDE_ALLOWED_TOOLS`; reads back
+  `/workspace/result.json`). A static + runtime **preflight**
+  (`preflightClaudeDockerEnvironment` / `preflightRuntime`) fails fast with a
+  `HOLD-CLAUDE-DOCKER-IMAGE` or `HOLD-CLAUDE-AUTH-IN-DOCKER` reason rather than
+  ever falling back silently to the paid API.
+
+- **`runner:e2e1` derived image** —
+  [`packages/runner/docker/Dockerfile.e2e1`](packages/runner/docker/Dockerfile.e2e1)
+  + [`entrypoint-e2e1.sh`](packages/runner/docker/entrypoint-e2e1.sh). The
+  patched entrypoint writes `/workspace/cli-envelope.json` (the raw CLI usage
+  envelope) **before** normalization, so authoritative token counts survive
+  (the stock `result.json` reported `0/0`).
+
+- **Subscription auth via OAuth token** — inject `AEDEV_CLAUDE_OAUTH_TOKEN`
+  (from `claude setup-token`) → `CLAUDE_CODE_OAUTH_TOKEN` inside the container.
+  The macOS keychain credential is host-bound and **401s inside a Linux
+  container**, so the token path is the proven, keychain-free option. All
+  `ANTHROPIC_*` paid-API env vars are stripped from the container.
+
+- **`model_usage` accounting** —
+  [`insertModelUsage`](packages/core/src/db.ts) persists input/output tokens +
+  cost per run and emits a `model.usage.recorded` event. Local subscription
+  usage is tracked by run count + cost, never reported as `$0`.
+
+- **Dual-family validators** — OpenAI- and Gemini-family judges score the
+  **evidence package only** (never the coder's conversation or chain-of-thought).
+  The merge policy requires two **independent** families to pass.
+
+- **Structured ClarificationGate (ADR-0020)** —
+  [`packages/daemon/src/clarification-gate.ts`](packages/daemon/src/clarification-gate.ts)
+  scores mission ambiguity deterministically (no LLM, no token spend) over four
+  signals; above the threshold (`trigger_threshold: 50` in
+  [`config/policies.yaml`](config/policies.yaml)) it asks ≤4 questions **before**
+  any coder runs and writes a verifiable `clarified-spec.md`. Decision:
+  [ADR-0020](docs/adr/0020-structured-clarification-gate.md).
+
+### Running the E2E loop
+
+```bash
+# 0. One-time: capture a keychain-free subscription token
+claude setup-token            # store the sk-ant-oat... value where your secrets live
+
+# 1. Build the runner:e2e1 image (authoritative token counts)
+docker build -f packages/runner/docker/Dockerfile.e2e1 \
+  -t claude-code-247/runner:e2e1 packages/runner/docker
+
+# 2. Real end-to-end loop: docker Claude coder → dual-family → draft PR → model_usage
+#    (draft-only; never merges. Needs the OAuth token + OPENAI/GEMINI keys in env.)
+node_modules/.bin/tsx scripts/e2e1-real-loop.ts
+
+# 3. ClarificationGate shadow walk (deterministic; spends no LLM tokens)
+node_modules/.bin/tsx scripts/e2e2-clarification-shadow-walk.ts
+```
+
+> **Safety model:** these scripts pass `allowRemoteWrites: true` **in-process**
+> to a draft-only PR gate; the global `system.allow_remote_writes` stays
+> `false`. Because they pre-approve the mission, they deliberately **bypass the
+> daemon's approval path** — so no ntfy phone approval is requested. To exercise
+> the real approval flow (medium/high-risk merge, API fallback, etc.), run a
+> mission through the daemon's `IntakeService`, which pushes an ntfy
+> notification to your phone for approve/reject.
 
 ## ⚡ Architecture today (v1.0.0) — dual kernel, single product
 
 > The dual-kernel layout below is the **current** state as of v1.0.0 GA.
 > v2.0 collapses it to a single TypeScript control plane and removes the
-> Python tree entirely. See [V2_ARCHITECTURE.md](V2_ARCHITECTURE.md) for
+> Python tree entirely. See [V2_ARCHITECTURE.md](docs/archive/V2_ARCHITECTURE.md) for
 > the target architecture and the stage-by-stage plan.
 
 `claude-code-247` is one product OS with two cooperating kernels:
@@ -158,8 +248,8 @@ dispatcher T0; pass `--t0 2026-05-24T21:46Z` to override.
 
 - **`v1.0.0` GA — released 2026-05-25** (Python `claude247` kernel).
 - The first GA release. See [RELEASE_NOTES_GA.md](RELEASE_NOTES_GA.md)
-  for the full notes, [GA_GATE.md](GA_GATE.md) for the 19-gate GA
-  contract, and [M22_GA_DECISION_REPORT.md](M22_GA_DECISION_REPORT.md)
+  for the full notes, [GA_GATE.md](docs/archive/GA_GATE.md) for the 19-gate GA
+  contract, and [M22_GA_DECISION_REPORT.md](docs/archive/M22_GA_DECISION_REPORT.md)
   for the GA decision record.
 - **Soak gate was explicitly waived by the owner** after ~9h 12m of
   healthy soak evidence (4/4 launchd loaded, ~1182 dispatcher idle
@@ -182,7 +272,7 @@ dispatcher T0; pass `--t0 2026-05-24T21:46Z` to override.
 
 **v2 TypeScript line:**
 
-- [**V2_ARCHITECTURE.md**](V2_ARCHITECTURE.md) — full v2.0 architecture and
+- [**V2_ARCHITECTURE.md**](docs/archive/V2_ARCHITECTURE.md) — full v2.0 architecture and
   stage-by-stage implementation plan (start here)
 - [docs/operations/release-policy.md](docs/operations/release-policy.md) —
   current release-grade and tag policy
@@ -190,10 +280,10 @@ dispatcher T0; pass `--t0 2026-05-24T21:46Z` to override.
 **v1.0.0 (current GA):**
 
 - [RELEASE_NOTES_GA.md](RELEASE_NOTES_GA.md) — v1.0.0 release notes
-- [GA_GATE.md](GA_GATE.md) — 19-gate GA contract + owner-waiver policy
-- [M22_GA_DECISION_REPORT.md](M22_GA_DECISION_REPORT.md) — GA decision record
-- [M20_SOAK_RESULT.md](M20_SOAK_RESULT.md) — soak observation + waiver record
-- [DEFINITION_OF_DONE.md](DEFINITION_OF_DONE.md) — DoD checklist
+- [GA_GATE.md](docs/archive/GA_GATE.md) — 19-gate GA contract + owner-waiver policy
+- [M22_GA_DECISION_REPORT.md](docs/archive/M22_GA_DECISION_REPORT.md) — GA decision record
+- [M20_SOAK_RESULT.md](docs/archive/M20_SOAK_RESULT.md) — soak observation + waiver record
+- [DEFINITION_OF_DONE.md](docs/archive/DEFINITION_OF_DONE.md) — DoD checklist
 - [CHANGELOG.md](CHANGELOG.md) — release history
 - `docs/ARCHITECTURE.md` — module map and data flow (v1.0.0)
 - `docs/INSTALL.md` — full install + uninstall + doctor

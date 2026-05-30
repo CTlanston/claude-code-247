@@ -3,7 +3,7 @@ import { runMigrations } from './migrations.js'
 import { generateId, nowIso } from './ids.js'
 import type {
   Repo, Mission, Task, Run, Approval, Event, RiskScore, ValidatorResult, MemoryItem,
-  OperatorSession, OperatorMessage, MissionArtifact,
+  OperatorSession, OperatorMessage, MissionArtifact, ModelUsage,
 } from './schema.js'
 import type { RiskLevel, RunnerMode, ValidatorName, ValidatorVerdict } from './schema.js'
 
@@ -383,6 +383,39 @@ export class AedevDb {
       title: r['title'] as string | undefined,
       createdAt: r['created_at'] as string,
       updatedAt: r['updated_at'] as string,
+    }
+  }
+
+  // --- Model usage ---
+  insertModelUsage(u: Omit<ModelUsage, 'id' | 'createdAt'>): ModelUsage {
+    const id = generateId(); const now = nowIso()
+    this.db.prepare(`INSERT INTO model_usage (id,task_id,run_id,auth_mode,model,provider,input_tokens,output_tokens,cost_usd,notes,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(
+      id, u.taskId ?? null, u.runId ?? null, u.authMode, u.model ?? null, u.provider ?? null,
+      u.inputTokens ?? null, u.outputTokens ?? null, u.costUsd ?? null, u.notes ?? null, now
+    )
+    return { ...u, id, createdAt: now }
+  }
+
+  listModelUsage(taskId?: string): ModelUsage[] {
+    const rows = taskId
+      ? this.db.prepare('SELECT * FROM model_usage WHERE task_id = ? ORDER BY created_at DESC').all(taskId) as Record<string, unknown>[]
+      : this.db.prepare('SELECT * FROM model_usage ORDER BY created_at DESC').all() as Record<string, unknown>[]
+    return rows.map((r) => this.rowToModelUsage(r))
+  }
+
+  private rowToModelUsage(r: Record<string, unknown>): ModelUsage {
+    return {
+      id: r['id'] as string,
+      taskId: r['task_id'] as string | undefined,
+      runId: r['run_id'] as string | undefined,
+      authMode: r['auth_mode'] as string,
+      model: r['model'] as string | undefined,
+      provider: r['provider'] as string | undefined,
+      inputTokens: r['input_tokens'] as number | undefined,
+      outputTokens: r['output_tokens'] as number | undefined,
+      costUsd: r['cost_usd'] as number | undefined,
+      notes: r['notes'] as string | undefined,
+      createdAt: r['created_at'] as string,
     }
   }
 

@@ -74,6 +74,31 @@ export type {
   SchedulerOptions,
   DispatchFn,
 } from './mission-scheduler.js'
+export {
+  buildDefaultMissionValidators,
+  createDefaultMissionValidatorFactory,
+  inspectDefaultMissionValidatorSecrets,
+} from './validator-factory.js'
+export {
+  ClarificationGate,
+  scoreAmbiguity,
+  renderClarifiedSpec,
+  DEFAULT_CLARIFICATION_POLICY,
+} from './clarification-gate.js'
+export type {
+  ClarificationPolicy,
+  ClarificationField,
+  ClarificationChoice,
+  ClarificationQuestion,
+  AmbiguityResult,
+  ClarificationAnswer,
+  ClarificationEvaluation,
+} from './clarification-gate.js'
+export type {
+  DefaultMissionValidatorFactoryOptions,
+  DefaultValidatorSecretStatus,
+  ValidatorSecretResolver,
+} from './validator-factory.js'
 export { InterruptionPolicy } from './interruption-policy.js'
 export type {
   InterruptionReason,

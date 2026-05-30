@@ -4,11 +4,13 @@ import type { FastifyInstance } from 'fastify'
 import type { AedevDb, MissionArtifact, MissionDesign, OperatorChoice, Run, Task, ValidatorResult } from '@aedev/core'
 import { nowIso, validateMissionDesign } from '@aedev/core'
 import { ClaudeCodeAdapter, CodexCliAdapter, discoverWorkerSessions } from '@aedev/runner'
-import { GeminiValidator, OpenAIValidator, MockValidator } from '@aedev/validators'
+import { MockValidator } from '@aedev/validators'
 import { IntakeService } from '../intake.js'
 import { MissionRunner } from '../mission-runner.js'
 import { RolePipeline } from '../roles/role-pipeline.js'
+import type { DraftPrInfo, DraftPrRequest } from '../draft-pr-gate.js'
 import { DraftPrGate, DraftPrGateError } from '../draft-pr-gate.js'
+import { createDefaultMissionValidatorFactory, inspectDefaultMissionValidatorSecrets } from '../validator-factory.js'
 
 type Stage =
   | 'Intake'
@@ -28,7 +30,22 @@ interface OperatorSessionBody {
   prompt?: string
 }
 
-export function registerOperatorRoutes(app: FastifyInstance, db: AedevDb, stateDir: string): void {
+export interface OperatorDraftPrExecutor {
+  openDraftPr(req: DraftPrRequest): Promise<DraftPrInfo>
+}
+
+export interface OperatorRouteOptions {
+  draftPrExecutor?: OperatorDraftPrExecutor
+}
+
+class DraftPrExecutorUnavailableError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'DraftPrExecutorUnavailableError'
+  }
+}
+
+export function registerOperatorRoutes(app: FastifyInstance, db: AedevDb, stateDir: string, options: OperatorRouteOptions = {}): void {
   const intake = new IntakeService(db, stateDir)
 
   app.get<{ Querystring: { latest?: string } }>('/operator/sessions', async (req) => {
@@ -205,40 +222,47 @@ export function registerOperatorRoutes(app: FastifyInstance, db: AedevDb, stateD
     const overview = buildMissionOverview(db, mission.id)
     if (!overview?.evidenceDir) return reply.code(400).send({ error: 'mission has not reached evidence gate' })
     if (approvals.length === 0) return reply.code(400).send({ error: 'operator approval is required before draft PR creation' })
-    const gate = new DraftPrGate(
-      { allowRemoteWrites: allowRemoteWritesEnabled(stateDir) },
-      {
-        async pushBranch() {
-          if (!isFakePrEnabled()) throw new Error('real git push adapter is not configured for Operator Cockpit')
-        },
-      },
-      {
-        async createDraftPr(req) {
-          if (!isFakePrEnabled()) throw new Error('real draft PR adapter is not configured for Operator Cockpit')
-          return { number: 247, url: `https://example.invalid/${req.repo.name}/pull/247`, state: 'open', draft: true as const }
-        },
-      },
-    )
+    const allowRemoteWrites = allowRemoteWritesEnabled(stateDir)
+    const executor = options.draftPrExecutor
+    const request: DraftPrRequest = {
+      repo,
+      missionId: mission.id,
+      title: mission.title,
+      branch: `operator/${mission.id.slice(0, 8)}`,
+      base: repo.defaultBranch,
+      changedPaths: [],
+      evidenceUri: overview.evidenceDir,
+      riskScore: 0,
+      validatorResults: overview.validators,
+      rollbackNotes: 'Close the draft PR; no merge was performed by Operator Cockpit.',
+    }
     try {
-      const info = await gate.openDraftPr({
-        repo,
-        missionId: mission.id,
-        title: mission.title,
-        branch: `operator/${mission.id.slice(0, 8)}`,
-        base: repo.defaultBranch,
-        changedPaths: [],
-        evidenceUri: overview.evidenceDir,
-        riskScore: 0,
-        validatorResults: overview.validators,
-        rollbackNotes: 'Close the draft PR; no merge was performed by Operator Cockpit.',
-      })
-      db.updateMissionGitHub(mission.id, { githubBranch: `operator/${mission.id.slice(0, 8)}`, githubPrUrl: info.url, githubPrNumber: info.number })
+      if (!allowRemoteWrites) {
+        await new DraftPrGate({ allowRemoteWrites }, { pushBranch: async () => undefined }, { createDraftPr: async () => {
+          throw new Error('unreachable')
+        } }).openDraftPr(request)
+      }
+      if (!executor) {
+        throw new DraftPrExecutorUnavailableError('remote-write executor is not configured for Operator Cockpit')
+      }
+      const info = await executor.openDraftPr(request)
+      if (/example\.invalid/i.test(info.url)) {
+        throw new DraftPrExecutorUnavailableError('remote-write executor returned a non-production PR URL')
+      }
+      db.updateMissionGitHub(mission.id, { githubBranch: request.branch, githubPrUrl: info.url, githubPrNumber: info.number })
       db.insertEvent('operator.draft_pr_created', 'mission', mission.id, { url: info.url, number: info.number })
       return { status: 'created', pr: info, overview: buildMissionOverview(db, mission.id) }
     } catch (e) {
-      const code = e instanceof DraftPrGateError ? e.code : 'DRAFT_PR_NOT_CONFIGURED'
+      const code = e instanceof DraftPrGateError ? e.code : e instanceof DraftPrExecutorUnavailableError ? 'DRAFT_PR_EXECUTOR_UNAVAILABLE' : 'DRAFT_PR_BLOCKED'
       const reason = (e as Error).message
       db.insertEvent('operator.draft_pr_blocked', 'mission', mission.id, { code, reason })
+      if (code === 'DRAFT_PR_EXECUTOR_UNAVAILABLE') {
+        db.insertEvent('operator.hold_created', 'mission', mission.id, {
+          holdCode: 'HOLD-DRAFT-PR-EXECUTOR',
+          reason,
+          nextAction: 'Configure a worker/side-effect remote-write executor; daemon-owned fake PR adapters are disabled.',
+        })
+      }
       return { status: 'blocked', code, reason, overview: buildMissionOverview(db, mission.id) }
     }
   })
@@ -792,8 +816,8 @@ async function runOperatorMission(db: AedevDb, stateDir: string, sessionId: stri
   const workerSessions = await discoverWorkerSessions()
   const forceMock = /^(1|true|yes)$/i.test(process.env['AEDEV_COCKPIT_FORCE_MOCK'] ?? '') ||
     (Boolean(process.env['VITEST']) && process.env['AEDEV_COCKPIT_FORCE_REAL'] !== '1')
-  const validators = buildCockpitValidators()
-  if (validators.length === 0) {
+  const validatorConfig = buildCockpitValidatorConfig(missionId)
+  if (validatorConfig.configuredCount === 0) {
     db.insertEvent('operator.validators_not_configured', 'mission', missionId, {
       status: 'not_configured',
       note: 'Gemini/OpenAI validator keys are not configured; merge remains WAITING/BLOCKED.',
@@ -801,20 +825,20 @@ async function runOperatorMission(db: AedevDb, stateDir: string, sessionId: stri
   }
   const runnerOpts = forceMock
     ? { runner: operatorDraftRunner(db, stateDir) }
-    : { workerSessions, runner: operatorLocalCliRunner(db, stateDir, workerSessions, validators.length >= 2) }
+    : { workerSessions, runner: operatorLocalCliRunner(db, stateDir, workerSessions, validatorConfig.configuredCount >= 2) }
   db.insertEvent('operator.worker_assigned', 'mission', missionId, {
     sessionId,
     mode: forceMock ? 'mock' : 'local-cli',
     availableSessions: workerSessions.length,
   })
-  if (validators.length > 0) {
-    db.insertEvent('operator.validator_started', 'mission', missionId, { sessionId, count: validators.length })
+  if (validatorConfig.configuredCount > 0) {
+    db.insertEvent('operator.validator_started', 'mission', missionId, { sessionId, count: validatorConfig.configuredCount })
   }
   const result = await new MissionRunner(db, {
     stateDir,
     rolePipeline: new RolePipeline(),
     ...runnerOpts,
-    validators,
+    ...validatorConfig.runnerOptions,
     riskFactors: () => ({
       touchesForbiddenPaths: false,
       diffLinesChanged: 0,
@@ -892,16 +916,19 @@ function operatorDraftRunner(db: AedevDb, stateDir: string) {
   }
 }
 
-function buildCockpitValidators() {
+function buildCockpitValidatorConfig(missionId: string) {
   if (/^(1|true|yes)$/i.test(process.env['AEDEV_COCKPIT_FAKE_VALIDATORS'] ?? '')) {
-    return [new MockValidator('pass')]
+    return {
+      configuredCount: 1,
+      runnerOptions: { validators: [new MockValidator('pass')] },
+    }
   }
-  const validators = []
-  const geminiKey = process.env['AEDEV_GEMINI_API_KEY'] ?? process.env['GEMINI_API_KEY'] ?? process.env['GOOGLE_API_KEY']
-  if (geminiKey) validators.push(new GeminiValidator({ apiKey: geminiKey }))
-  const openaiKey = process.env['AEDEV_OPENAI_API_KEY'] ?? process.env['OPENAI_API_KEY']
-  if (openaiKey) validators.push(new OpenAIValidator({ apiKey: openaiKey }))
-  return validators
+  const placeholderTaskId = `operator-${missionId}-pending`
+  const status = inspectDefaultMissionValidatorSecrets({ missionId, taskId: placeholderTaskId })
+  return {
+    configuredCount: status.configuredCount,
+    runnerOptions: { validatorFactory: createDefaultMissionValidatorFactory() },
+  }
 }
 
 function isTemplateRoadmapEnabled(): boolean {
@@ -909,10 +936,6 @@ function isTemplateRoadmapEnabled(): boolean {
     return /^(1|true|yes)$/i.test(process.env['AEDEV_COCKPIT_FORCE_TEMPLATE'])
   }
   return Boolean(process.env['VITEST'])
-}
-
-function isFakePrEnabled(): boolean {
-  return /^(1|true|yes)$/i.test(process.env['AEDEV_COCKPIT_FAKE_PR'] ?? '')
 }
 
 function allowRemoteWritesEnabled(stateDir: string): boolean {

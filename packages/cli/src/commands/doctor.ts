@@ -21,7 +21,7 @@ async function probe(bin: string, args: string[]): Promise<{ ok: boolean; out?: 
 export function registerDoctorCommand(program: Command): void {
   program
     .command('doctor')
-    .description('Verify the local aedev environment (claude CLI, docker, python, AEDEV_HOME)')
+    .description('Verify the local aedev environment (daemon, launchd state, worker CLIs, AEDEV_HOME)')
     .option('--plain', 'Plain key=value output')
     .action(async (opts: { plain?: boolean }) => {
       const checks: Check[] = []
@@ -40,30 +40,23 @@ export function registerDoctorCommand(program: Command): void {
         detail: docker.ok ? 'reachable' : 'docker not running — DockerRunner cannot launch containers',
       })
 
-      const python = await probe('python3', ['--version'])
+      const codex = await probe('which', ['codex'])
       checks.push({
-        name: 'python3',
-        status: python.ok ? 'ok' : 'warn',
-        detail: python.ok ? python.out : 'python3 needed for claude247 bridge',
+        name: 'codex CLI on PATH',
+        status: codex.ok ? 'ok' : 'warn',
+        detail: codex.ok ? codex.out : 'install Codex CLI to enable the secondary worker path',
       })
 
-      const claude247 = await probe('which', ['claude247'])
-      checks.push({
-        name: 'claude247 CLI',
-        status: claude247.ok ? 'ok' : 'warn',
-        detail: claude247.ok ? claude247.out : 'install the Python kernel to enable the bridge',
-      })
-
-      const aedevHome = process.env['AEDEV_HOME'] ?? join(homedir(), '.aedev')
+      const aedevHome = process.env['AEDEV_HOME'] ?? join(homedir(), '.claude-code-247')
       checks.push({
         name: 'AEDEV_HOME',
         status: existsSync(aedevHome) ? 'ok' : 'warn',
-        detail: existsSync(aedevHome) ? aedevHome : `${aedevHome} does not exist — run \`aedev init\``,
+        detail: existsSync(aedevHome) ? aedevHome : `${aedevHome} does not exist — run scripts/install_launchd.sh`,
       })
 
       const daemonUrl = process.env['AEDEV_DAEMON_URL'] ?? 'http://127.0.0.1:7247'
       try {
-        const r = await fetch(`${daemonUrl}/healthz`, { signal: AbortSignal.timeout(2000) })
+        const r = await fetch(`${daemonUrl}/health`, { signal: AbortSignal.timeout(2000) })
         checks.push({
           name: 'aedev daemon',
           status: r.ok ? 'ok' : 'warn',

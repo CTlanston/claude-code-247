@@ -4,6 +4,7 @@ import type { AedevDb, Mission, MissionDesign } from '@aedev/core'
 import { validateMissionTransition } from '@aedev/core'
 import { LeadAgent } from './lead-agent.js'
 import { ApprovalGate } from './approval.js'
+import { ClarificationGate } from './clarification-gate.js'
 
 /**
  * IntakeService handles the three-step mission lifecycle:
@@ -26,6 +27,14 @@ export class IntakeService {
   constructor(
     private db: AedevDb,
     private stateDir: string,
+    /**
+     * Optional Structured Clarification Gate (ADR-0020).  When provided,
+     * createMissionCandidate runs it after synthesizing the PRD: ambiguous
+     * missions get `mission.clarification.requested` + persisted questions
+     * before approval.  Omitted in callers/tests that don't need clarification,
+     * so default behavior is unchanged.
+     */
+    private clarificationGate?: ClarificationGate,
   ) {
     this.agent = new LeadAgent(stateDir)
     this.gate = new ApprovalGate(db)
@@ -46,7 +55,20 @@ export class IntakeService {
     writeFileSync(prdPath, prdContent)
     writeFileSync(this.getDesignPath(mission.id), JSON.stringify(design, null, 2))
     this.db.insertEvent('mission.created', 'mission', mission.id, { title: mission.title, designPath: this.getDesignPath(mission.id) })
+
+    // ADR-0020: ambiguous missions get clarification questions before approval.
+    if (this.clarificationGate) {
+      const evaluation = this.clarificationGate.evaluate({ title: mission.title, description }, design)
+      if (evaluation.required) {
+        this.clarificationGate.request(mission.id, evaluation)
+      }
+    }
     return { ...mission, prdPath }
+  }
+
+  /** True iff a clarification gate is configured and flagged this mission as ambiguous (questions pending answers). */
+  needsClarification(missionId: string): boolean {
+    return this.clarificationGate?.status(missionId) === 'requested'
   }
 
   /**

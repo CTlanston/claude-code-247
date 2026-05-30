@@ -1,0 +1,16 @@
+# claude-code-247/runner:e2e1 — E2E-1 hardening overlay on runner:latest.
+#
+# Identical to runner:latest except the entrypoint also emits the raw Claude CLI
+# envelope to /workspace/cli-envelope.json and overwrites result.json usage/cost
+# from that envelope (so real input/output token counts survive even when the
+# coder authors its own result.json with usage:0). See entrypoint-e2e1.sh.
+#
+# Build:  docker build -t claude-code-247/runner:e2e1 -f Dockerfile.e2e1 .
+FROM claude-code-247/runner:latest
+
+# COPY --chmod sets the mode at copy time (as the build's implicit root context),
+# avoiding a separate `RUN chmod` which fails because the base image's default
+# USER (claude, uid 1001) cannot chmod the root-owned /entrypoint.sh.
+COPY --chmod=0755 entrypoint-e2e1.sh /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]

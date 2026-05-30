@@ -1,0 +1,29 @@
+diff --git a/README.md b/README.md
+index cab1985..fcc7a2c 100644
+--- a/README.md
++++ b/README.md
+@@ -150,7 +150,23 @@ npm start
+ - 一键生成“最终结论 Prompt”，逼它们输出简单比喻和 ROI 分析
+ - 归纳笔记自动保存在本地
+ 
++## Running the tests
++
++```bash
++node tests/run.js
++```
++
++Discovers and runs all `*.test.js` files under `tests/`. Exit 0 = all pass.
++
++Test categories in `tests/`:
++
++- **smoke** — `dom_smoke.js`
++- **failure-mode** — `click_failure_modes.test.js`, `inject_failure_modes.test.js`
++- **resilience** — `resilient_round.test.js`
++- **snapshot-boundary** — `snapshot_boundaries.test.js`
++- **stress** — `stress_simulation.js`
++
+ ## 注意
+ 
+ - 这是外部平台控制台方案，不走任何官方 API，所以几乎没有新增成本。
+-- 这个版本牺牲了“自动抓取网页内容”，换来的是可实际使用和稳定性。
++- 这个版本牺牲了”自动抓取网页内容”，换来的是可实际使用和稳定性。

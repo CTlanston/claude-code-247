@@ -31,6 +31,10 @@ function fromB64url(s: string): Buffer {
   return Buffer.from(s, 'base64url')
 }
 
+function isCanonicalB64url(s: string): boolean {
+  return /^[A-Za-z0-9_-]+$/.test(s) && b64url(fromB64url(s)) === s
+}
+
 export class TokenSigner {
   private readonly key: Buffer
   constructor(secret: string | Buffer) {
@@ -103,9 +107,13 @@ export class TokenVerifier {
     } catch {
       return { ok: false, error: 'malformed' }
     }
-    const expected = createHmac('sha256', this.key).update(`${headerB64}.${payloadB64}`).digest()
-    const actual = fromB64url(sigB64)
-    if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
+    if (!isCanonicalB64url(sigB64)) {
+      return { ok: false, error: 'signature_mismatch' }
+    }
+    const expected = b64url(createHmac('sha256', this.key).update(`${headerB64}.${payloadB64}`).digest())
+    const expectedBuf = Buffer.from(expected, 'utf8')
+    const actualBuf = Buffer.from(sigB64, 'utf8')
+    if (expectedBuf.length !== actualBuf.length || !timingSafeEqual(expectedBuf, actualBuf)) {
       return { ok: false, error: 'signature_mismatch' }
     }
     const now = opts.now ?? Date.now()

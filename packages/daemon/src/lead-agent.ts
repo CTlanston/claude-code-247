@@ -72,7 +72,7 @@ ${description}
           'Produce a reviewed implementation plan and evidence-backed draft PR.',
           'Keep execution local-first and resumable through bounded moves.',
         ],
-        nonGoals: ['Automatic merge is out of scope for v2.3.'],
+        nonGoals: ['Automatic merge is out of scope for v2.4.0-patch1.'],
         acceptanceCriteria: [
           'Task DAG is valid and every runnable task declares expected evidence.',
           'Reviewer and validator consume evidence-only context.',
@@ -88,7 +88,7 @@ ${description}
       adrDraft: {
         title: `ADR: ${missionTitle}`,
         context: description,
-        decision: 'Implement this mission through the v2.3 local Mission OS pipeline.',
+        decision: 'Implement this mission through the v2.4.0-patch1 local Mission OS pipeline.',
         consequences: 'The daemon may open a draft PR after validation, but must not merge it automatically.',
       },
       roadmap: [

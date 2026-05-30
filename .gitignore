@@ -9,6 +9,7 @@ dist/
 
 # Node.js / pnpm
 node_modules/
+.pnpm-store/
 *.tsbuildinfo
 
 # Secrets — .env.example stays tracked
@@ -31,6 +32,7 @@ Thumbs.db
 
 # Claude Code session lock files
 .claude/scheduled_tasks.lock
+.claude/launch.json
 
 # Runtime state lives outside the repo (~/.claude-code-247/) but if a
 # developer points it inside the repo, ignore the common dirs.
@@ -39,6 +41,17 @@ workspaces/
 worktrees/
 logs/
 .evidence/
+
+# High-frequency launch evidence is summarized in rollup files; raw tick
+# payloads stay local/runtime-only unless a stage explicitly promotes one.
+evidence/launch/roadmap-agent-tick-*.json
+evidence/launch/roadmap-agent-tick-*.md
+
+# Superseded local launchd self-dev prototype. Codex app automations are the
+# canonical autonomous continuation plane for this phase.
+scripts/self-dev-runbook.md
+scripts/self-dev-tick.sh
+scripts/launchd/com.claude247.self-dev.plist.tpl
 
 # Operator backups & sentinels created in archive/auto-evo/state/ at runtime
 archive/auto-evo/state/*.db

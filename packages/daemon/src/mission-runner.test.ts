@@ -119,6 +119,53 @@ describe('MissionRunner — workbook end-to-end glue', () => {
     expect(summary).toContain('openai: pass')
   })
 
+  it('persists model_usage from the runner model-usage.json + emits model.usage.recorded', async () => {
+    const mission = approveMission('Refactor the auth utility (no UI)')
+    const taskEvidenceDir = join(stateDir, 'coder-evidence')
+    mkdirSync(taskEvidenceDir, { recursive: true })
+    writeFileSync(join(taskEvidenceDir, 'diff-summary.md'), '# Diff Summary\n\nChanged app code.\n')
+    writeFileSync(join(taskEvidenceDir, 'model-usage.json'), JSON.stringify({
+      provider: 'claude-cli', inputTokens: 1500, outputTokens: 420, costUsd: 0.09, durationMs: 1234,
+    }))
+    const costSamples: Array<{ ts: string; costUsd: number; bucket?: string }> = []
+    const runner = new MissionRunner(db, {
+      stateDir,
+      rolePipeline: fakeRolePipeline(),
+      runner: fakeRunner({ taskEvidenceDir }),
+      requiresUi: false,
+      costRoller: { record: (s) => costSamples.push(s) },
+    })
+
+    const result = await runner.runMission(mission.id)
+
+    const usage = db.listModelUsage(result.taskId)
+    expect(usage).toHaveLength(1)
+    expect(usage[0]?.inputTokens).toBe(1500)
+    expect(usage[0]?.outputTokens).toBe(420)
+    expect(usage[0]?.costUsd).toBe(0.09)
+    expect(usage[0]?.provider).toBe('claude-cli')
+
+    const events = db.queryEvents({ type: 'model.usage.recorded' })
+    expect(events).toHaveLength(1)
+    expect(events[0]?.payload['inputTokens']).toBe(1500)
+    expect(events[0]?.payload['outputTokens']).toBe(420)
+
+    expect(costSamples).toHaveLength(1)
+    expect(costSamples[0]?.costUsd).toBe(0.09)
+    expect(costSamples[0]?.bucket).toBe(mission.id)
+  })
+
+  it('does not persist model_usage when the runner wrote no usage file', async () => {
+    const mission = approveMission('Refactor the auth utility (no UI)')
+    const taskEvidenceDir = makeTaskEvidence()
+    const runner = new MissionRunner(db, {
+      stateDir, rolePipeline: fakeRolePipeline(), runner: fakeRunner({ taskEvidenceDir }), requiresUi: false,
+    })
+    const result = await runner.runMission(mission.id)
+    expect(db.listModelUsage(result.taskId)).toHaveLength(0)
+    expect(db.queryEvents({ type: 'model.usage.recorded' })).toHaveLength(0)
+  })
+
   it('passes worker test evidence to validators instead of QA pending stubs', async () => {
     const mission = approveMission('Refactor backend evidence merge')
     const taskEvidenceDir = makeTaskEvidence('# Diff Summary\n\nDocs only.\n')
@@ -212,6 +259,28 @@ describe('MissionRunner — workbook end-to-end glue', () => {
     expect(result.routeDecision?.provider).toBe('codex-cli')
     expect(result.mergeDecision).toBe('WAITING')
     expect(result.status).toBe('waiting')
+  })
+
+  it('treats claude-docker as an Anthropic coder route for dual-family validation', async () => {
+    const mission = approveMission('Implement a low-risk docker Claude change')
+    const runner = new MissionRunner(db, {
+      stateDir,
+      rolePipeline: fakeRolePipeline(),
+      runner: fakeRunner({ taskEvidenceDir: makeTaskEvidence() }),
+      runnerConfig: {
+        mode: 'claude-docker',
+        maxConcurrentWorkers: 1,
+        worktreeBaseDir: join(stateDir, 'worktrees'),
+        outputBaseDir: join(stateDir, 'tasks'),
+      },
+      validators: [fakeValidator('gemini', 'pass'), fakeValidator('openai', 'pass')],
+      requiresUi: false,
+    })
+
+    const result = await runner.runMission(mission.id)
+
+    expect(result.routeDecision?.provider).toBe('claude-docker')
+    expect(result.mergeDecision).toBe('AUTO_MERGE')
   })
 
   it('UI mission runs BrowserQA and reaches AUTO_MERGE when screenshots pass', async () => {
@@ -339,6 +408,29 @@ describe('MissionRunner — workbook end-to-end glue', () => {
 
     expect(result.routeDecision?.provider).toBe('claude-cli')
     expect(readFileSync(join(result.evidenceDir, 'worker-route.json'), 'utf8')).toContain('"provider": "claude-cli"')
+  })
+
+  it('uses a runtime validatorFactory after task creation and hard-gates coder routing', async () => {
+    const mission = approveMission('Implement a factory-backed dual-validator change')
+    const seenTaskIds: string[] = []
+    const runner = new MissionRunner(db, {
+      stateDir,
+      rolePipeline: fakeRolePipeline(),
+      runner: fakeRunner({ taskEvidenceDir: makeTaskEvidence() }),
+      workerSessions: workerSessions(),
+      validatorFactory: ({ taskId }) => {
+        seenTaskIds.push(taskId)
+        return [fakeValidator('gemini', 'pass'), fakeValidator('openai', 'pass')]
+      },
+      requiresUi: false,
+    })
+
+    const result = await runner.runMission(mission.id)
+
+    expect(result.routeDecision?.provider).toBe('claude-cli')
+    expect(result.validatorResults.map((v) => v.validator)).toEqual(['gemini', 'openai'])
+    expect(seenTaskIds).toEqual([result.taskId])
+    expect(result.mergeDecision).toBe('AUTO_MERGE')
   })
 
   it('holds the mission when the worker router has no healthy coder session', async () => {

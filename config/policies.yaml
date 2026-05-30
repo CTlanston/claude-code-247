@@ -48,6 +48,21 @@ merge:
     - system_allow_remote_writes
     - repo_auto_merge_enabled
 
+# Structured Clarification Gate (ADR-0020). Deterministic ambiguity scoring
+# between intake and the role pipeline. Above trigger_threshold the gate asks
+# <= max_questions structured questions before the coder runs; clear missions
+# pass straight through (not over-gated).
+clarification:
+  enabled: true
+  trigger_threshold: 50
+  max_questions: 4
+  min_acceptance_criteria: 1
+  signals:
+    no_acceptance_criteria: 60
+    vague_description: 25
+    no_target_surface: 20
+    unbounded_scope: 25
+
 approval_required_for:
   - medium_risk_merge
   - high_risk_merge

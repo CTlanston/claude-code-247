@@ -1,0 +1,33 @@
+
+=== Ambiguous mission: "improve everything and make the whole app better, polish various stuff" ===
+[PASS] gate intercepted: exactly one mission.clarification.requested event
+[PASS] needsClarification(mission) === true
+[PASS] >=1 structured question asked (got 3)
+[PASS] <=4 questions per ADR-0020 max_questions (got 3)
+[PASS] no LLM token spend (model_usage empty)
+[PASS] answering emitted exactly one mission.clarification.resolved event
+[PASS] clarified-spec.md written at /tmp/claude-501/e2e2-shadow-5Y6tHL/prd/01KSVRE5PKHGJSTCY5MWQBDM1X.clarified-spec.md
+[PASS] clarified-spec.md has a Verifiable acceptance criteria section
+[PASS] gate.status(mission) === resolved
+
+=== Clear mission: "Add a "## Running the tests" section to README.md documenting the `node tests/run.js` command" ===
+[PASS] clear mission NOT gated (no clarification.requested event)
+[PASS] clear mission needsClarification === false
+
+--- clarified-spec.md (excerpt) ---
+# Clarified Spec — 01KSVRE5PKHGJSTCY5MWQBDM1X
+
+Operator answers to the clarification gate, folded into verifiable acceptance points.
+
+## Verifiable acceptance criteria
+- operator chose: Tests pass + reviewer approves
+
+## Scope & target
+- target: operator chose: Docs (README/PROGRESS/docs/**)
+- scope: operator chose: Smallest viable change to one file
+
+## Q&A
+- **What concretely makes this mission "done" (beyond "it works")?** → operator chose: Tests pass + reviewer approves
+- **Which concrete file, component, or command should this change touch?** → operator chose: Docs (README/PROGRESS/docs/**)
+
+=== SHADOW WALK PASS (0 failure(s)) ===

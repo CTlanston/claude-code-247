@@ -1,0 +1,24 @@
+Scope: all 26 workspace projects
+Lockfile is up to date, resolution step is skipped
+Progress: resolved 1, reused 0, downloaded 0, added 0
+Packages: +328
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Progress: resolved 328, reused 328, downloaded 0, added 328, done
+
+dependencies:
++ @aedev/core 0.0.1 <- packages/core
++ @aedev/daemon 0.0.1 <- packages/daemon
++ @aedev/qa 0.0.1 <- packages/qa
++ @aedev/validators 0.0.1 <- packages/validators
+
+devDependencies:
++ @eslint/js 9.39.4
++ eslint 9.39.4
++ playwright 1.60.0
++ prettier 3.8.3
++ tsx 4.22.3
++ typescript 5.9.3
++ typescript-eslint 8.59.4
++ vitest 3.2.4
+
+Done in 1s using pnpm v10.33.2

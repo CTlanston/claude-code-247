@@ -6,7 +6,7 @@ export function registerStatusRoutes(app: FastifyInstance, db: AedevDb, startTim
     status: 'running',
     version: '0.0.1',
     missionOs: {
-      version: 'v2.3',
+      version: 'v2.4.0-patch1',
       autonomy: 'draft-pr-only',
       schedulerIntervalMs: Number(process.env['AEDEV_SCHEDULER_INTERVAL_MS'] ?? '60000'),
       workerConcurrency: { min: 1, max: Number(process.env['AEDEV_WORKER_MAX'] ?? '5') },
