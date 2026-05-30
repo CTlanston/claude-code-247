@@ -14,11 +14,11 @@
 schema_version: 1
 version_target: production-usable-24x7
 current_part: III          # III = v2.4 real vertical slice -> production hardening
-current_stage: E2E-2-clarification-gate-built
+current_stage: ProductionHardened_v2.4_Ready
 current_substage: e2e-2-gate-green-L3-operator-walk-pending
 last_updated_utc: 2026-05-30T07:10:50Z
-last_session_id: s_0036
-total_sessions: 37
+last_session_id: s_0037
+total_sessions: 38
 weeks_elapsed: 0
 weeks_remaining: 0
 open_holds: 0
@@ -725,7 +725,7 @@ ApprovalGateway: ntfy → 操作员手机
 - commits: none; left local changes/evidence because no remote-write/PR authorization is available for this reconciliation slice
 - next_action: see §0 — operator review harvest commit `1dbc2e5`, keep target PR #12/#13 draft-only and unmerged, run E2E-2 L3 cockpit multi-round clarification walk, then schedule ADR-0021 pre-research.
 
-### s_0036 — 2026-05-30T07:30:24Z — E2E-Harvest: squash-merge + PR-ready + tech-debt cleared
+### s_0037 — 2026-05-30T07:30:24Z — E2E-Harvest: squash-merge + PR-ready + tech-debt cleared
 - stage_in: E2E-2-clarification-gate-built → stage_out: ProductionHardened_v2.4_Ready
 - squash-merge **1dbc2e5** folded `claude/e2e-1` (E2E-0 unblock + E2E-1 real loop & model_usage + E2E-1 hardening [runner:e2e1 real tokens in=18/out=4013 cost=$0.2727, decisive dual-family openai+gemini both pass] + E2E-2 ClarificationGate ADR-0020) into `codex/v24-vertical-slice`. 4 conflicts resolved: `claude-docker-runner.ts` (grafted my hardened base + Codex preflight — both symbol sets coexist, typecheck 0 + 61 runner tests pass), `EXECUTION_WORKBOOK.md` (kept my §0, folded Codex §9 s_0033–s_0035), 2 evidence logs (took claude/e2e-1).
 - full suite GREEN: typecheck 0, lint 0, test **591 passed / 6 skipped (97 files)**. One known-flaky preflight file-readability test (passes on rerun) — flagged, not yet stabilized.
