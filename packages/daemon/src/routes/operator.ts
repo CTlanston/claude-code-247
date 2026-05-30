@@ -11,6 +11,7 @@ import { RolePipeline } from '../roles/role-pipeline.js'
 import type { DraftPrInfo, DraftPrRequest } from '../draft-pr-gate.js'
 import { DraftPrGate, DraftPrGateError } from '../draft-pr-gate.js'
 import { createDefaultMissionValidatorFactory, inspectDefaultMissionValidatorSecrets } from '../validator-factory.js'
+import { allowRemoteWritesEnabled } from '../remote-write-policy.js'
 
 type Stage =
   | 'Intake'
@@ -936,25 +937,6 @@ function isTemplateRoadmapEnabled(): boolean {
     return /^(1|true|yes)$/i.test(process.env['AEDEV_COCKPIT_FORCE_TEMPLATE'])
   }
   return Boolean(process.env['VITEST'])
-}
-
-function allowRemoteWritesEnabled(stateDir: string): boolean {
-  if (process.env['AEDEV_ALLOW_REMOTE_WRITES'] !== undefined) {
-    return /^(1|true|yes)$/i.test(process.env['AEDEV_ALLOW_REMOTE_WRITES'])
-  }
-  const candidates = [
-    join(stateDir, 'config.yaml'),
-    join(process.env['HOME'] ?? '', '.aedev', 'config.yaml'),
-    join(process.env['HOME'] ?? '', '.claude-code-247', 'config.yaml'),
-    join(process.env['HOME'] ?? '', '.Codex-247', 'config.yaml'),
-  ]
-  return candidates.some((path) => {
-    try {
-      return existsSync(path) && /allow_remote_writes\s*:\s*true/i.test(readFileSync(path, 'utf8'))
-    } catch {
-      return false
-    }
-  })
 }
 
 function operatorLocalCliRunner(db: AedevDb, stateDir: string, sessions: Awaited<ReturnType<typeof discoverWorkerSessions>>, requireClaudeCoder = false) {

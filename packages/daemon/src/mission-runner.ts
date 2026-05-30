@@ -11,6 +11,7 @@ import { BrowserQA, MockBrowserDriver, type BrowserQAResult } from '@aedev/qa'
 import type { PreviewAdapter, PreviewResult } from '@aedev/preview'
 import { RolePipeline } from './roles/role-pipeline.js'
 import { ReleasePipeline, type GitClient, type DeployFn, type DeployRequest, type ReleaseResult } from './release-pipeline.js'
+import { DraftPrGateError, type DraftPrRequest, type DraftPrInfo } from './draft-pr-gate.js'
 
 /**
  * Mission validator contract.  Production wires real Gemini + OpenAI; tests
@@ -68,6 +69,16 @@ export interface MissionRunOptions {
 
   /** Optional long-lived cost roller (the daemon injects one); fed once per model.usage.recorded. */
   costRoller?: { record(sample: { ts: string; costUsd: number; bucket?: string }): void }
+
+  /**
+   * Injected autonomous draft-PR executor.  The daemon wires this as a
+   * `DraftPrGate` over `GhGitRemoteWriter` + `GhDraftPrCreator` (the runner
+   * plane).  When present and the decision is AUTO_MERGE, the loop opens a REAL
+   * draft PR instead of stopping at a mock merge — the gate itself fail-closes
+   * on allow_remote_writes / repo.enabled / forbidden paths, so leaving this
+   * unset (or remote writes disabled) preserves the no-push default.
+   */
+  draftPrExecutor?: { openDraftPr(req: DraftPrRequest): Promise<DraftPrInfo> }
 }
 
 export interface MissionRunResult {
@@ -86,6 +97,8 @@ export interface MissionRunResult {
   validatorRouteDecision?: RouteDecision
   browserQAResult?: BrowserQAResult
   releaseResult?: ReleaseResult
+  /** Set when the autonomous loop opened a real draft PR (gate was open). */
+  draftPr?: DraftPrInfo
 }
 
 export class MissionRunner {
@@ -157,6 +170,15 @@ export class MissionRunner {
       // 3. Bundle the evidence dir for downstream gates
       const bundle = readEvidenceBundle(evidenceDir)
 
+      // 3b. Real-diff forbidden-path signal.  The runner writes changed-paths.json
+      // (the actual `git diff` file list, computed in the worker/runner plane) into
+      // evidence; we gate on those paths, not on regexing evidence prose.  Feeds
+      // both risk scoring and the merge gate's hard BLOCK.
+      const changedPaths = readChangedPaths(evidenceDir)
+      const repoForGate = this.db.getRepo(mission.repoId)
+      const forbiddenPatterns = repoForGate?.forbiddenPaths?.length ? repoForGate.forbiddenPaths : DEFAULT_FORBIDDEN_PATHS
+      const forbiddenPathTouched = changedPaths.some((p) => forbiddenPatterns.some((pat) => forbiddenMatch(pat, p)))
+
       // 4. BrowserQA (UI missions).  We write the report INTO evidenceDir so it
       // overwrites the Phase-5 QA-role "Status: Pending" stub — MergePolicy's
       // hasScreenshotEvidence gate rejects that stub but accepts a real report.
@@ -190,7 +212,7 @@ export class MissionRunner {
       }
 
       // 5. Risk scoring
-      const factors = await Promise.resolve(this.opts.riskFactors?.() ?? defaultRiskFactors(bundle))
+      const factors = await Promise.resolve(this.opts.riskFactors?.() ?? defaultRiskFactors(bundle, forbiddenPathTouched))
       const risk = RiskScorer.compute(factors)
       writeFileSync(join(evidenceDir, 'risk-report.md'), renderRiskReport(risk))
       Object.assign(bundle, readEvidenceBundle(evidenceDir))
@@ -246,12 +268,48 @@ export class MissionRunner {
         requiresPreview: this.opts.requiresPreview ?? false,
         sensitiveLane: this.opts.sensitiveLane ?? false,
         secretScanHit: false,
-        forbiddenPathTouched: false,
+        forbiddenPathTouched,
         coderFamily: providerToFamily(routeDecision.provider),
         requireIndependentValidatorFamilies: this.requiresDualValidatorGate(),
       }
       const policy = this.opts.mergePolicy ?? new MergePolicy()
       const decision = policy.decide(risk.score, validatorResults, evidence)
+
+      // 7b. Autonomous draft PR (draft-pr-only autonomy).  On AUTO_MERGE, open a
+      // REAL draft PR through the injected gate instead of a mock merge.  The
+      // gate fail-closes on allow_remote_writes / repo.enabled / forbidden paths;
+      // we attempt only when the coder produced a real branch + changed files.
+      const localCommit = readLocalCommit(evidenceDir)
+      let draftPr: DraftPrInfo | undefined
+      if (decision === 'AUTO_MERGE' && this.opts.draftPrExecutor && repoForGate && localCommit?.branch && changedPaths.length > 0) {
+        const worktreeBaseDir = this.opts.runnerConfig?.worktreeBaseDir ?? join(this.opts.stateDir, 'worktrees')
+        const request: DraftPrRequest = {
+          repo: { ...repoForGate, path: join(worktreeBaseDir, task.id) },
+          missionId: mission.id,
+          title: mission.title,
+          branch: localCommit.branch,
+          base: repoForGate.defaultBranch,
+          changedPaths,
+          evidenceUri: evidenceDir,
+          riskScore: risk.score,
+          validatorResults,
+          rollbackNotes: 'Close the draft PR; nothing was merged (draft-pr-only autonomy).',
+        }
+        try {
+          draftPr = await this.opts.draftPrExecutor.openDraftPr(request)
+          this.db.updateMissionGitHub(mission.id, {
+            githubBranch: localCommit.branch, githubPrUrl: draftPr.url, githubPrNumber: draftPr.number,
+          })
+          this.db.insertEvent('mission.draft_pr_opened', 'mission', mission.id, {
+            url: draftPr.url, number: draftPr.number, branch: localCommit.branch, changedPaths,
+          })
+        } catch (e) {
+          const code = e instanceof DraftPrGateError ? e.code : 'DRAFT_PR_BLOCKED'
+          this.db.insertEvent('mission.draft_pr_blocked', 'mission', mission.id, {
+            code, reason: (e as Error).message, branch: localCommit.branch,
+          })
+        }
+      }
 
       // 8. Release pipeline (only on AUTO_MERGE)
       let releaseResult: ReleaseResult | undefined
@@ -259,7 +317,9 @@ export class MissionRunner {
         releaseResult = await this.opts.releasePipeline.release({
           mission,
           decision,
-          mergeSha: `mock-merge-${mission.id.slice(0, 8)}`,
+          // Real merged-branch SHA when the coder committed one; the literal
+          // mock-merge placeholder only remains for runners that never commit.
+          mergeSha: localCommit?.sha ?? `mock-merge-${mission.id.slice(0, 8)}`,
           productionDeployEnabled: true,
           outputDir: evidenceDir,
           ...(this.opts.healthcheckUrl !== undefined ? { healthcheckUrl: this.opts.healthcheckUrl } : {}),
@@ -290,6 +350,8 @@ export class MissionRunner {
         validatorCount: validatorResults.length,
         releaseDeployUrl: releaseResult?.deployUrl ?? null,
         releaseReverted: releaseResult?.reverted ?? false,
+        draftPrUrl: draftPr?.url ?? null,
+        draftPrNumber: draftPr?.number ?? null,
       })
 
       return {
@@ -306,6 +368,7 @@ export class MissionRunner {
         ...(validatorRouteDecision !== undefined ? { validatorRouteDecision } : {}),
         ...(browserQAResult !== undefined ? { browserQAResult } : {}),
         ...(releaseResult !== undefined ? { releaseResult } : {}),
+        ...(draftPr !== undefined ? { draftPr } : {}),
       }
     } catch (e) {
       this.db.updateMissionStatus(mission.id, 'failed')
@@ -579,10 +642,11 @@ function readEvidenceBundle(evidenceDir: string): Record<string, string> {
   return out
 }
 
-function defaultRiskFactors(bundle: Record<string, string>): import('@aedev/validators').RiskFactors {
+function defaultRiskFactors(bundle: Record<string, string>, forbiddenPathTouched: boolean): import('@aedev/validators').RiskFactors {
   const allText = Object.values(bundle).join('\n')
   return {
-    touchesForbiddenPaths: /\b\.env\b|secrets\/|\.github\//.test(allText),
+    // Real-diff signal (changed-paths.json) — not a regex over evidence prose.
+    touchesForbiddenPaths: forbiddenPathTouched,
     diffLinesChanged: 0,
     hasDependencyChanges: /package\.json|pnpm-lock\.yaml|requirements\.txt/.test(allText),
     testCoverageDecreased: false,
@@ -590,6 +654,52 @@ function defaultRiskFactors(bundle: Record<string, string>): import('@aedev/vali
     hasMigrationChanges: /migration|ALTER TABLE/i.test(allText),
     hasControlPlaneChanges: false,
   }
+}
+
+/** CLAUDE.md non-negotiable #3 default forbidden paths, used when a repo
+ *  registry entry has none of its own. */
+const DEFAULT_FORBIDDEN_PATHS = ['.env*', 'secrets/**', '.github/**', 'CLAUDE.md', 'AGENTS.md']
+
+/** Read the runner-emitted real git-diff file list from evidence. Empty when
+ *  the runner produced none (e.g. the mock runner does not touch a worktree). */
+function readChangedPaths(evidenceDir: string): string[] {
+  const path = join(evidenceDir, 'changed-paths.json')
+  if (!existsSync(path)) return []
+  try {
+    const parsed = JSON.parse(readFileSync(path, 'utf8')) as { changedPaths?: unknown }
+    return Array.isArray(parsed.changedPaths)
+      ? parsed.changedPaths.filter((p): p is string => typeof p === 'string')
+      : []
+  } catch {
+    return []
+  }
+}
+
+/** Read the runner-emitted local commit info (branch + sha) from evidence.
+ *  cli-runner writes local-commit.json; absent for the mock runner. */
+function readLocalCommit(evidenceDir: string): { branch?: string; sha?: string } | undefined {
+  const path = join(evidenceDir, 'local-commit.json')
+  if (!existsSync(path)) return undefined
+  try {
+    const parsed = JSON.parse(readFileSync(path, 'utf8')) as { branch?: unknown; sha?: unknown }
+    const out: { branch?: string; sha?: string } = {}
+    if (typeof parsed.branch === 'string' && parsed.branch) out.branch = parsed.branch
+    if (typeof parsed.sha === 'string' && parsed.sha) out.sha = parsed.sha
+    return out
+  } catch {
+    return undefined
+  }
+}
+
+/** Glob matcher for forbidden-path patterns: `secrets/**`, `.github/**`, `.env*`,
+ *  and exact paths like `CLAUDE.md`. Mirrors the runner's pathMatches. */
+function forbiddenMatch(pattern: string, path: string): boolean {
+  if (pattern.endsWith('/**')) {
+    const base = pattern.slice(0, -3)
+    return path === base || path.startsWith(base + '/')
+  }
+  if (pattern.endsWith('*')) return path.startsWith(pattern.slice(0, -1))
+  return path === pattern
 }
 
 function renderRiskReport(risk: { score: number; level: string; breakdown: Record<string, number> }): string {

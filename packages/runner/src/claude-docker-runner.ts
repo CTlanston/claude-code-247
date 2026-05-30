@@ -248,7 +248,11 @@ export class ClaudeDockerRunner implements RunnerInterface {
     // Real diff summary from the coder's actual git changes (committed vs origin
     // base + uncommitted), so validators + risk scoring see the true change set
     // instead of a stub.  Stale stub previously made validators rightly suspicious.
-    writeFileSync(join(evidenceDir, 'diff-summary.md'), await renderRealDiffSummary(workdir))
+    const diff = await renderRealDiffSummary(workdir)
+    writeFileSync(join(evidenceDir, 'diff-summary.md'), diff.summary)
+    // Emit the structured real git-diff file list so the daemon's mission-runner
+    // gates forbidden paths on the actual diff (parity with the local-cli runner).
+    writeFileSync(join(evidenceDir, 'changed-paths.json'), JSON.stringify({ changedPaths: diff.changedPaths }, null, 2))
     writeFileSync(join(evidenceDir, 'test-summary.md'), [
       '# Test Summary',
       '',
@@ -297,9 +301,9 @@ export class ClaudeDockerRunner implements RunnerInterface {
  * and changed-file list.  Excludes the harness scaffolding files (prompt.txt,
  * result.json, cli-envelope.json).  Falls back to a clear "no changes" note.
  */
-async function renderRealDiffSummary(workdir: string): Promise<string> {
+async function renderRealDiffSummary(workdir: string): Promise<{ summary: string; changedPaths: string[] }> {
   if (!existsSync(join(workdir, '.git'))) {
-    return '# Diff Summary\n\n(worktree is not a git repository)\n'
+    return { summary: '# Diff Summary\n\n(worktree is not a git repository)\n', changedPaths: [] }
   }
   const HARNESS = new Set(['prompt.txt', 'result.json', 'cli-envelope.json'])
   const git = async (args: string[]): Promise<string> => {
@@ -333,7 +337,7 @@ async function renderRealDiffSummary(workdir: string): Promise<string> {
     '```',
     '',
   ]
-  return lines.join('\n') + '\n'
+  return { summary: lines.join('\n') + '\n', changedPaths: uniq }
 }
 
 async function prepareWorktree(workdir: string, config: RunnerConfig): Promise<void> {
@@ -500,6 +504,9 @@ async function spawnDocker(bin: string, req: DockerExecRequest): Promise<DockerE
 
     child.stdout?.on('data', (d: Buffer) => { stdout += d.toString() })
     child.stderr?.on('data', (d: Buffer) => { stderr += d.toString() })
+    // A container that exits fast can close stdin before we finish writing;
+    // swallow the resulting EPIPE (the real outcome is the exit code).
+    child.stdin?.on('error', () => {})
     child.stdin?.write(req.stdin)
     child.stdin?.end()
 

@@ -146,6 +146,9 @@ export class ClaudeCodeAdapter {
         options.onStderr?.(chunk)
       })
 
+      // A broken/fast-exiting CLI can close stdin before we finish writing;
+      // swallow the resulting EPIPE (the real outcome is the exit code below).
+      child.stdin?.on('error', () => {})
       child.stdin?.write(prompt)
       child.stdin?.end()
 

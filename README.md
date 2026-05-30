@@ -76,6 +76,24 @@ token/cost usage is persisted. Architecture decision:
   any coder runs and writes a verifiable `clarified-spec.md`. Decision:
   [ADR-0020](docs/adr/0020-structured-clarification-gate.md).
 
+- **Autonomous draft-PR closure** — the daemon's mission loop now opens a **real
+  draft PR** on an `AUTO_MERGE` decision via
+  [`DraftPrGate`](packages/daemon/src/draft-pr-gate.ts) over
+  `GhGitRemoteWriter` / `GhDraftPrCreator` (runner plane), instead of stopping at
+  a mock merge. The gate fail-closes on `allow_remote_writes`, `repo.enabled`,
+  and forbidden paths, so the no-push default is preserved — with the flag
+  `false` (default) the loop opens nothing. This folds the proven
+  [`scripts/e2e1-real-loop.ts`](scripts/e2e1-real-loop.ts) path into the loop.
+
+- **Real-diff forbidden-path gate** — forbidden-path detection reads the runner's
+  `changed-paths.json` (the actual `git diff` file list) rather than regexing
+  evidence prose, and feeds the merge policy's hard BLOCK
+  ([`mission-runner.ts`](packages/daemon/src/mission-runner.ts)).
+
+- **`/github/sync` is gated** — the GitHub PR-sync route now fails closed with
+  `REMOTE_WRITES_DISABLED` unless `system.allow_remote_writes` is true (it was
+  previously guarded only by the presence of a GitHub token).
+
 ### Running the E2E loop
 
 ```bash
