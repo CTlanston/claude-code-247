@@ -1,4 +1,4 @@
-# v1.0.0 — Local-first 24/7 multi-repo Claude Code coworker
+# v2.4.0-patch1 — Local-first 24/7 multi-repo Claude Code coworker
 
 ## Summary
 

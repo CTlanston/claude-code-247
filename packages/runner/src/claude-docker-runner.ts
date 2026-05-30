@@ -361,7 +361,7 @@ async function resolveAuthFromEnv(env: NodeJS.ProcessEnv): Promise<ClaudeDockerA
   const token = env['AEDEV_CLAUDE_OAUTH_TOKEN']
   if (token) return { kind: 'token', token }
   const src = env['AEDEV_CLAUDE_CREDENTIAL_FILE']
-  if (src) return { kind: 'file', credential: await materializeCredentialFile(src) }
+  if (src) return { kind: 'file', credential: await materializeCredentialFromEnv(env) }
   throw new Error('HOLD-CLAUDE-AUTH-IN-DOCKER: set AEDEV_CLAUDE_OAUTH_TOKEN (preferred) or AEDEV_CLAUDE_CREDENTIAL_FILE, or inject an authProvider')
 }
 

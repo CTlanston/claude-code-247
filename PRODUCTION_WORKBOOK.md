@@ -16,30 +16,24 @@ canonical_repo: /Users/lanston/projects/claude-code-247
 canonical_branch_family: codex/v24-vertical-slice
 design_adr: docs/adr/0018-production-hardening-loop.md
 latest_handoff: docs/handoff/production-handoff-latest.md
-current_stage: E2E-1_REAL_LOOP_PRELIVE_IMPLEMENTATION
-last_updated_utc: 2026-05-30T01:06:52Z
-last_session_id: s_0035
-open_holds: 1
-blocked_on: HOLD-CLAUDE-AUTH-IN-DOCKER
+current_stage: E2E-2_CLARIFICATION_GATE_L3_PENDING
+last_updated_utc: 2026-05-30T07:10:50Z
+last_session_id: s_0036
+open_holds: 0
+blocked_on: none
 next_action: |
-  E2E-1 is in pre-live implementation. ADR-0019 exists; model_usage persistence
-  was already present at session start in local commit 6f0488a; s_0031 added the
-  mock-tested claude-docker runner seam, runner/provider routing, and Anthropic
-  family/auth mapping; s_0032 added the default OpenAI+Gemini validator factory
-  and production constructor injection through the approved runtime secrets path;
-  s_0033 added the local-safe Claude Docker static/runtime preflight and
-  credential-path redaction tests. s_0034 opened/recorded
-  HOLD-CLAUDE-AUTH-IN-DOCKER; s_0035 rechecked the live checkpoint and the
-  blocker remains because explicit operator GO, AEDEV_CLAUDE_DOCKER_IMAGE, and
-  readable AEDEV_CLAUDE_CREDENTIAL_FILE are absent; gh auth for CTlanston is
-  still invalid. No live Docker image, Claude/OpenAI/Gemini token spend,
-  remote-write gate change, target draft PR, branch push, or merge was
-  attempted. NEXT safe action = operator must provide explicit GO, a
-  Claude-capable Docker image, a readable materialized Claude credential file,
-  repaired gh auth, and one-run remote-write authorization; or keep
-  HOLD-CLAUDE-AUTH-IN-DOCKER open if container subscription auth is not viable.
-  The outward live E2E-1 run on CTlanston/multi-agent-brainstorm must reset
-  allow_remote_writes=false afterward.
+  Reconciled after local harvest commit 1dbc2e5 landed on codex/v24-vertical-slice.
+  E2E-1 is now recorded as proven by committed evidence: real Claude-in-Docker
+  work, model_usage, dual-family validator evidence, and draft-only PR proofs for
+  CTlanston/multi-agent-brainstorm PR #12/#13. E2E-2 structured clarification
+  gate (ADR-0020) is built and green locally, with deterministic ambiguity
+  scoring, <=4 option-style questions, mission.clarification events, and
+  clarified-spec.md rendering. Current safe next action: operator/L2 review the
+  harvest commit and run the E2E-2 L3 cockpit multi-round clarification walk.
+  Do not mark production-ready, merge target PR #12/#13, or start ADR-0021
+  pre-research until that review/walk is complete. Remote writes remain globally
+  disabled (`allow_remote_writes=false`); gh auth is still invalid in this run,
+  so no PR read/write verification was performed.
 active_automations:
   - id: claude-code-247-v2-3-autonomous-continuation
     name: Claude Code 247 production hardening loop
@@ -270,15 +264,12 @@ because the same local binaries were missing. In `s_0029`,
 (93 files, 554 passed, 6 env-gated smoke skips), `gh auth status`, and
 `pnpm test:cockpit:p3-remote-smoke` all passed.
 
-**Remaining:** E2E-1 is in pre-live implementation. ADR-0019, `model_usage`
-persistence, the mock-tested `claude-docker` runner seam, the default
-OpenAI+Gemini validator factory wiring, and the Claude Docker preflight path are
-present. `s_0034` recorded `HOLD-CLAUDE-AUTH-IN-DOCKER`; `s_0035` rechecked
-the same live checkpoint and the blocker remains: explicit operator GO,
-`AEDEV_CLAUDE_DOCKER_IMAGE`, and readable `AEDEV_CLAUDE_CREDENTIAL_FILE` are
-absent, and `gh auth status -h github.com` reports the active `CTlanston` token
-is invalid. The outward live loop still requires operator GO, repaired GitHub
-auth, and one-run remote-write authorization before any live side effect.
+**Remaining:** E2E-1/E2E-2 harvest evidence was merged locally in `1dbc2e5`.
+The production workbook had still pointed at the older `s_0035` hold state;
+`s_0036` reconciles that contradiction without product-code changes. The next
+operator-owned gate is E2E-2 L3: perform a real cockpit multi-round
+clarification walk and review the harvest commit before any production-ready
+claim or ADR-0021 pre-research stage.
 
 ### E2E-0_UNBLOCK_AND_BASELINE_GREEN
 
@@ -305,20 +296,22 @@ loop.
 Dockerized subscription-Claude coder, real OpenAI+Gemini dual-family
 validation, persisted `model_usage`, and a live draft-only PR.
 
-**Status:** in progress and currently held at the live checkpoint. ADR-0019 is
-written; `model_usage` persistence exists; `s_0031` added the mock-tested
-`claude-docker` runner seam and route/family/auth mapping; `s_0032` added the
-default OpenAI+Gemini validator factory, task-time secret resolution, optional
-active grant enforcement, and daemon/server/operator constructor injection;
-`s_0033` added the local-safe Claude Docker static/runtime preflight with
-credential-path redaction; `s_0034` recorded
-`HOLD-CLAUDE-AUTH-IN-DOCKER`; `s_0035` rechecked the live checkpoint and the
-hold remains because the live run lacks explicit operator GO, Claude Docker
-image/credential materialization, and valid GitHub CLI auth. Explicit operator
-GO is still required before any outward live run, live credential use, token
-spend, or remote-write enablement.
+**Status:** accepted by committed local harvest `1dbc2e5`. ADR-0019 is
+written; `model_usage` persistence exists; the `claude-docker` runner seam,
+default OpenAI+Gemini validator factory, Docker preflight path, and hardened
+real-token runner evidence are present. The committed evidence records PR #12
+as the first real draft-only proof and PR #13 as the hardened decisive
+dual-family proof. Both target PRs remain draft-only proof artifacts and must
+not be merged as part of this repo's production hardening.
 
 **Latest evidence:**
+- `evidence/e2e/s1/e2e1-real-loop-report.md`
+- `evidence/e2e/s1/HOLD-CLAUDE-AUTH-IN-DOCKER.md`
+- `evidence/e2e/s1/proof/pr12-gh-verified.json`
+- `evidence/e2e/s1/proof/pr12.diff`
+- `evidence/e2e/s1/proof/pr13-gh-verified.json`
+- `evidence/e2e/s1/proof/db-audit.txt`
+- `evidence/e2e/s1/proof/validators-run11.txt`
 - `evidence/e2e/s1/claude-docker-runner-prelive-2026-05-29-s0031.md`
 - `evidence/e2e/s1/validator-factory-prelive-2026-05-29-s0032.md`
 - `evidence/e2e/s1/claude-docker-preflight-2026-05-30-s0033.md`
@@ -327,6 +320,28 @@ spend, or remote-write enablement.
 
 **Acceptance:** see `EXECUTION_WORKBOOK.md` Stage E2E-1 and
 `docs/handoff/e2e-real-loop-plan-and-prompt.md`.
+
+### E2E-2_CLARIFICATION_GATE_L3_PENDING
+
+**Goal:** gate ambiguous missions before coder execution by asking structured
+operator questions and rendering a verifiable clarified spec.
+
+**Status:** built and locally green in harvest commit `1dbc2e5`; L3 operator
+walk pending. ADR-0020 is accepted. `ClarificationGate` uses deterministic
+signals and policy weights, emits `mission.clarification.{requested,answered,
+resolved}` events, writes `clarified-spec.md`, and is wired into intake as an
+injectable opt-in so default behavior remains unchanged.
+
+**Latest evidence:**
+- `docs/adr/0020-structured-clarification-gate.md`
+- `evidence/e2e/s2/shadow-walk.log`
+- `packages/daemon/src/clarification-gate.test.ts`
+- `packages/daemon/src/intake-clarification.test.ts`
+
+**Acceptance:** see `EXECUTION_WORKBOOK.md` Stage E2E-2. L1 is recorded as
+green (clarification-gate 11/11, intake-clarification 3/3, full suite 586
+passed/6 skipped in the harvested evidence). L3 remains pending: operator must
+walk a real multi-round clarification in the cockpit.
 
 ### P3_SECRETS_GRANT_SERVICE
 

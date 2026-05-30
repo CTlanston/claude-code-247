@@ -1,6 +1,6 @@
 {
   "name": "aedev",
-  "version": "0.0.1",
+  "version": "2.4.0-patch1",
   "private": true,
   "description": "Local-first 24/7 AI engineering OS",
   "engines": {

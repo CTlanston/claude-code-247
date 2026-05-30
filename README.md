@@ -16,7 +16,7 @@
 
 > The dual-kernel layout below is the **current** state as of v1.0.0 GA.
 > v2.0 collapses it to a single TypeScript control plane and removes the
-> Python tree entirely. See [V2_ARCHITECTURE.md](V2_ARCHITECTURE.md) for
+> Python tree entirely. See [V2_ARCHITECTURE.md](docs/archive/V2_ARCHITECTURE.md) for
 > the target architecture and the stage-by-stage plan.
 
 `claude-code-247` is one product OS with two cooperating kernels:
@@ -158,8 +158,8 @@ dispatcher T0; pass `--t0 2026-05-24T21:46Z` to override.
 
 - **`v1.0.0` GA — released 2026-05-25** (Python `claude247` kernel).
 - The first GA release. See [RELEASE_NOTES_GA.md](RELEASE_NOTES_GA.md)
-  for the full notes, [GA_GATE.md](GA_GATE.md) for the 19-gate GA
-  contract, and [M22_GA_DECISION_REPORT.md](M22_GA_DECISION_REPORT.md)
+  for the full notes, [GA_GATE.md](docs/archive/GA_GATE.md) for the 19-gate GA
+  contract, and [M22_GA_DECISION_REPORT.md](docs/archive/M22_GA_DECISION_REPORT.md)
   for the GA decision record.
 - **Soak gate was explicitly waived by the owner** after ~9h 12m of
   healthy soak evidence (4/4 launchd loaded, ~1182 dispatcher idle
@@ -182,7 +182,7 @@ dispatcher T0; pass `--t0 2026-05-24T21:46Z` to override.
 
 **v2 TypeScript line:**
 
-- [**V2_ARCHITECTURE.md**](V2_ARCHITECTURE.md) — full v2.0 architecture and
+- [**V2_ARCHITECTURE.md**](docs/archive/V2_ARCHITECTURE.md) — full v2.0 architecture and
   stage-by-stage implementation plan (start here)
 - [docs/operations/release-policy.md](docs/operations/release-policy.md) —
   current release-grade and tag policy
@@ -190,10 +190,10 @@ dispatcher T0; pass `--t0 2026-05-24T21:46Z` to override.
 **v1.0.0 (current GA):**
 
 - [RELEASE_NOTES_GA.md](RELEASE_NOTES_GA.md) — v1.0.0 release notes
-- [GA_GATE.md](GA_GATE.md) — 19-gate GA contract + owner-waiver policy
-- [M22_GA_DECISION_REPORT.md](M22_GA_DECISION_REPORT.md) — GA decision record
-- [M20_SOAK_RESULT.md](M20_SOAK_RESULT.md) — soak observation + waiver record
-- [DEFINITION_OF_DONE.md](DEFINITION_OF_DONE.md) — DoD checklist
+- [GA_GATE.md](docs/archive/GA_GATE.md) — 19-gate GA contract + owner-waiver policy
+- [M22_GA_DECISION_REPORT.md](docs/archive/M22_GA_DECISION_REPORT.md) — GA decision record
+- [M20_SOAK_RESULT.md](docs/archive/M20_SOAK_RESULT.md) — soak observation + waiver record
+- [DEFINITION_OF_DONE.md](docs/archive/DEFINITION_OF_DONE.md) — DoD checklist
 - [CHANGELOG.md](CHANGELOG.md) — release history
 - `docs/ARCHITECTURE.md` — module map and data flow (v1.0.0)
 - `docs/INSTALL.md` — full install + uninstall + doctor
