@@ -30,7 +30,7 @@ export function createServer(
   registerTaskRoutes(app, db)
   registerRepoRoutes(app, db)
   registerIntakeRoutes(app, db, stateDir)
-  registerGitHubRoutes(app, db)
+  registerGitHubRoutes(app, db, stateDir)
   registerSseRoutes(app, db)
   registerMemoryRoutes(app, db)
   registerSmokeRoutes(app, db)
