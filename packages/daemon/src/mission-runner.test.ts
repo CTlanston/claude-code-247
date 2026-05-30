@@ -95,6 +95,46 @@ function makeTaskEvidence(diffSummary = '# Diff Summary\n\nChanged app code.\n')
   return dir
 }
 
+describe('MissionRunner — real-diff forbidden-path gate (changed-paths.json)', () => {
+  function taskEvidenceWithChangedPaths(changedPaths: string[]): string {
+    const dir = join(stateDir, `coder-evidence-${Math.random().toString(16).slice(2)}`)
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'diff-summary.md'), '# Diff Summary\n\nChanged files.\n')
+    writeFileSync(join(dir, 'test-summary.md'), '# Test Summary\n\nTests passed.\n')
+    writeFileSync(join(dir, 'done-report.md'), '# Done\n\nDone.\n')
+    // What a real cli/docker runner writes from `git diff` in the runner plane.
+    writeFileSync(join(dir, 'changed-paths.json'), JSON.stringify({ changedPaths, forbiddenHits: [] }))
+    return dir
+  }
+
+  it('BLOCKS the merge when the real git diff touches a forbidden path — even with both validators passing', async () => {
+    const mission = approveMission('Refactor the auth utility (no UI)')
+    const runner = new MissionRunner(db, {
+      stateDir,
+      rolePipeline: fakeRolePipeline(),
+      runner: fakeRunner({ taskEvidenceDir: taskEvidenceWithChangedPaths(['src/auth.ts', '.github/workflows/ci.yml']) }),
+      validators: [fakeValidator('gemini', 'pass'), fakeValidator('openai', 'pass')],
+      requiresUi: false,
+    })
+    const result = await runner.runMission(mission.id)
+    expect(result.mergeDecision).toBe('BLOCKED')
+    expect(result.status).toBe('blocked')
+  })
+
+  it('does NOT block when the real git diff touches only allowed paths', async () => {
+    const mission = approveMission('Update the README (no UI)')
+    const runner = new MissionRunner(db, {
+      stateDir,
+      rolePipeline: fakeRolePipeline(),
+      runner: fakeRunner({ taskEvidenceDir: taskEvidenceWithChangedPaths(['README.md', 'src/foo.ts']) }),
+      validators: [fakeValidator('gemini', 'pass'), fakeValidator('openai', 'pass')],
+      requiresUi: false,
+    })
+    const result = await runner.runMission(mission.id)
+    expect(result.mergeDecision).toBe('AUTO_MERGE')
+  })
+})
+
 describe('MissionRunner — workbook end-to-end glue', () => {
   it('AUTO_MERGE when dual validators pass + low risk (non-UI mission)', async () => {
     const mission = approveMission('Refactor the auth utility (no UI)')

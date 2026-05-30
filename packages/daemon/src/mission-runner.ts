@@ -157,6 +157,15 @@ export class MissionRunner {
       // 3. Bundle the evidence dir for downstream gates
       const bundle = readEvidenceBundle(evidenceDir)
 
+      // 3b. Real-diff forbidden-path signal.  The runner writes changed-paths.json
+      // (the actual `git diff` file list, computed in the worker/runner plane) into
+      // evidence; we gate on those paths, not on regexing evidence prose.  Feeds
+      // both risk scoring and the merge gate's hard BLOCK.
+      const changedPaths = readChangedPaths(evidenceDir)
+      const repoForGate = this.db.getRepo(mission.repoId)
+      const forbiddenPatterns = repoForGate?.forbiddenPaths?.length ? repoForGate.forbiddenPaths : DEFAULT_FORBIDDEN_PATHS
+      const forbiddenPathTouched = changedPaths.some((p) => forbiddenPatterns.some((pat) => forbiddenMatch(pat, p)))
+
       // 4. BrowserQA (UI missions).  We write the report INTO evidenceDir so it
       // overwrites the Phase-5 QA-role "Status: Pending" stub — MergePolicy's
       // hasScreenshotEvidence gate rejects that stub but accepts a real report.
@@ -190,7 +199,7 @@ export class MissionRunner {
       }
 
       // 5. Risk scoring
-      const factors = await Promise.resolve(this.opts.riskFactors?.() ?? defaultRiskFactors(bundle))
+      const factors = await Promise.resolve(this.opts.riskFactors?.() ?? defaultRiskFactors(bundle, forbiddenPathTouched))
       const risk = RiskScorer.compute(factors)
       writeFileSync(join(evidenceDir, 'risk-report.md'), renderRiskReport(risk))
       Object.assign(bundle, readEvidenceBundle(evidenceDir))
@@ -246,7 +255,7 @@ export class MissionRunner {
         requiresPreview: this.opts.requiresPreview ?? false,
         sensitiveLane: this.opts.sensitiveLane ?? false,
         secretScanHit: false,
-        forbiddenPathTouched: false,
+        forbiddenPathTouched,
         coderFamily: providerToFamily(routeDecision.provider),
         requireIndependentValidatorFamilies: this.requiresDualValidatorGate(),
       }
@@ -579,10 +588,11 @@ function readEvidenceBundle(evidenceDir: string): Record<string, string> {
   return out
 }
 
-function defaultRiskFactors(bundle: Record<string, string>): import('@aedev/validators').RiskFactors {
+function defaultRiskFactors(bundle: Record<string, string>, forbiddenPathTouched: boolean): import('@aedev/validators').RiskFactors {
   const allText = Object.values(bundle).join('\n')
   return {
-    touchesForbiddenPaths: /\b\.env\b|secrets\/|\.github\//.test(allText),
+    // Real-diff signal (changed-paths.json) — not a regex over evidence prose.
+    touchesForbiddenPaths: forbiddenPathTouched,
     diffLinesChanged: 0,
     hasDependencyChanges: /package\.json|pnpm-lock\.yaml|requirements\.txt/.test(allText),
     testCoverageDecreased: false,
@@ -590,6 +600,36 @@ function defaultRiskFactors(bundle: Record<string, string>): import('@aedev/vali
     hasMigrationChanges: /migration|ALTER TABLE/i.test(allText),
     hasControlPlaneChanges: false,
   }
+}
+
+/** CLAUDE.md non-negotiable #3 default forbidden paths, used when a repo
+ *  registry entry has none of its own. */
+const DEFAULT_FORBIDDEN_PATHS = ['.env*', 'secrets/**', '.github/**', 'CLAUDE.md', 'AGENTS.md']
+
+/** Read the runner-emitted real git-diff file list from evidence. Empty when
+ *  the runner produced none (e.g. the mock runner does not touch a worktree). */
+function readChangedPaths(evidenceDir: string): string[] {
+  const path = join(evidenceDir, 'changed-paths.json')
+  if (!existsSync(path)) return []
+  try {
+    const parsed = JSON.parse(readFileSync(path, 'utf8')) as { changedPaths?: unknown }
+    return Array.isArray(parsed.changedPaths)
+      ? parsed.changedPaths.filter((p): p is string => typeof p === 'string')
+      : []
+  } catch {
+    return []
+  }
+}
+
+/** Glob matcher for forbidden-path patterns: `secrets/**`, `.github/**`, `.env*`,
+ *  and exact paths like `CLAUDE.md`. Mirrors the runner's pathMatches. */
+function forbiddenMatch(pattern: string, path: string): boolean {
+  if (pattern.endsWith('/**')) {
+    const base = pattern.slice(0, -3)
+    return path === base || path.startsWith(base + '/')
+  }
+  if (pattern.endsWith('*')) return path.startsWith(pattern.slice(0, -1))
+  return path === pattern
 }
 
 function renderRiskReport(risk: { score: number; level: string; breakdown: Record<string, number> }): string {
