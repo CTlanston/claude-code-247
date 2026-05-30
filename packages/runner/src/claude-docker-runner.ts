@@ -1,6 +1,6 @@
 import { spawn, execFile } from 'child_process'
 import { promisify } from 'util'
-import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync, chmodSync } from 'fs'
+import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync, chmodSync, statSync } from 'fs'
 import { copyFile, mkdtemp, rm } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -39,11 +39,101 @@ export interface ClaudeDockerRunnerOptions {
   env?: NodeJS.ProcessEnv
 }
 
+export type ClaudeDockerHoldCode = 'HOLD-CLAUDE-DOCKER-IMAGE' | 'HOLD-CLAUDE-AUTH-IN-DOCKER'
+
+export interface ClaudeDockerPreflightIssue {
+  holdCode: ClaudeDockerHoldCode
+  reason: string
+}
+
+export interface ClaudeDockerPreflightResult {
+  ready: boolean
+  imageConfigured: boolean
+  credentialMaterialization: 'env-file' | 'injected-provider' | 'missing'
+  credentialFileConfigured: boolean
+  credentialFileReadable: boolean | null
+  apiFallbackEnvPresent: string[]
+  issues: ClaudeDockerPreflightIssue[]
+  notes: string[]
+}
+
+export interface ClaudeDockerRuntimePreflightResult extends ClaudeDockerPreflightResult {
+  dockerProbeRan: boolean
+  dockerProbeExitCode: number | null
+}
+
+export interface ClaudeDockerPreflightOptions {
+  image?: string
+  credentialProviderConfigured?: boolean
+  credentialFileProbe?: (path: string) => boolean
+}
+
 const DEFAULT_TIMEOUT_MS = 600_000
+const DEFAULT_PREFLIGHT_TIMEOUT_MS = 30_000
 const DEFAULT_CLAUDE_CREDENTIAL_MOUNT = '/root/.claude/.credentials.json'
+const API_FALLBACK_ENV_NAMES = ['ANTHROPIC_API_KEY', 'ANTHROPIC_BASE_URL', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_API_URL'] as const
 
 export class ClaudeDockerRunner implements RunnerInterface {
   constructor(private readonly opts: ClaudeDockerRunnerOptions = {}) {}
+
+  async preflightRuntime(): Promise<ClaudeDockerRuntimePreflightResult> {
+    const env = this.opts.env ?? process.env
+    const image = this.opts.image ?? env['AEDEV_CLAUDE_DOCKER_IMAGE']
+    const staticPreflight = preflightClaudeDockerEnvironment(env, {
+      image: this.opts.image,
+      credentialProviderConfigured: Boolean(this.opts.credentialProvider),
+    })
+    if (!staticPreflight.ready || !image) {
+      return { ...staticPreflight, dockerProbeRan: false, dockerProbeExitCode: null }
+    }
+
+    const credentialProvider = this.opts.credentialProvider ?? (() => materializeCredentialFromEnv(env))
+    let credential: ClaudeDockerCredential
+    try {
+      credential = await credentialProvider()
+    } catch (err) {
+      return {
+        ...staticPreflight,
+        ready: false,
+        dockerProbeRan: false,
+        dockerProbeExitCode: null,
+        issues: [{
+          holdCode: 'HOLD-CLAUDE-AUTH-IN-DOCKER',
+          reason: holdReason(err),
+        }],
+      }
+    }
+
+    const credentialMount = credential.mountPath ?? DEFAULT_CLAUDE_CREDENTIAL_MOUNT
+    try {
+      const dockerResult = await (this.opts.runDocker ?? spawnDocker)(this.opts.dockerBin ?? 'docker', {
+        args: buildDockerPreflightArgs({
+          image,
+          credentialPath: credential.path,
+          credentialMount,
+        }),
+        stdin: '',
+        timeoutMs: Math.min(this.opts.timeoutMs ?? DEFAULT_PREFLIGHT_TIMEOUT_MS, DEFAULT_TIMEOUT_MS),
+      })
+      if (dockerResult.exitCode === 0 && !dockerResult.timedOut && !dockerResult.spawnError) {
+        return { ...staticPreflight, dockerProbeRan: true, dockerProbeExitCode: 0 }
+      }
+      return {
+        ...staticPreflight,
+        ready: false,
+        dockerProbeRan: true,
+        dockerProbeExitCode: dockerResult.exitCode,
+        issues: [{
+          holdCode: 'HOLD-CLAUDE-AUTH-IN-DOCKER',
+          reason: redactCredentialHostPath([
+            dockerResult.spawnError ?? (dockerResult.stderr.trim() || dockerResult.stdout.trim() || `docker probe exited ${dockerResult.exitCode}`),
+          ], credential.path)[0] ?? 'claude docker preflight failed',
+        }],
+      }
+    } finally {
+      await credential.cleanup?.()
+    }
+  }
 
   async run(task: Task, config: RunnerConfig): Promise<RunResult> {
     const started = Date.now()
@@ -54,10 +144,15 @@ export class ClaudeDockerRunner implements RunnerInterface {
     await prepareWorktree(workdir, config)
 
     const env = this.opts.env ?? process.env
-    const image = this.opts.image ?? env['AEDEV_CLAUDE_DOCKER_IMAGE']
-    if (!image) {
-      throw new Error('HOLD-CLAUDE-DOCKER-IMAGE: AEDEV_CLAUDE_DOCKER_IMAGE is required for claude-docker runner')
+    const preflight = preflightClaudeDockerEnvironment(env, {
+      image: this.opts.image,
+      credentialProviderConfigured: Boolean(this.opts.credentialProvider),
+    })
+    if (!preflight.ready) {
+      const issue = preflight.issues[0]
+      throw new Error(`${issue?.holdCode ?? 'HOLD-CLAUDE-AUTH-IN-DOCKER'}: ${issue?.reason ?? 'Claude Docker preflight failed'}`)
     }
+    const image = this.opts.image ?? env['AEDEV_CLAUDE_DOCKER_IMAGE'] ?? ''
 
     const credentialProvider = this.opts.credentialProvider ?? (() => materializeCredentialFromEnv(env))
     const credential = await credentialProvider()
@@ -148,6 +243,59 @@ export class ClaudeDockerRunner implements RunnerInterface {
   }
 }
 
+export function preflightClaudeDockerEnvironment(
+  env: NodeJS.ProcessEnv = process.env,
+  opts: ClaudeDockerPreflightOptions = {},
+): ClaudeDockerPreflightResult {
+  const imageConfigured = Boolean((opts.image ?? env['AEDEV_CLAUDE_DOCKER_IMAGE'])?.trim())
+  const credentialFileConfigured = Boolean(env['AEDEV_CLAUDE_CREDENTIAL_FILE']?.trim())
+  const credentialMaterialization =
+    opts.credentialProviderConfigured ? 'injected-provider'
+      : credentialFileConfigured ? 'env-file'
+        : 'missing'
+  const credentialFileReadable =
+    credentialMaterialization === 'env-file'
+      ? (opts.credentialFileProbe ?? defaultCredentialFileProbe)(env['AEDEV_CLAUDE_CREDENTIAL_FILE'] ?? '')
+      : credentialMaterialization === 'injected-provider'
+        ? true
+        : null
+  const apiFallbackEnvPresent = API_FALLBACK_ENV_NAMES.filter((name) => Boolean(env[name]))
+  const issues: ClaudeDockerPreflightIssue[] = []
+
+  if (!imageConfigured) {
+    issues.push({
+      holdCode: 'HOLD-CLAUDE-DOCKER-IMAGE',
+      reason: 'AEDEV_CLAUDE_DOCKER_IMAGE is required; no default image is allowed for claude-docker.',
+    })
+  }
+  if (credentialMaterialization === 'missing') {
+    issues.push({
+      holdCode: 'HOLD-CLAUDE-AUTH-IN-DOCKER',
+      reason: 'AEDEV_CLAUDE_CREDENTIAL_FILE or an injected credentialProvider is required; macOS keychain auth is not mounted into Linux containers.',
+    })
+  } else if (credentialMaterialization === 'env-file' && !credentialFileReadable) {
+    issues.push({
+      holdCode: 'HOLD-CLAUDE-AUTH-IN-DOCKER',
+      reason: 'AEDEV_CLAUDE_CREDENTIAL_FILE must point to a readable file before claude-docker can run.',
+    })
+  }
+
+  return {
+    ready: issues.length === 0,
+    imageConfigured,
+    credentialMaterialization,
+    credentialFileConfigured,
+    credentialFileReadable,
+    apiFallbackEnvPresent,
+    issues,
+    notes: [
+      'Claude Docker never uses Anthropic API fallback credentials for subscription auth.',
+      'API fallback environment variables are stripped from the container when present.',
+      'The credential source path is intentionally omitted from preflight output.',
+    ],
+  }
+}
+
 async function prepareWorktree(workdir: string, config: RunnerConfig): Promise<void> {
   rmSync(workdir, { recursive: true, force: true })
   const source = config.sourceRepoPath
@@ -168,6 +316,9 @@ async function materializeCredentialFromEnv(env: NodeJS.ProcessEnv): Promise<Cla
   if (!src) {
     throw new Error('HOLD-CLAUDE-AUTH-IN-DOCKER: AEDEV_CLAUDE_CREDENTIAL_FILE or an injected credentialProvider is required')
   }
+  if (!defaultCredentialFileProbe(src)) {
+    throw new Error('HOLD-CLAUDE-AUTH-IN-DOCKER: AEDEV_CLAUDE_CREDENTIAL_FILE must point to a readable file')
+  }
   const dir = await mkdtemp(join(tmpdir(), 'aedev-claude-docker-'))
   const dest = join(dir, '.credentials.json')
   await copyFile(src, dest)
@@ -177,6 +328,14 @@ async function materializeCredentialFromEnv(env: NodeJS.ProcessEnv): Promise<Cla
     cleanup: async () => {
       await rm(dir, { recursive: true, force: true })
     },
+  }
+}
+
+function defaultCredentialFileProbe(path: string): boolean {
+  try {
+    return existsSync(path) && statSync(path).isFile()
+  } catch {
+    return false
   }
 }
 
@@ -200,6 +359,19 @@ function buildDockerArgs(p: {
     '-e', `AEDEV_RUN_ID=${p.runId}`,
     p.image,
     ...p.command,
+  ]
+}
+
+function buildDockerPreflightArgs(p: {
+  image: string
+  credentialPath: string
+  credentialMount: string
+}): string[] {
+  return [
+    'run', '--rm', '-i',
+    '-v', `${p.credentialPath}:${p.credentialMount}:ro`,
+    p.image,
+    'sh', '-lc', `command -v claude >/dev/null && test -r ${shellQuote(p.credentialMount)}`,
   ]
 }
 
@@ -247,6 +419,14 @@ function parseClaudeJson(stdout: string): {
 
 function redactCredentialHostPath(args: string[], credentialPath: string): string[] {
   return args.map((arg) => arg.replace(credentialPath, '<claude-credential>'))
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`
+}
+
+function holdReason(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
 }
 
 async function spawnDocker(bin: string, req: DockerExecRequest): Promise<DockerExecResult> {

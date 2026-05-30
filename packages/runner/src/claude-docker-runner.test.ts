@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs
 import { join } from 'path'
 import { tmpdir } from 'os'
 import type { RunnerConfig, Task } from '@aedev/core'
-import { ClaudeDockerRunner, type DockerExecRequest } from './claude-docker-runner.js'
+import { ClaudeDockerRunner, preflightClaudeDockerEnvironment, type DockerExecRequest } from './claude-docker-runner.js'
 
 let tmpRoot: string
 
@@ -39,6 +39,92 @@ function makeConfig(root: string): RunnerConfig {
 }
 
 describe('ClaudeDockerRunner', () => {
+  it('preflights image and credential materialization without leaking credential paths', () => {
+    const result = preflightClaudeDockerEnvironment({
+      AEDEV_CLAUDE_CREDENTIAL_FILE: '/private/tmp/not-a-real-claude-credential.json',
+      ANTHROPIC_API_KEY: 'api-key-must-not-be-used',
+    }, {
+      credentialFileProbe: () => false,
+    })
+
+    expect(result.ready).toBe(false)
+    expect(result.imageConfigured).toBe(false)
+    expect(result.credentialMaterialization).toBe('env-file')
+    expect(result.credentialFileReadable).toBe(false)
+    expect(result.apiFallbackEnvPresent).toEqual(['ANTHROPIC_API_KEY'])
+    expect(result.issues.map((issue) => issue.holdCode)).toEqual([
+      'HOLD-CLAUDE-DOCKER-IMAGE',
+      'HOLD-CLAUDE-AUTH-IN-DOCKER',
+    ])
+    expect(JSON.stringify(result)).not.toContain('/private/tmp/not-a-real-claude-credential.json')
+    expect(result.notes.join('\n')).toContain('stripped from the container')
+  })
+
+  it('preflights ready when an explicit image and injected credential provider are configured', () => {
+    const result = preflightClaudeDockerEnvironment({}, {
+      image: 'claude-worker:test',
+      credentialProviderConfigured: true,
+    })
+
+    expect(result.ready).toBe(true)
+    expect(result.imageConfigured).toBe(true)
+    expect(result.credentialMaterialization).toBe('injected-provider')
+    expect(result.credentialFileReadable).toBe(true)
+    expect(result.issues).toEqual([])
+  })
+
+  it('runtime preflight probes the image for claude and a readable credential mount', async () => {
+    const credentialPath = join(tmpRoot, 'credential.json')
+    writeFileSync(credentialPath, '{"ok":true}')
+    let cleaned = false
+    let seen: DockerExecRequest | undefined
+    const runner = new ClaudeDockerRunner({
+      image: 'claude-worker:test',
+      credentialProvider: async () => ({
+        path: credentialPath,
+        cleanup: () => { cleaned = true },
+      }),
+      runDocker: async (_bin, req) => {
+        seen = req
+        return { exitCode: 0, stdout: '', stderr: '' }
+      },
+    })
+
+    const result = await runner.preflightRuntime()
+
+    expect(result.ready).toBe(true)
+    expect(result.dockerProbeRan).toBe(true)
+    expect(result.dockerProbeExitCode).toBe(0)
+    expect(cleaned).toBe(true)
+    expect(seen?.stdin).toBe('')
+    expect(seen?.args).toContain('claude-worker:test')
+    expect(seen?.args).toContain('sh')
+    expect(seen?.args.join(' ')).toContain('command -v claude')
+    expect(seen?.args.some((arg) => arg === `${credentialPath}:/root/.claude/.credentials.json:ro`)).toBe(true)
+  })
+
+  it('runtime preflight redacts credential paths from docker probe failures', async () => {
+    const credentialPath = join(tmpRoot, 'credential.json')
+    writeFileSync(credentialPath, '{"ok":true}')
+    const runner = new ClaudeDockerRunner({
+      image: 'claude-worker:test',
+      credentialProvider: async () => ({ path: credentialPath }),
+      runDocker: async () => ({
+        exitCode: 127,
+        stdout: '',
+        stderr: `cannot read ${credentialPath}`,
+      }),
+    })
+
+    const result = await runner.preflightRuntime()
+
+    expect(result.ready).toBe(false)
+    expect(result.dockerProbeRan).toBe(true)
+    expect(result.issues[0]?.holdCode).toBe('HOLD-CLAUDE-AUTH-IN-DOCKER')
+    expect(result.issues[0]?.reason).toContain('<claude-credential>')
+    expect(result.issues[0]?.reason).not.toContain(credentialPath)
+  })
+
   it('requires an explicit Claude-capable Docker image', async () => {
     const runner = new ClaudeDockerRunner({
       env: {},
@@ -52,6 +138,17 @@ describe('ClaudeDockerRunner', () => {
     const runner = new ClaudeDockerRunner({ env: { AEDEV_CLAUDE_DOCKER_IMAGE: 'claude-worker:test' } })
 
     await expect(runner.run(makeTask(), makeConfig(tmpRoot))).rejects.toThrow(/HOLD-CLAUDE-AUTH-IN-DOCKER/)
+  })
+
+  it('rejects a configured credential source that is not a readable file', async () => {
+    const runner = new ClaudeDockerRunner({
+      env: {
+        AEDEV_CLAUDE_DOCKER_IMAGE: 'claude-worker:test',
+        AEDEV_CLAUDE_CREDENTIAL_FILE: join(tmpRoot, 'missing-credential.json'),
+      },
+    })
+
+    await expect(runner.run(makeTask(), makeConfig(tmpRoot))).rejects.toThrow(/must point to a readable file/)
   })
 
   it('runs claude through docker with read-only credential mount and writes evidence', async () => {

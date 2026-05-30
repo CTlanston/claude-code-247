@@ -6,7 +6,7 @@ export type { RunnerMode, RunnerConfig, RunResult } from '@aedev/core'
 export { EvidenceWriter } from './evidence.js'
 export { MockRunner } from './mock-runner.js'
 export { DockerRunner } from './docker-runner.js'
-export { ClaudeDockerRunner } from './claude-docker-runner.js'
+export { ClaudeDockerRunner, preflightClaudeDockerEnvironment } from './claude-docker-runner.js'
 export { WorktreeManager } from './worktree.js'
 export { ClaudeCodeAdapter } from './claude-adapter.js'
 export { CodexCliAdapter } from './codex-adapter.js'
@@ -38,6 +38,11 @@ export type { DiscoverWorkerSessionsOptions } from './worker-session-discovery.j
 export type { DockerRunnerOptions } from './docker-runner.js'
 export type {
   ClaudeDockerCredential,
+  ClaudeDockerHoldCode,
+  ClaudeDockerPreflightIssue,
+  ClaudeDockerPreflightOptions,
+  ClaudeDockerPreflightResult,
+  ClaudeDockerRuntimePreflightResult,
   ClaudeDockerRunnerOptions,
   DockerExecRequest,
   DockerExecResult,

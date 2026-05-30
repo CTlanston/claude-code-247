@@ -15,10 +15,10 @@ schema_version: 1
 version_target: production-usable-24x7
 current_part: III          # III = v2.4 real vertical slice -> production hardening
 current_stage: ProductionHardening
-current_substage: e2e-1-prelive-default-validator-factory-ready
-last_updated_utc: 2026-05-29T23:40:00Z
-last_session_id: s_0032
-total_sessions: 32
+current_substage: e2e-1-prelive-claude-docker-preflight-ready
+last_updated_utc: 2026-05-30T00:09:30Z
+last_session_id: s_0033
+total_sessions: 33
 weeks_elapsed: 0
 weeks_remaining: 0
 open_holds: 0
@@ -28,15 +28,17 @@ next_action: |
   was already present at session start in local commit 6f0488a; s_0031 added the
   mock-tested claude-docker runner seam, runner/provider routing, and Anthropic
   family/auth mapping; s_0032 added the default OpenAI+Gemini validator factory
-  and production constructor injection through the approved runtime secrets path.
-  Baseline gates are green: doctor PASS, lint PASS, typecheck PASS, test PASS
-  (95 files, 569 passed, 6 env-gated smoke skips). No live Docker image,
-  Claude/OpenAI/Gemini token spend, remote-write gate change, target draft PR, or
-  merge was attempted. NEXT safe slice = resolve the live Claude Docker
-  image/credential materialization path, or record HOLD-CLAUDE-AUTH-IN-DOCKER if
+  and production constructor injection through the approved runtime secrets path;
+  s_0033 added the local-safe Claude Docker static/runtime preflight and
+  credential-path redaction tests. Baseline gates are green: doctor PASS, lint
+  PASS, typecheck PASS, test PASS (95 files, 574 passed, 6 env-gated smoke
+  skips). No live Docker image, Claude/OpenAI/Gemini token spend, remote-write
+  gate change, target draft PR, or merge was attempted. NEXT safe action =
+  operator must provide explicit GO plus AEDEV_CLAUDE_DOCKER_IMAGE and readable
+  AEDEV_CLAUDE_CREDENTIAL_FILE, or record HOLD-CLAUDE-AUTH-IN-DOCKER if
   container subscription auth is not viable. The outward live E2E-1 run on
-  CTlanston/multi-agent-brainstorm still requires explicit operator GO and must
-  reset allow_remote_writes=false afterward.
+  CTlanston/multi-agent-brainstorm must reset allow_remote_writes=false
+  afterward.
 sla:
   daemon_recovery_p95_sec: 90
   approval_e2e_p95_min: 5   # post-GA hardening gate per ADR-0014
@@ -657,6 +659,37 @@ ApprovalGateway: ntfy → 操作员手机
 - next_action: <见 §0>
 - notes: <一两句>
 ```
+
+### s_0033 — 2026-05-30T00:09:30Z — E2E-1 pre-live Claude Docker preflight
+
+- stage_in: ProductionHardening.e2e-1-prelive-default-validator-factory-ready → stage_out: ProductionHardening.e2e-1-prelive-claude-docker-preflight-ready
+- actor: codex (autonomous production-hardening loop)
+- context_at_boot:
+    - branch `codex/v24-vertical-slice` ahead of origin by 10
+    - worktree had two pre-existing untracked evidence logs under `evidence/e2e/s1/`; preserved and not deleted
+    - `PRODUCTION_WORKBOOK.md` and latest handoff pointed at the next local-safe E2E-1 slice: resolve live Claude Docker image/credential materialization or record HOLD if container subscription auth is not viable
+- l1: E2E-1 pre-live Claude Docker preflight slice 8/8 (static preflight, runtime Docker probe hook, explicit image gate, explicit credential materialization gate, unreadable credential HOLD, API fallback env detection without use, credential path redaction, runner exports/tests) · l2: not_run · l3: not_run
+- shipped:
+    - added `preflightClaudeDockerEnvironment()` to classify explicit `AEDEV_CLAUDE_DOCKER_IMAGE`, `AEDEV_CLAUDE_CREDENTIAL_FILE`/injected-provider materialization, and API fallback env presence without exposing secret values or credential paths
+    - added `ClaudeDockerRunner.preflightRuntime()` to materialize the credential, run an injected/real Docker probe, and verify the image exposes `claude` plus a readable read-only credential mount
+    - existing `run()` path now uses static preflight before credential materialization or Docker execution
+    - exported preflight helper/types from `@aedev/runner`
+    - added tests for missing image/auth HOLDs, unreadable credential files, injected provider readiness, runtime probe success, and runtime probe credential-path redaction
+- validation:
+    - `pnpm exec vitest run packages/runner/src/claude-docker-runner.test.ts` PASS (1 file, 10 tests)
+    - `bash scripts/doctor.sh` PASS (required checks; daemon install/responding warnings only)
+    - `pnpm typecheck` PASS
+    - `pnpm lint` PASS
+    - `pnpm test` PASS (95 files, 574 passed, 6 env-gated smoke skips)
+    - `rg "child_process" packages/daemon/src` PASS (no matches)
+    - `git diff --check` PASS
+- evidence:
+    - `evidence/e2e/s1/claude-docker-preflight-2026-05-30-s0033.md`
+- holds_opened: 0 · holds_resolved: 0
+- holds: none open
+- remote_writes: not attempted; `allow_remote_writes` not changed; no target draft PR; no merge
+- commits: local commit `[E2E-1] claude-docker preflight; accept 8/8`
+- next_action: E2E-1 live checkpoint — operator must provide explicit GO plus `AEDEV_CLAUDE_DOCKER_IMAGE` and readable `AEDEV_CLAUDE_CREDENTIAL_FILE`, or record `HOLD-CLAUDE-AUTH-IN-DOCKER` if container subscription auth cannot be safely materialized; after any live outward run, reset `allow_remote_writes=false`.
 
 ### s_0032 — 2026-05-29T23:40:00Z — E2E-1 pre-live default validator factory
 
@@ -1547,6 +1580,7 @@ ApprovalGateway: ntfy → 操作员手机
 
 | 日期 | 版本 | 改动 | 由谁 | 引用 |
 |---|---|---|---|---|
+| 2026-05-30 | 4.2 | s_0033 E2E-1 pre-live Claude Docker preflight: static/runtime image and credential readiness checks, credential-path redaction, baseline green | codex | `packages/runner/src/claude-docker-runner.ts`, `evidence/e2e/s1/claude-docker-preflight-2026-05-30-s0033.md`, `EXECUTION_WORKBOOK.md §9 s_0033` |
 | 2026-05-29 | 4.1 | s_0032 E2E-1 pre-live default validator factory: Gemini/OpenAI task-time runtime secret resolution, optional active grant enforcement, production constructor injection, baseline green | codex | `packages/daemon/src/validator-factory.ts`, `evidence/e2e/s1/validator-factory-prelive-2026-05-29-s0032.md`, `EXECUTION_WORKBOOK.md §9 s_0032` |
 | 2026-05-29 | 4.0 | s_0031 E2E-1 pre-live claude-docker runner seam: mock-tested Docker Claude worker, route/family/auth mapping, offline dependency store recovery, baseline green | codex | `packages/runner/src/claude-docker-runner.ts`, `evidence/e2e/s1/claude-docker-runner-prelive-2026-05-29-s0031.md`, `EXECUTION_WORKBOOK.md §9 s_0031` |
 | 2026-05-29 | 3.9 | s_0030 E2E-0 closeout reconciliation: PRODUCTION_WORKBOOK and latest handoff aligned with s_0029/5371e03; next action remains gated E2E-1 ADR/precheck | codex | `PRODUCTION_WORKBOOK.md`, `docs/handoff/production-handoff-latest.md`, `EXECUTION_WORKBOOK.md §9 s_0030` |
