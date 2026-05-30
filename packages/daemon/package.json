@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@aedev/core": "workspace:*",
+    "@aedev/cost-meter": "workspace:*",
     "@aedev/event-log": "workspace:*",
     "@aedev/github": "workspace:*",
     "@aedev/preview": "workspace:*",

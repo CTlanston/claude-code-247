@@ -16,12 +16,14 @@ import { MissionRunner } from './mission-runner.js'
 import { discoverWorkerSessions } from '@aedev/runner'
 import { resolveStateDir } from './paths.js'
 import { createDefaultMissionValidatorFactory } from './validator-factory.js'
+import type { CostRoller } from '@aedev/cost-meter'
 
 export function createServer(
   db: AedevDb,
   startTime: Date = new Date(),
   stateDir: string = resolveStateDir(),
   operatorOptions: OperatorRouteOptions = {},
+  costRoller?: CostRoller,
 ) {
   const app = Fastify({ logger: false })
   app.register(cors, { origin: true })
@@ -33,7 +35,7 @@ export function createServer(
   registerGitHubRoutes(app, db, stateDir)
   registerSseRoutes(app, db)
   registerMemoryRoutes(app, db)
-  registerSmokeRoutes(app, db)
+  registerSmokeRoutes(app, db, costRoller)
   registerOperatorRoutes(app, db, stateDir, operatorOptions)
   app.get('/approvals', async () => ({ approvals: db.listApprovals() }))
   app.post<{ Params: { id: string } }>('/missions/:id/run', async (req, reply) => {

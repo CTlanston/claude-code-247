@@ -147,6 +147,9 @@ importers:
       '@aedev/core':
         specifier: workspace:*
         version: link:../core
+      '@aedev/cost-meter':
+        specifier: workspace:*
+        version: link:../cost-meter
       '@aedev/event-log':
         specifier: workspace:*
         version: link:../event-log
