@@ -31,7 +31,7 @@ PNPM_DIR="$(dirname "$PNPM_BIN")"
 NODE_DIR="$(dirname "$NODE_BIN")"
 PATH_VAL="$PNPM_DIR:$NODE_DIR:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
-sed -e "s#@@PNPM@@#${PNPM_BIN}#g" \
+sed -e "s#@@NODE@@#${NODE_BIN}#g" \
     -e "s#@@DAEMON_ENTRY@@#${ENTRY_REL}#g" \
     -e "s#@@REPO_ROOT@@#${REPO_ROOT}#g" \
     -e "s#@@LOG_DIR@@#${LOG_DIR}#g" \

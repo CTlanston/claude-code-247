@@ -2,14 +2,19 @@
 <!-- Single daemon plist (Stage F3 + P1). Rendered by scripts/install_launchd.sh.
      Runs the TS daemon entry packages/daemon/src/main.ts on port 7247, with the
      dispatcher + scheduler inside one process. PATH is pinned so the worker can
-     find pnpm/node/git/claude/codex under launchd's minimal environment. -->
+     find pnpm/node/git/claude/codex under launchd's minimal environment.
+     ProgramArguments execs node DIRECTLY (node --import tsx <entry>) rather than
+     `pnpm tsx ...` so launchd tracks the actual :7247 listener PID — otherwise the
+     pnpm/tsx wrapper chain orphans the node grandchild, which keeps the port and
+     makes kickstart/KeepAlive restarts crash-loop on EADDRINUSE. -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
   <key>Label</key><string>com.claude247.daemon</string>
   <key>ProgramArguments</key>
   <array>
-    <string>@@PNPM@@</string>
+    <string>@@NODE@@</string>
+    <string>--import</string>
     <string>tsx</string>
     <string>@@DAEMON_ENTRY@@</string>
   </array>
