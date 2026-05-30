@@ -1,23 +1,23 @@
 
-> aedev@0.0.1 typecheck /Users/lanston/projects/claude-code-247
+> aedev@0.0.1 typecheck /Users/lanston/projects/cc247-e2e1
 > pnpm -r typecheck
 
 Scope: 25 of 26 workspace projects
 apps/dashboard typecheck$ tsc --noEmit
 packages/core typecheck$ tsc --noEmit
-packages/secrets typecheck$ tsc --noEmit
 packages/event-log typecheck$ tsc --noEmit
+packages/secrets typecheck$ tsc --noEmit
 packages/secrets typecheck: Done
 packages/shadow typecheck$ tsc --noEmit
 packages/event-log typecheck: Done
 packages/supervisor typecheck$ tsc --noEmit
 packages/core typecheck: Done
-apps/dashboard typecheck: Done
 packages/shadow typecheck: Done
+apps/dashboard typecheck: Done
 packages/supervisor typecheck: Done
 packages/agent-mesh typecheck$ tsc --noEmit
-packages/chaos typecheck$ tsc --noEmit
 packages/approval-v2 typecheck$ tsc --noEmit
+packages/chaos typecheck$ tsc --noEmit
 packages/claude247-bridge typecheck$ tsc --noEmit
 packages/approval-v2 typecheck: Done
 packages/cli typecheck$ tsc --noEmit
@@ -27,9 +27,9 @@ packages/chaos typecheck: Done
 packages/github typecheck$ tsc --noEmit
 packages/claude247-bridge typecheck: Done
 packages/interrupt-bus typecheck$ tsc --noEmit
-packages/interrupt-bus typecheck: Done
-packages/moves typecheck$ tsc --noEmit
 packages/cli-robust typecheck: Done
+packages/moves typecheck$ tsc --noEmit
+packages/interrupt-bus typecheck: Done
 packages/preview typecheck$ tsc --noEmit
 packages/cli typecheck: Done
 packages/push-policy typecheck$ tsc --noEmit
@@ -43,10 +43,10 @@ packages/push-policy typecheck: Done
 packages/qa typecheck: Done
 packages/sentinel typecheck: Done
 packages/validators typecheck: Done
-packages/cost-meter typecheck$ tsc --noEmit
-packages/security typecheck$ tsc --noEmit
-packages/runner typecheck$ tsc --noEmit
 packages/roadmap-agent typecheck$ tsc --noEmit
+packages/cost-meter typecheck$ tsc --noEmit
+packages/runner typecheck$ tsc --noEmit
+packages/security typecheck$ tsc --noEmit
 packages/cost-meter typecheck: Done
 packages/security typecheck: Done
 packages/roadmap-agent typecheck: Done

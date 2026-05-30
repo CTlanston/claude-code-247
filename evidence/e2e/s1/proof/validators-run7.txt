@@ -1,0 +1,3 @@
+## Validators
+- gemini: pass — The task successfully added a "Running the tests" section to the `README.md` as planned. The changes are verified by new, passing tests that ensure the documentation remains accurate. The evidence is complete, consistent, tests passed, and the risk is low.
+- openai: pass — The engineering task is safe to merge as it includes all necessary evidence, with tests passing successfully and no violations of safety or correctness. The changes made to the README.md and the addition of tests in tests/readme_docs.test.js align with the outlined plan, and the risk level is low.

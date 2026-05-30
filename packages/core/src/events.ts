@@ -5,6 +5,7 @@ export type EventType =
   | 'approval.created' | 'approval.decided'
   | 'run.started' | 'run.completed'
   | 'model.usage.recorded'
+  | 'mission.clarification.requested' | 'mission.clarification.answered' | 'mission.clarification.resolved'
   | 'secret_grant.created' | 'secret_grant.revoked'
 
 // Re-exported for convenience — callers use db.insertEvent(type, ...) directly

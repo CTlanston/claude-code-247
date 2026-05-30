@@ -79,6 +79,21 @@ export {
   createDefaultMissionValidatorFactory,
   inspectDefaultMissionValidatorSecrets,
 } from './validator-factory.js'
+export {
+  ClarificationGate,
+  scoreAmbiguity,
+  renderClarifiedSpec,
+  DEFAULT_CLARIFICATION_POLICY,
+} from './clarification-gate.js'
+export type {
+  ClarificationPolicy,
+  ClarificationField,
+  ClarificationChoice,
+  ClarificationQuestion,
+  AmbiguityResult,
+  ClarificationAnswer,
+  ClarificationEvaluation,
+} from './clarification-gate.js'
 export type {
   DefaultMissionValidatorFactoryOptions,
   DefaultValidatorSecretStatus,

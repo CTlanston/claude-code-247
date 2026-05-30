@@ -181,12 +181,20 @@ describe('ClaudeDockerRunner', () => {
 
     expect(result.exitCode).toBe(0)
     expect(cleaned).toBe(true)
-    expect(seen?.stdin).toContain('Implement a tiny change')
-    expect(seen?.args).toContain('-i')
-    expect(seen?.args).toContain('claude-worker:test')
-    expect(seen?.args.slice(-3)).toEqual(['--print', '--output-format', 'json'])
+    // Image runs via its own ENTRYPOINT — no command/CMD is appended; image is the last arg.
+    expect(seen?.args.at(-1)).toBe('claude-worker:test')
+    // Worktree mounts at /workspace (where the entrypoint reads prompt.txt / writes result.json).
+    expect(seen?.args.some((arg) => arg.endsWith(':/workspace:rw'))).toBe(true)
+    // Role/model/permission/tools are passed as CLAUDE_* env per the image contract.
+    expect(seen?.args).toContain('CLAUDE_ROLE=coder')
+    expect(seen?.args).toContain('CLAUDE_PERMISSION_MODE=bypassPermissions')
+    expect(seen?.args.some((arg) => arg.startsWith('CLAUDE_MODEL='))).toBe(true)
+    expect(seen?.args.some((arg) => arg.startsWith('CLAUDE_ALLOWED_TOOLS='))).toBe(true)
     expect(seen?.args.some((arg) => arg === `${credentialPath}:/root/.claude/.credentials.json:ro`)).toBe(true)
-    expect(seen?.args.some((arg) => arg.includes('ANTHROPIC_API_KEY'))).toBe(false)
+    // ANTHROPIC_* are explicitly cleared inside the container (no paid-API fallback);
+    // they appear only as empty `-e KEY=` assignments, never with a value.
+    expect(seen?.args).toContain('ANTHROPIC_API_KEY=')
+    expect(seen?.args.some((arg) => /^ANTHROPIC_API_KEY=.+/.test(arg))).toBe(false)
 
     const usage = JSON.parse(readFileSync(join(result.evidenceDir, 'model-usage.json'), 'utf8')) as Record<string, unknown>
     expect(usage['provider']).toBe('claude-docker')
@@ -240,5 +248,74 @@ describe('ClaudeDockerRunner', () => {
 
     expect(result.exitCode).toBe(1)
     expect(readFileSync(join(result.evidenceDir, 'test-summary.md'), 'utf8')).toContain('Final exit code: 1')
+  })
+
+  it('injects CLAUDE_CODE_OAUTH_TOKEN (no file mount) and redacts it in docker-meta', async () => {
+    let seen: DockerExecRequest | undefined
+    const runner = new ClaudeDockerRunner({
+      image: 'claude-worker:test',
+      env: { AEDEV_CLAUDE_OAUTH_TOKEN: 'sk-ant-oat-SECRET' },
+      runDocker: async (_bin, req) => {
+        seen = req
+        return { exitCode: 0, stdout: '{"result":"ok","usage":{"input_tokens":5,"output_tokens":7}}', stderr: '' }
+      },
+    })
+
+    const result = await runner.run(makeTask(), makeConfig(tmpRoot))
+
+    expect(result.exitCode).toBe(0)
+    expect(seen?.args).toContain('CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat-SECRET')
+    expect(seen?.args.some((a) => a.includes('.credentials.json'))).toBe(false)
+    expect(seen?.args).toContain('ANTHROPIC_API_KEY=')
+    const meta = readFileSync(join(result.evidenceDir, 'docker-meta.json'), 'utf8')
+    expect(meta).not.toContain('sk-ant-oat-SECRET')
+    expect(meta).toContain('<redacted>')
+    expect(JSON.parse(meta).authKind).toBe('token')
+  })
+
+  it('prefers the OAuth token over a credential file when both env vars are set', async () => {
+    let seen: DockerExecRequest | undefined
+    const runner = new ClaudeDockerRunner({
+      image: 'claude-worker:test',
+      env: { AEDEV_CLAUDE_OAUTH_TOKEN: 'sk-ant-oat-PREFERRED', AEDEV_CLAUDE_CREDENTIAL_FILE: '/nonexistent/.credentials.json' },
+      runDocker: async (_bin, req) => {
+        seen = req
+        return { exitCode: 0, stdout: '{"result":"ok","usage":{"input_tokens":1,"output_tokens":1}}', stderr: '' }
+      },
+    })
+
+    await runner.run(makeTask(), makeConfig(tmpRoot))
+
+    expect(seen?.args).toContain('CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat-PREFERRED')
+    expect(seen?.args.some((a) => a.includes('.credentials.json'))).toBe(false)
+  })
+
+  it('reads authoritative token counts from /workspace/cli-envelope.json over result.json', async () => {
+    const task = makeTask()
+    const config = makeConfig(tmpRoot)
+    const workdir = join(config.worktreeBaseDir, task.id)
+    const runner = new ClaudeDockerRunner({
+      image: 'claude-worker:test',
+      env: { AEDEV_CLAUDE_OAUTH_TOKEN: 'sk-ant-oat-x' },
+      // The patched runner:e2e1 entrypoint writes cli-envelope.json (raw CLI usage)
+      // and result.json (coder-authored, usage 0) into /workspace; emulate that.
+      runDocker: async () => {
+        writeFileSync(join(workdir, 'cli-envelope.json'), JSON.stringify({
+          result: 'done', model: 'claude-sonnet-4-6',
+          usage: { input_tokens: 222, output_tokens: 888 }, total_cost_usd: 0.05,
+        }))
+        writeFileSync(join(workdir, 'result.json'), JSON.stringify({
+          summary: 'coder self-report', usage: { input_tokens: 0, output_tokens: 0 },
+        }))
+        return { exitCode: 0, stdout: '', stderr: '' }
+      },
+    })
+
+    const result = await runner.run(task, config)
+
+    const usage = JSON.parse(readFileSync(join(result.evidenceDir, 'model-usage.json'), 'utf8')) as Record<string, unknown>
+    expect(usage['inputTokens']).toBe(222)   // from cli-envelope, NOT result.json's 0
+    expect(usage['outputTokens']).toBe(888)
+    expect(usage['costUsd']).toBe(0.05)
   })
 })

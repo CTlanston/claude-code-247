@@ -1,0 +1,3 @@
+## Validators
+- gemini: pass — The task to add a "Running the tests" section to the README.md file and a new test to ensure this documentation is not accidentally removed was completed successfully. All evidence supports this conclusion: the plan was followed, the diff matches the plan, all tests passed, and the risk is low. The addition of a "docs-contract" test is a good practice that improves project maintainability.
+- openai: pass — The engineering task is safe to merge as it includes all necessary evidence, all tests have passed, there are no forbidden paths or secrets involved, and the changes align with the outlined plan.
