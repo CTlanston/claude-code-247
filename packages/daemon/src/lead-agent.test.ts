@@ -14,7 +14,7 @@ describe('LeadAgent', () => {
     )
 
     expect(design.prd.acceptanceCriteria.length).toBeGreaterThanOrEqual(3)
-    expect(design.adrDraft.decision).toContain('v2.3')
+    expect(design.adrDraft.decision).toContain('v2.4.0-patch1')
     expect(design.roadmap.length).toBeGreaterThanOrEqual(3)
     expect(design.taskDag.length).toBeGreaterThanOrEqual(3)
     expect(design.taskDag.map((t) => t.role)).toContain('coder')
