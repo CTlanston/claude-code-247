@@ -59,10 +59,14 @@ token/cost usage is persisted. Architecture decision:
   container**, so the token path is the proven, keychain-free option. All
   `ANTHROPIC_*` paid-API env vars are stripped from the container.
 
-- **`model_usage` accounting** —
+- **`model_usage` accounting + live cost roller** —
   [`insertModelUsage`](packages/core/src/db.ts) persists input/output tokens +
   cost per run and emits a `model.usage.recorded` event. Local subscription
-  usage is tracked by run count + cost, never reported as `$0`.
+  usage is tracked by run count + cost, never reported as `$0`. The daemon now
+  feeds a long-lived [`CostRoller`](packages/cost-meter/src/roller.ts) (seeded
+  from `model_usage` on boot so spend survives a restart) and exposes
+  `cost_total_usd` / `cost_per_pr_usd_7d` / `cost_event_count` on `/metrics`.
+  Only **known** costs are summed — subscription-unknown stays 0, never fabricated.
 
 - **Dual-family validators** — OpenAI- and Gemini-family judges score the
   **evidence package only** (never the coder's conversation or chain-of-thought).

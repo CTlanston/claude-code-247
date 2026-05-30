@@ -11,6 +11,7 @@ import { resolveStateDir } from './paths.js'
 import { createDefaultMissionValidatorFactory } from './validator-factory.js'
 import { DraftPrGate } from './draft-pr-gate.js'
 import { allowRemoteWritesEnabled } from './remote-write-policy.js'
+import { CostRoller } from '@aedev/cost-meter'
 
 export const DEFAULT_PORT = 7247
 
@@ -37,6 +38,8 @@ export class Daemon {
   private scheduler?: MissionScheduler
   private schedulerLoop?: Promise<{ ticks: number; totalDispatched: number }>
   private stateDir!: string
+  /** Long-lived rolling cost window; injected into every MissionRunner and scraped by /metrics. */
+  private readonly costRoller = new CostRoller()
 
   constructor(private config: DaemonConfig = {}) {}
 
@@ -49,7 +52,15 @@ export class Daemon {
     this.stateDir = this.config.stateDir ?? resolveStateDir()
     mkdirSync(this.stateDir, { recursive: true })
 
-    this.server = createServer(this.db, this.startTime, this.stateDir)
+    // Seed the rolling cost window from persisted model_usage (oldest-first to
+    // match the roller's in-order assumption) so spend survives a daemon restart.
+    for (const u of this.db.listModelUsage().reverse()) {
+      if (typeof u.costUsd === 'number' && u.costUsd > 0) {
+        this.costRoller.record({ ts: u.createdAt, costUsd: u.costUsd })
+      }
+    }
+
+    this.server = createServer(this.db, this.startTime, this.stateDir, {}, this.costRoller)
     await this.server.listen({ port: this.config.port ?? DEFAULT_PORT, host: '127.0.0.1' })
 
     // Mission scheduler — survives restart because state lives in the events table.
@@ -71,6 +82,7 @@ export class Daemon {
           workerSessions: await discoverWorkerSessions(),
           validatorFactory: createDefaultMissionValidatorFactory(),
           draftPrExecutor: new DraftPrGate({ allowRemoteWrites }, new GhGitRemoteWriter(), new GhDraftPrCreator()),
+          costRoller: this.costRoller,
         })
         await runner.runMission(mission.id).catch((e) => {
           this.db.insertEvent('mission.scheduler_dispatch_error', 'mission', mission.id, {

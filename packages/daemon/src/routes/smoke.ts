@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import type { AedevDb, Event } from '@aedev/core'
 import { buildDaemonMetrics, computeDaemonHealth } from '../obs/collect.js'
+import { gaugesFrom, renderProm, type CostRoller } from '@aedev/cost-meter'
 
 function eventDto(e: Event): { id: string; kind: string; payload: Record<string, unknown>; createdAt: string } {
   return { id: e.id, kind: e.type, payload: e.payload, createdAt: e.createdAt }
@@ -14,7 +15,7 @@ function settle(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 650))
 }
 
-export function registerSmokeRoutes(app: FastifyInstance, db: AedevDb): void {
+export function registerSmokeRoutes(app: FastifyInstance, db: AedevDb, costRoller?: CostRoller): void {
   // Real health derived from live state (heartbeat freshness + DB reachability),
   // backed by obs/. No fake sleep, no hardcoded green.
   app.get('/health', async (_req, reply) => {
@@ -36,7 +37,9 @@ export function registerSmokeRoutes(app: FastifyInstance, db: AedevDb): void {
   // Real Prometheus exposition from live state, backed by the obs/ PromRegistry.
   app.get('/metrics', async (_req, reply) => {
     reply.header('content-type', 'text/plain; version=0.0.4')
-    return buildDaemonMetrics(db, Date.now()).render()
+    const base = buildDaemonMetrics(db, Date.now()).render()
+    // Append the cost-meter rolling-window gauges when a roller is wired (daemon prod path).
+    return costRoller ? base + renderProm(gaugesFrom(costRoller)) : base
   })
 
   app.get('/loki/recent', async (req) => {
