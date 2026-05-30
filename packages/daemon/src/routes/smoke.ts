@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import type { AedevDb, Event } from '@aedev/core'
+import { buildDaemonMetrics, computeDaemonHealth } from '../obs/collect.js'
 
 function eventDto(e: Event): { id: string; kind: string; payload: Record<string, unknown>; createdAt: string } {
   return { id: e.id, kind: e.type, payload: e.payload, createdAt: e.createdAt }
@@ -14,9 +15,12 @@ function settle(): Promise<void> {
 }
 
 export function registerSmokeRoutes(app: FastifyInstance, db: AedevDb): void {
-  app.get('/health', async () => {
-    await settle()
-    return { status: 'green' }
+  // Real health derived from live state (heartbeat freshness + DB reachability),
+  // backed by obs/. No fake sleep, no hardcoded green.
+  app.get('/health', async (_req, reply) => {
+    const health = computeDaemonHealth(db, Date.now())
+    reply.code(health.status === 'red' ? 503 : 200)
+    return health
   })
 
   app.get('/events', async (req) => {
@@ -29,11 +33,10 @@ export function registerSmokeRoutes(app: FastifyInstance, db: AedevDb): void {
     return { events: events.slice(0, limit).map(eventDto) }
   })
 
-  app.get('/metrics', async () => {
-    await settle()
-    const latest = db.queryEvents({ limit: 1 })[0]
-    const id = latest?.id ?? 'none'
-    return `# HELP events_total Smoke-visible daemon events\n# TYPE events_total counter\nevents_total{latest_event_id="${id}"} 1\n`
+  // Real Prometheus exposition from live state, backed by the obs/ PromRegistry.
+  app.get('/metrics', async (_req, reply) => {
+    reply.header('content-type', 'text/plain; version=0.0.4')
+    return buildDaemonMetrics(db, Date.now()).render()
   })
 
   app.get('/loki/recent', async (req) => {
