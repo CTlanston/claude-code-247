@@ -17,10 +17,10 @@ canonical_branch_family: codex/v24-vertical-slice
 design_adr: docs/adr/0018-production-hardening-loop.md
 latest_handoff: docs/handoff/production-handoff-latest.md
 current_stage: E2E-1_REAL_LOOP_PRELIVE_IMPLEMENTATION
-last_updated_utc: 2026-05-30T00:09:30Z
-last_session_id: s_0033
-open_holds: 0
-blocked_on: none
+last_updated_utc: 2026-05-30T01:06:52Z
+last_session_id: s_0035
+open_holds: 1
+blocked_on: HOLD-CLAUDE-AUTH-IN-DOCKER
 next_action: |
   E2E-1 is in pre-live implementation. ADR-0019 exists; model_usage persistence
   was already present at session start in local commit 6f0488a; s_0031 added the
@@ -28,12 +28,17 @@ next_action: |
   family/auth mapping; s_0032 added the default OpenAI+Gemini validator factory
   and production constructor injection through the approved runtime secrets path;
   s_0033 added the local-safe Claude Docker static/runtime preflight and
-  credential-path redaction tests. No live Docker image, Claude/OpenAI/Gemini
-  token spend, remote-write gate change, target draft PR, or merge was
-  attempted. NEXT safe action = operator must provide explicit GO plus
-  AEDEV_CLAUDE_DOCKER_IMAGE and readable AEDEV_CLAUDE_CREDENTIAL_FILE, or record
-  HOLD-CLAUDE-AUTH-IN-DOCKER if container subscription auth is not viable. The
-  outward live E2E-1 run on CTlanston/multi-agent-brainstorm must reset
+  credential-path redaction tests. s_0034 opened/recorded
+  HOLD-CLAUDE-AUTH-IN-DOCKER; s_0035 rechecked the live checkpoint and the
+  blocker remains because explicit operator GO, AEDEV_CLAUDE_DOCKER_IMAGE, and
+  readable AEDEV_CLAUDE_CREDENTIAL_FILE are absent; gh auth for CTlanston is
+  still invalid. No live Docker image, Claude/OpenAI/Gemini token spend,
+  remote-write gate change, target draft PR, branch push, or merge was
+  attempted. NEXT safe action = operator must provide explicit GO, a
+  Claude-capable Docker image, a readable materialized Claude credential file,
+  repaired gh auth, and one-run remote-write authorization; or keep
+  HOLD-CLAUDE-AUTH-IN-DOCKER open if container subscription auth is not viable.
+  The outward live E2E-1 run on CTlanston/multi-agent-brainstorm must reset
   allow_remote_writes=false afterward.
 active_automations:
   - id: claude-code-247-v2-3-autonomous-continuation
@@ -268,11 +273,12 @@ because the same local binaries were missing. In `s_0029`,
 **Remaining:** E2E-1 is in pre-live implementation. ADR-0019, `model_usage`
 persistence, the mock-tested `claude-docker` runner seam, the default
 OpenAI+Gemini validator factory wiring, and the Claude Docker preflight path are
-present. Remaining work is the operator-approved live checkpoint: provide
-`AEDEV_CLAUDE_DOCKER_IMAGE` plus a readable `AEDEV_CLAUDE_CREDENTIAL_FILE`, or
-record `HOLD-CLAUDE-AUTH-IN-DOCKER` if container subscription auth is not viable.
-The outward live loop still requires explicit operator GO before enabling remote
-writes.
+present. `s_0034` recorded `HOLD-CLAUDE-AUTH-IN-DOCKER`; `s_0035` rechecked
+the same live checkpoint and the blocker remains: explicit operator GO,
+`AEDEV_CLAUDE_DOCKER_IMAGE`, and readable `AEDEV_CLAUDE_CREDENTIAL_FILE` are
+absent, and `gh auth status -h github.com` reports the active `CTlanston` token
+is invalid. The outward live loop still requires operator GO, repaired GitHub
+auth, and one-run remote-write authorization before any live side effect.
 
 ### E2E-0_UNBLOCK_AND_BASELINE_GREEN
 
@@ -299,19 +305,25 @@ loop.
 Dockerized subscription-Claude coder, real OpenAI+Gemini dual-family
 validation, persisted `model_usage`, and a live draft-only PR.
 
-**Status:** in progress. ADR-0019 is written; `model_usage` persistence exists;
-`s_0031` added the mock-tested `claude-docker` runner seam and route/family/auth
-mapping; `s_0032` added the default OpenAI+Gemini validator factory, task-time
-secret resolution, optional active grant enforcement, and daemon/server/operator
-constructor injection; `s_0033` added the local-safe Claude Docker static/runtime
-preflight with credential-path redaction. Explicit operator GO is still required
-before any outward live run, live credential use, token spend, or remote-write
-enablement.
+**Status:** in progress and currently held at the live checkpoint. ADR-0019 is
+written; `model_usage` persistence exists; `s_0031` added the mock-tested
+`claude-docker` runner seam and route/family/auth mapping; `s_0032` added the
+default OpenAI+Gemini validator factory, task-time secret resolution, optional
+active grant enforcement, and daemon/server/operator constructor injection;
+`s_0033` added the local-safe Claude Docker static/runtime preflight with
+credential-path redaction; `s_0034` recorded
+`HOLD-CLAUDE-AUTH-IN-DOCKER`; `s_0035` rechecked the live checkpoint and the
+hold remains because the live run lacks explicit operator GO, Claude Docker
+image/credential materialization, and valid GitHub CLI auth. Explicit operator
+GO is still required before any outward live run, live credential use, token
+spend, or remote-write enablement.
 
 **Latest evidence:**
 - `evidence/e2e/s1/claude-docker-runner-prelive-2026-05-29-s0031.md`
 - `evidence/e2e/s1/validator-factory-prelive-2026-05-29-s0032.md`
 - `evidence/e2e/s1/claude-docker-preflight-2026-05-30-s0033.md`
+- `evidence/e2e/s1/live-checkpoint-hold-2026-05-30-s0034.md`
+- `evidence/e2e/s1/live-checkpoint-hold-recheck-2026-05-30-s0035.md`
 
 **Acceptance:** see `EXECUTION_WORKBOOK.md` Stage E2E-1 and
 `docs/handoff/e2e-real-loop-plan-and-prompt.md`.

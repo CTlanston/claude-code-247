@@ -15,14 +15,14 @@ schema_version: 1
 version_target: production-usable-24x7
 current_part: III          # III = v2.4 real vertical slice -> production hardening
 current_stage: ProductionHardening
-current_substage: e2e-1-prelive-claude-docker-preflight-ready
-last_updated_utc: 2026-05-30T00:09:30Z
-last_session_id: s_0033
-total_sessions: 33
+current_substage: e2e-1-live-checkpoint-held
+last_updated_utc: 2026-05-30T01:06:52Z
+last_session_id: s_0035
+total_sessions: 35
 weeks_elapsed: 0
 weeks_remaining: 0
-open_holds: 0
-blocked_on: none
+open_holds: 1
+blocked_on: HOLD-CLAUDE-AUTH-IN-DOCKER
 next_action: |
   E2E-1 is in pre-live implementation. ADR-0019 exists; model_usage persistence
   was already present at session start in local commit 6f0488a; s_0031 added the
@@ -30,12 +30,16 @@ next_action: |
   family/auth mapping; s_0032 added the default OpenAI+Gemini validator factory
   and production constructor injection through the approved runtime secrets path;
   s_0033 added the local-safe Claude Docker static/runtime preflight and
-  credential-path redaction tests. Baseline gates are green: doctor PASS, lint
-  PASS, typecheck PASS, test PASS (95 files, 574 passed, 6 env-gated smoke
-  skips). No live Docker image, Claude/OpenAI/Gemini token spend, remote-write
-  gate change, target draft PR, or merge was attempted. NEXT safe action =
-  operator must provide explicit GO plus AEDEV_CLAUDE_DOCKER_IMAGE and readable
-  AEDEV_CLAUDE_CREDENTIAL_FILE, or record HOLD-CLAUDE-AUTH-IN-DOCKER if
+  credential-path redaction tests. s_0034 recorded HOLD-CLAUDE-AUTH-IN-DOCKER;
+  s_0035 rechecked the live checkpoint and the blocker remains: explicit
+  operator GO, AEDEV_CLAUDE_DOCKER_IMAGE, and readable
+  AEDEV_CLAUDE_CREDENTIAL_FILE are absent; gh auth for CTlanston is invalid;
+  allow_remote_writes=false; target repo is enabled with auto-merge disabled.
+  No live Docker image, Claude/OpenAI/Gemini token spend, remote-write gate
+  change, target draft PR, branch push, or merge was attempted. NEXT safe
+  action = operator must provide explicit GO, a Claude-capable Docker image, a
+  readable materialized Claude credential file, repaired gh auth, and one-run
+  remote-write authorization; or keep HOLD-CLAUDE-AUTH-IN-DOCKER open if
   container subscription auth is not viable. The outward live E2E-1 run on
   CTlanston/multi-agent-brainstorm must reset allow_remote_writes=false
   afterward.
@@ -659,6 +663,64 @@ ApprovalGateway: ntfy → 操作员手机
 - next_action: <见 §0>
 - notes: <一两句>
 ```
+
+### s_0035 — 2026-05-30T01:06:52Z — E2E-1 live checkpoint HOLD recheck
+
+- stage_in: ProductionHardening.e2e-1-live-checkpoint-held → stage_out: ProductionHardening.e2e-1-live-checkpoint-held
+- actor: codex (autonomous production-hardening loop)
+- context_at_boot:
+    - branch `codex/v24-vertical-slice` ahead of origin by 11
+    - worktree had prior local `s_0034` docs/evidence changes plus two pre-existing untracked raw evidence logs; preserved and not deleted
+    - §0 open_holds=1, blocked_on=`HOLD-CLAUDE-AUTH-IN-DOCKER`, so this run handled only the hold recheck
+- l1: E2E-1 live checkpoint HOLD recheck 6/6 (operator GO absent, Claude Docker image absent, credential file absent, `allow_remote_writes=false`, target repo enabled/auto-merge disabled, GitHub CLI auth invalid) · l2: not_run · l3: not_run
+- shipped:
+    - rechecked and kept `HOLD-CLAUDE-AUTH-IN-DOCKER` open before any live side effect
+    - documented absent `AEDEV_CLAUDE_DOCKER_IMAGE` and `AEDEV_CLAUDE_CREDENTIAL_FILE` without printing secret values
+    - documented runtime gate state: `/Users/lanston/.claude-code-247` has `allow_remote_writes: false`; `multi-agent-brainstorm` is enabled and `auto_merge.enabled: false`
+    - documented that `gh auth status -h github.com` still fails because the active `CTlanston` token is invalid
+    - preserved the safety posture: no live Docker credential use, no token spend, no `allow_remote_writes` mutation, no target draft PR, no branch push, no merge
+- validation:
+    - `bash scripts/doctor.sh` PASS (required checks; daemon install/responding warnings only)
+    - `pnpm lint` PASS
+    - `pnpm typecheck` PASS
+    - `pnpm test` PASS (95 files, 574 passed, 6 env-gated smoke skips)
+    - `rg "child_process" packages/daemon/src` PASS (no matches)
+- evidence:
+    - `evidence/e2e/s1/live-checkpoint-hold-recheck-2026-05-30-s0035.md`
+- holds_opened: 0 · holds_resolved: 0
+- holds: `HOLD-CLAUDE-AUTH-IN-DOCKER`
+- remote_writes: not attempted; `allow_remote_writes` not changed; no target draft PR; no merge
+- commits: none; docs/evidence-only hold recheck left local because remote-write prerequisites remain blocked
+- next_action: operator must provide explicit GO, `AEDEV_CLAUDE_DOCKER_IMAGE`, a readable `AEDEV_CLAUDE_CREDENTIAL_FILE`, repaired `gh` auth for `CTlanston`, and one-run remote-write authorization; otherwise keep `HOLD-CLAUDE-AUTH-IN-DOCKER` open.
+
+### s_0034 — 2026-05-30T00:37:17Z — E2E-1 live checkpoint HOLD
+
+- stage_in: ProductionHardening.e2e-1-prelive-claude-docker-preflight-ready → stage_out: ProductionHardening.e2e-1-live-checkpoint-held
+- actor: codex (autonomous production-hardening loop)
+- context_at_boot:
+    - branch `codex/v24-vertical-slice` ahead of origin by 11
+    - worktree had two pre-existing untracked evidence logs under `evidence/e2e/s1/`; preserved and not deleted
+    - latest handoff required explicit operator GO plus `AEDEV_CLAUDE_DOCKER_IMAGE` and readable `AEDEV_CLAUDE_CREDENTIAL_FILE` before the live outward E2E-1 run
+- l1: E2E-1 live checkpoint HOLD recording 5/5 (operator GO absent, Claude Docker image absent, credential file absent, `allow_remote_writes=false`, GitHub CLI auth invalid) · l2: not_run · l3: not_run
+- shipped:
+    - recorded `HOLD-CLAUDE-AUTH-IN-DOCKER` as the current E2E-1 blocker before any live side effect
+    - documented that `AEDEV_CLAUDE_DOCKER_IMAGE` and `AEDEV_CLAUDE_CREDENTIAL_FILE` are absent in this run without printing secret values
+    - documented that `gh auth status -h github.com` fails because the active `CTlanston` token is invalid
+    - preserved the safety posture: no live Docker credential use, no token spend, no `allow_remote_writes` mutation, no target draft PR, no branch push, no merge
+- validation:
+    - `bash scripts/doctor.sh` PASS (required checks; daemon install/responding warnings only)
+    - `pnpm lint` PASS
+    - `pnpm typecheck` PASS
+    - `pnpm test` PASS (95 files, 574 passed, 6 env-gated smoke skips)
+    - `rg "child_process" packages/daemon/src` PASS (no matches)
+    - `git diff --check` PASS
+- evidence:
+    - `evidence/e2e/s1/live-checkpoint-hold-2026-05-30-s0034.md`
+- holds_opened: 1 · holds_resolved: 0
+- holds: `HOLD-CLAUDE-AUTH-IN-DOCKER`
+- remote_writes: not attempted; `allow_remote_writes` not changed; no target draft PR; no merge
+- commits: none at session log write; docs/evidence-only handoff left local
+- next_action: operator must provide explicit GO, `AEDEV_CLAUDE_DOCKER_IMAGE`, a readable `AEDEV_CLAUDE_CREDENTIAL_FILE`, repaired `gh` auth for `CTlanston`, and one-run remote-write authorization; otherwise keep `HOLD-CLAUDE-AUTH-IN-DOCKER` open.
 
 ### s_0033 — 2026-05-30T00:09:30Z — E2E-1 pre-live Claude Docker preflight
 
@@ -1580,6 +1642,8 @@ ApprovalGateway: ntfy → 操作员手机
 
 | 日期 | 版本 | 改动 | 由谁 | 引用 |
 |---|---|---|---|---|
+| 2026-05-30 | 4.4 | s_0035 E2E-1 live checkpoint HOLD recheck: blocker unchanged, baseline green, no live side effects attempted | codex | `evidence/e2e/s1/live-checkpoint-hold-recheck-2026-05-30-s0035.md`, `EXECUTION_WORKBOOK.md §9 s_0035` |
+| 2026-05-30 | 4.3 | s_0034 E2E-1 live checkpoint HOLD: operator GO/image/credential absent, gh auth invalid, no live side effects attempted | codex | `evidence/e2e/s1/live-checkpoint-hold-2026-05-30-s0034.md`, `EXECUTION_WORKBOOK.md §9 s_0034` |
 | 2026-05-30 | 4.2 | s_0033 E2E-1 pre-live Claude Docker preflight: static/runtime image and credential readiness checks, credential-path redaction, baseline green | codex | `packages/runner/src/claude-docker-runner.ts`, `evidence/e2e/s1/claude-docker-preflight-2026-05-30-s0033.md`, `EXECUTION_WORKBOOK.md §9 s_0033` |
 | 2026-05-29 | 4.1 | s_0032 E2E-1 pre-live default validator factory: Gemini/OpenAI task-time runtime secret resolution, optional active grant enforcement, production constructor injection, baseline green | codex | `packages/daemon/src/validator-factory.ts`, `evidence/e2e/s1/validator-factory-prelive-2026-05-29-s0032.md`, `EXECUTION_WORKBOOK.md §9 s_0032` |
 | 2026-05-29 | 4.0 | s_0031 E2E-1 pre-live claude-docker runner seam: mock-tested Docker Claude worker, route/family/auth mapping, offline dependency store recovery, baseline green | codex | `packages/runner/src/claude-docker-runner.ts`, `evidence/e2e/s1/claude-docker-runner-prelive-2026-05-29-s0031.md`, `EXECUTION_WORKBOOK.md §9 s_0031` |
