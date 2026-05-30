@@ -5,6 +5,7 @@ import { tmpdir } from 'os'
 import { AedevDb, type Mission, type RunResult, type Task, type ValidatorResult } from '@aedev/core'
 import { IntakeService } from './intake.js'
 import { MemoryGitClient, MissionRunner, type MissionValidator } from './mission-runner.js'
+import { DraftPrGateError, type DraftPrRequest, type DraftPrInfo } from './draft-pr-gate.js'
 import { ReleasePipeline, type DeployFn } from './release-pipeline.js'
 import type { RolePipeline } from './roles/role-pipeline.js'
 import type { WorkerSession } from '@aedev/runner'
@@ -132,6 +133,82 @@ describe('MissionRunner — real-diff forbidden-path gate (changed-paths.json)',
     })
     const result = await runner.runMission(mission.id)
     expect(result.mergeDecision).toBe('AUTO_MERGE')
+  })
+})
+
+describe('MissionRunner — autonomous draft-PR closure (gated, injectable)', () => {
+  function taskEvidenceWithCommit(changedPaths: string[], branch: string): string {
+    const dir = join(stateDir, `coder-evidence-${Math.random().toString(16).slice(2)}`)
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'diff-summary.md'), '# Diff Summary\n\nChanged files.\n')
+    writeFileSync(join(dir, 'test-summary.md'), '# Test Summary\n\nTests passed.\n')
+    writeFileSync(join(dir, 'done-report.md'), '# Done\n\nDone.\n')
+    writeFileSync(join(dir, 'changed-paths.json'), JSON.stringify({ changedPaths, forbiddenHits: [] }))
+    writeFileSync(join(dir, 'local-commit.json'), JSON.stringify({ attempted: true, created: true, sha: 'abc123', branch }))
+    return dir
+  }
+
+  it('opens a REAL draft PR on AUTO_MERGE when the gate is open (executor injected)', async () => {
+    const mission = approveMission('Refactor the auth utility (no UI)')
+    const calls: DraftPrRequest[] = []
+    const executor = {
+      async openDraftPr(req: DraftPrRequest): Promise<DraftPrInfo> {
+        calls.push(req)
+        return { number: 42, url: 'https://github.com/o/r/pull/42', state: 'open', draft: true }
+      },
+    }
+    const runner = new MissionRunner(db, {
+      stateDir,
+      rolePipeline: fakeRolePipeline(),
+      runner: fakeRunner({ taskEvidenceDir: taskEvidenceWithCommit(['README.md', 'src/foo.ts'], 'v24-slice/123') }),
+      validators: [fakeValidator('gemini', 'pass'), fakeValidator('openai', 'pass')],
+      requiresUi: false,
+      draftPrExecutor: executor,
+    })
+    const result = await runner.runMission(mission.id)
+    expect(result.mergeDecision).toBe('AUTO_MERGE')
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.branch).toBe('v24-slice/123')
+    expect(calls[0]?.changedPaths).toEqual(['README.md', 'src/foo.ts'])
+    expect(result.draftPr?.number).toBe(42)
+    expect(db.queryEvents({ type: 'mission.draft_pr_opened' }).length).toBe(1)
+  })
+
+  it('records a blocked event (not a crash) when the gate refuses the draft PR', async () => {
+    const mission = approveMission('Refactor the auth utility (no UI)')
+    const executor = {
+      async openDraftPr(): Promise<DraftPrInfo> {
+        throw new DraftPrGateError('allow_remote_writes=false', 'REMOTE_WRITES_DISABLED')
+      },
+    }
+    const runner = new MissionRunner(db, {
+      stateDir,
+      rolePipeline: fakeRolePipeline(),
+      runner: fakeRunner({ taskEvidenceDir: taskEvidenceWithCommit(['README.md'], 'v24-slice/9') }),
+      validators: [fakeValidator('gemini', 'pass'), fakeValidator('openai', 'pass')],
+      requiresUi: false,
+      draftPrExecutor: executor,
+    })
+    const result = await runner.runMission(mission.id)
+    expect(result.draftPr).toBeUndefined()
+    expect(result.status).toBe('done')
+    expect(db.queryEvents({ type: 'mission.draft_pr_blocked' }).length).toBe(1)
+    expect(db.queryEvents({ type: 'mission.draft_pr_opened' }).length).toBe(0)
+  })
+
+  it('does not attempt a draft PR when no executor is injected (no-push default)', async () => {
+    const mission = approveMission('Refactor the auth utility (no UI)')
+    const runner = new MissionRunner(db, {
+      stateDir,
+      rolePipeline: fakeRolePipeline(),
+      runner: fakeRunner({ taskEvidenceDir: taskEvidenceWithCommit(['README.md'], 'v24-slice/1') }),
+      validators: [fakeValidator('gemini', 'pass'), fakeValidator('openai', 'pass')],
+      requiresUi: false,
+    })
+    const result = await runner.runMission(mission.id)
+    expect(result.mergeDecision).toBe('AUTO_MERGE')
+    expect(result.draftPr).toBeUndefined()
+    expect(db.queryEvents({ type: 'mission.draft_pr_opened' }).length).toBe(0)
   })
 })
 

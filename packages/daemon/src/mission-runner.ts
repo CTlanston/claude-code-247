@@ -11,6 +11,7 @@ import { BrowserQA, MockBrowserDriver, type BrowserQAResult } from '@aedev/qa'
 import type { PreviewAdapter, PreviewResult } from '@aedev/preview'
 import { RolePipeline } from './roles/role-pipeline.js'
 import { ReleasePipeline, type GitClient, type DeployFn, type DeployRequest, type ReleaseResult } from './release-pipeline.js'
+import { DraftPrGateError, type DraftPrRequest, type DraftPrInfo } from './draft-pr-gate.js'
 
 /**
  * Mission validator contract.  Production wires real Gemini + OpenAI; tests
@@ -68,6 +69,16 @@ export interface MissionRunOptions {
 
   /** Optional long-lived cost roller (the daemon injects one); fed once per model.usage.recorded. */
   costRoller?: { record(sample: { ts: string; costUsd: number; bucket?: string }): void }
+
+  /**
+   * Injected autonomous draft-PR executor.  The daemon wires this as a
+   * `DraftPrGate` over `GhGitRemoteWriter` + `GhDraftPrCreator` (the runner
+   * plane).  When present and the decision is AUTO_MERGE, the loop opens a REAL
+   * draft PR instead of stopping at a mock merge — the gate itself fail-closes
+   * on allow_remote_writes / repo.enabled / forbidden paths, so leaving this
+   * unset (or remote writes disabled) preserves the no-push default.
+   */
+  draftPrExecutor?: { openDraftPr(req: DraftPrRequest): Promise<DraftPrInfo> }
 }
 
 export interface MissionRunResult {
@@ -86,6 +97,8 @@ export interface MissionRunResult {
   validatorRouteDecision?: RouteDecision
   browserQAResult?: BrowserQAResult
   releaseResult?: ReleaseResult
+  /** Set when the autonomous loop opened a real draft PR (gate was open). */
+  draftPr?: DraftPrInfo
 }
 
 export class MissionRunner {
@@ -262,13 +275,51 @@ export class MissionRunner {
       const policy = this.opts.mergePolicy ?? new MergePolicy()
       const decision = policy.decide(risk.score, validatorResults, evidence)
 
+      // 7b. Autonomous draft PR (draft-pr-only autonomy).  On AUTO_MERGE, open a
+      // REAL draft PR through the injected gate instead of a mock merge.  The
+      // gate fail-closes on allow_remote_writes / repo.enabled / forbidden paths;
+      // we attempt only when the coder produced a real branch + changed files.
+      const localCommit = readLocalCommit(evidenceDir)
+      let draftPr: DraftPrInfo | undefined
+      if (decision === 'AUTO_MERGE' && this.opts.draftPrExecutor && repoForGate && localCommit?.branch && changedPaths.length > 0) {
+        const worktreeBaseDir = this.opts.runnerConfig?.worktreeBaseDir ?? join(this.opts.stateDir, 'worktrees')
+        const request: DraftPrRequest = {
+          repo: { ...repoForGate, path: join(worktreeBaseDir, task.id) },
+          missionId: mission.id,
+          title: mission.title,
+          branch: localCommit.branch,
+          base: repoForGate.defaultBranch,
+          changedPaths,
+          evidenceUri: evidenceDir,
+          riskScore: risk.score,
+          validatorResults,
+          rollbackNotes: 'Close the draft PR; nothing was merged (draft-pr-only autonomy).',
+        }
+        try {
+          draftPr = await this.opts.draftPrExecutor.openDraftPr(request)
+          this.db.updateMissionGitHub(mission.id, {
+            githubBranch: localCommit.branch, githubPrUrl: draftPr.url, githubPrNumber: draftPr.number,
+          })
+          this.db.insertEvent('mission.draft_pr_opened', 'mission', mission.id, {
+            url: draftPr.url, number: draftPr.number, branch: localCommit.branch, changedPaths,
+          })
+        } catch (e) {
+          const code = e instanceof DraftPrGateError ? e.code : 'DRAFT_PR_BLOCKED'
+          this.db.insertEvent('mission.draft_pr_blocked', 'mission', mission.id, {
+            code, reason: (e as Error).message, branch: localCommit.branch,
+          })
+        }
+      }
+
       // 8. Release pipeline (only on AUTO_MERGE)
       let releaseResult: ReleaseResult | undefined
       if (decision === 'AUTO_MERGE' && this.opts.releasePipeline && this.opts.productionDeployEnabled) {
         releaseResult = await this.opts.releasePipeline.release({
           mission,
           decision,
-          mergeSha: `mock-merge-${mission.id.slice(0, 8)}`,
+          // Real merged-branch SHA when the coder committed one; the literal
+          // mock-merge placeholder only remains for runners that never commit.
+          mergeSha: localCommit?.sha ?? `mock-merge-${mission.id.slice(0, 8)}`,
           productionDeployEnabled: true,
           outputDir: evidenceDir,
           ...(this.opts.healthcheckUrl !== undefined ? { healthcheckUrl: this.opts.healthcheckUrl } : {}),
@@ -299,6 +350,8 @@ export class MissionRunner {
         validatorCount: validatorResults.length,
         releaseDeployUrl: releaseResult?.deployUrl ?? null,
         releaseReverted: releaseResult?.reverted ?? false,
+        draftPrUrl: draftPr?.url ?? null,
+        draftPrNumber: draftPr?.number ?? null,
       })
 
       return {
@@ -315,6 +368,7 @@ export class MissionRunner {
         ...(validatorRouteDecision !== undefined ? { validatorRouteDecision } : {}),
         ...(browserQAResult !== undefined ? { browserQAResult } : {}),
         ...(releaseResult !== undefined ? { releaseResult } : {}),
+        ...(draftPr !== undefined ? { draftPr } : {}),
       }
     } catch (e) {
       this.db.updateMissionStatus(mission.id, 'failed')
@@ -618,6 +672,22 @@ function readChangedPaths(evidenceDir: string): string[] {
       : []
   } catch {
     return []
+  }
+}
+
+/** Read the runner-emitted local commit info (branch + sha) from evidence.
+ *  cli-runner writes local-commit.json; absent for the mock runner. */
+function readLocalCommit(evidenceDir: string): { branch?: string; sha?: string } | undefined {
+  const path = join(evidenceDir, 'local-commit.json')
+  if (!existsSync(path)) return undefined
+  try {
+    const parsed = JSON.parse(readFileSync(path, 'utf8')) as { branch?: unknown; sha?: unknown }
+    const out: { branch?: string; sha?: string } = {}
+    if (typeof parsed.branch === 'string' && parsed.branch) out.branch = parsed.branch
+    if (typeof parsed.sha === 'string' && parsed.sha) out.sha = parsed.sha
+    return out
+  } catch {
+    return undefined
   }
 }
 

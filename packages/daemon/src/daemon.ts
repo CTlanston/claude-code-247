@@ -6,9 +6,11 @@ import { HeartbeatService } from './heartbeat.js'
 import { MissionScheduler } from './mission-scheduler.js'
 import { DailySummaryGenerator } from './daily-summary.js'
 import { MissionRunner } from './mission-runner.js'
-import { discoverWorkerSessions } from '@aedev/runner'
+import { discoverWorkerSessions, GhGitRemoteWriter, GhDraftPrCreator } from '@aedev/runner'
 import { resolveStateDir } from './paths.js'
 import { createDefaultMissionValidatorFactory } from './validator-factory.js'
+import { DraftPrGate } from './draft-pr-gate.js'
+import { allowRemoteWritesEnabled } from './remote-write-policy.js'
 
 export const DEFAULT_PORT = 7247
 
@@ -60,10 +62,15 @@ export class Daemon {
     if (autoStart) {
       // Run in background; never awaited — stop() cancels it.
       this.schedulerLoop = this.scheduler.runLoop(async (mission) => {
+        // Read the safety gate per dispatch (config may change at runtime).  The
+        // DraftPrGate itself fail-closes when allow_remote_writes is false, so the
+        // autonomous loop opens a real draft PR only when the operator enables it.
+        const allowRemoteWrites = allowRemoteWritesEnabled(this.stateDir)
         const runner = new MissionRunner(this.db, {
           stateDir: this.stateDir,
           workerSessions: await discoverWorkerSessions(),
           validatorFactory: createDefaultMissionValidatorFactory(),
+          draftPrExecutor: new DraftPrGate({ allowRemoteWrites }, new GhGitRemoteWriter(), new GhDraftPrCreator()),
         })
         await runner.runMission(mission.id).catch((e) => {
           this.db.insertEvent('mission.scheduler_dispatch_error', 'mission', mission.id, {
