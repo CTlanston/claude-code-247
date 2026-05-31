@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   api,
   type ApiMission,
@@ -9,9 +9,22 @@ import {
   type ApiRepo,
 } from '../api.js'
 import { useSSE } from '../hooks/useSSE.js'
+import { Sidebar } from './cockpit/Sidebar.js'
+import { ChatThread } from './cockpit/ChatThread.js'
+import { Composer } from './cockpit/Composer.js'
+import './cockpit/cockpit.css'
 
 const DEFAULT_PROMPT = 'Brainstorm a low-risk improvement, produce PRD/ADR/roadmap, then execute to the draft PR/evidence gate.'
 const SESSION_STORAGE_KEY = 'operatorCockpitSessionId'
+const PANELS_STORAGE_KEY = 'operatorCockpitPanels'
+
+function loadPanelState(): { sidebar: boolean; right: boolean; bottom: boolean } {
+  try {
+    const raw = localStorage.getItem(PANELS_STORAGE_KEY)
+    if (raw) return { sidebar: true, right: true, bottom: true, ...JSON.parse(raw) }
+  } catch { /* ignore */ }
+  return { sidebar: true, right: true, bottom: true }
+}
 type GuidanceAction = { label: string; onClick: () => void; disabled: boolean }
 interface Guidance {
   kicker: string
@@ -36,13 +49,27 @@ export function CockpitPage() {
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
-  const promptRef = useRef<HTMLTextAreaElement>(null)
+  const [sessions, setSessions] = useState<ApiOperatorSession[]>([])
+  const [note, setNote] = useState('')
+  const [panels, setPanels] = useState(loadPanelState)
+  const togglePanel = (key: 'sidebar' | 'right' | 'bottom') => setPanels((p) => {
+    const next = { ...p, [key]: !p[key] }
+    try { localStorage.setItem(PANELS_STORAGE_KEY, JSON.stringify(next)) } catch { /* ignore */ }
+    return next
+  })
 
   useEffect(() => {
     api.getRepos().then((r) => {
       setRepos(r)
       setRepoId((current) => current || r[0]?.id || 'unknown')
     }).catch((e: Error) => setErr(e.message))
+  }, [])
+
+  useEffect(() => {
+    const load = () => api.listOperatorSessions().then(setSessions).catch(() => undefined)
+    void load()
+    const timer = setInterval(load, 4_000)
+    return () => clearInterval(timer)
   }, [])
 
   useEffect(() => {
@@ -124,6 +151,20 @@ export function CockpitPage() {
     }
   }
 
+  function loadSession(id: string) {
+    if (id === session?.id) return
+    setOverview(null); setRunLog(''); setDraftPrStatus(null); setErr(null); setNote('')
+    api.getOperatorSession(id).then((x) => {
+      setSession(x.session)
+      setMessages(x.messages)
+      setTitle(x.session.title)
+      setPrompt(x.session.prompt)
+      if (x.session.repoId) setRepoId(x.session.repoId)
+      localStorage.setItem(SESSION_STORAGE_KEY, x.session.id)
+      if (x.session.missionId) void api.getMissionOverview(x.session.missionId).then(setOverview)
+    }).catch((e: Error) => setErr(e.message))
+  }
+
   function resetMission() {
     localStorage.removeItem(SESSION_STORAGE_KEY)
     setSession(null)
@@ -149,8 +190,7 @@ export function CockpitPage() {
     } else if (choice.action === 'ask-questions') {
       void action('ask', () => api.askQuestions(session.id, choice.prompt), (x) => { setSession(x.session); setMessages(x.messages) })
     } else {
-      promptRef.current?.focus()
-      setNotice('请在左侧输入框补充你的约束，然后点击 Add Note · Type your constraints on the left, then Add Note.')
+      setNotice('在下方补充框输入你的约束，然后点击 Add Note · Type your constraints in the composer below, then Add Note.')
     }
   }
 
@@ -171,13 +211,15 @@ export function CockpitPage() {
     onReset: resetMission,
   })
 
+  const hasSession = Boolean(session)
+  const canGenerate = Boolean(session) && !session?.missionId
+
   return (
     <div className="cockpit">
       <header className="cockpit-top">
         <div>
           <p className="eyebrow">Claude Code 24/7</p>
           <h1>Operator Cockpit · AI 共创工作台</h1>
-          <p>像和一个 coding coworker 协作：先讨论，再确认方案，然后看着 agents 执行到 evidence gate。</p>
         </div>
         <div className="health-strip">
           <span className={`dot${sse.connected ? '' : ' off'}`} /> daemon
@@ -187,94 +229,87 @@ export function CockpitPage() {
         </div>
       </header>
 
-      {err && <div className="error">Error: {err}</div>}
-      {!err && latestHold && session?.status === 'hold' && <div className="error">Planner HOLD: {latestHold}</div>}
-      <section className={`coach-card ${sse.connected ? '' : 'warn'}`}>
-        <div>
-          <span>{guidance.kicker}</span>
-          <strong>{guidance.title}</strong>
-          <p>{guidance.body}</p>
-        </div>
-        <div className="coach-actions">
-          {guidance.primary && <button className="action primary" disabled={guidance.primary.disabled || Boolean(busy)} onClick={guidance.primary.onClick}>{guidance.primary.label}</button>}
-          {guidance.secondary && <button className="action secondary" disabled={guidance.secondary.disabled || Boolean(busy)} onClick={guidance.secondary.onClick}>{guidance.secondary.label}</button>}
-        </div>
-      </section>
-      {notice && <div className="notice">{notice}</div>}
+      <div className={`cockpit-shell${panels.sidebar ? '' : ' no-sidebar'}${panels.right ? '' : ' no-right'}${panels.bottom ? '' : ' no-bottom'}`}>
+        {panels.sidebar && (
+          <Sidebar sessions={sessions} activeId={session?.id ?? null} onSelect={loadSession} onNew={resetMission} />
+        )}
 
-      <section className="cockpit-grid">
-        <div className="panel conversation">
-          <div className="panel-title">Conversation · 对话</div>
-          <label>Repo · 仓库</label>
-          <select value={repoId} onChange={(e) => setRepoId(e.target.value)}>
-            {repos.length === 0 && <option value="unknown">unknown</option>}
-            {repos.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-          </select>
-          <label>Title · 标题</label>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} />
-          <label>Brainstorm prompt · 你的想法</label>
-          <textarea ref={promptRef} value={prompt} onChange={(e) => setPrompt(e.target.value)} />
-          <div className="button-row">
-            <button className="action" disabled={Boolean(busy)} onClick={() => action('create', () => api.createOperatorSession({ repoId, title, prompt }), (x) => { setSession(x.session); setMessages(x.messages); setOverview(null); setDraftPrStatus(null) })}>
-              New Brainstorm · 开始讨论
-            </button>
-            <button className="action" disabled={!session || Boolean(busy)} onClick={() => action('message', () => api.addOperatorMessage(session!.id, prompt), (x) => setMessages(x.messages))}>
-              Add Note · 补充说明
-            </button>
-            <button className="action secondary" disabled={!session || Boolean(busy)} onClick={resetMission}>
-              New Mission · 新任务
-            </button>
+        <div className="ck-main">
+          <div className="ck-topbar">
+            <button className="ck-toggle on" onClick={() => togglePanel('sidebar')} title="Toggle history · 历史">☰</button>
+            <div className="ck-coach">
+              <div className="ck-coach-kicker">{guidance.kicker}</div>
+              <div className="ck-coach-title">{guidance.title}</div>
+              <div className="ck-coach-body">{guidance.body}</div>
+            </div>
+            <div className="ck-toggles">
+              <button className={`ck-toggle${panels.right ? ' on' : ''}`} onClick={() => togglePanel('right')}>Plan · 方案</button>
+              <button className={`ck-toggle${panels.bottom ? ' on' : ''}`} onClick={() => togglePanel('bottom')}>Logs · 日志</button>
+            </div>
           </div>
-          <ChoiceBar session={session} messages={messages} busy={busy} onChoice={handleChoice} />
-          <div className="message-list">
-            {messages.length === 0 ? <div className="empty">No conversation yet.</div> : messages.map((m) => (
-              <div key={m.id} className={`message ${m.role}`}>
-                <span>{m.role}</span>
-                <p>{m.content}</p>
+
+          {err && <div className="ck-banner error">Error: {err}</div>}
+          {!err && latestHold && session?.status === 'hold' && <div className="ck-banner error">Active HOLD · {latestHold}</div>}
+          {(guidance.primary || guidance.secondary) && (
+            <div className="ck-composer-actions" style={{ marginBottom: 8 }}>
+              {guidance.primary && <button className="ck-btn primary" disabled={guidance.primary.disabled || Boolean(busy)} onClick={guidance.primary.onClick}>{guidance.primary.label}</button>}
+              {guidance.secondary && <button className="ck-btn" disabled={guidance.secondary.disabled || Boolean(busy)} onClick={guidance.secondary.onClick}>{guidance.secondary.label}</button>}
+            </div>
+          )}
+          {notice && <div className="ck-banner notice">{notice}</div>}
+
+          <ChatThread messages={messages} busy={busy} canChoose={canGenerate} onChoice={handleChoice} />
+
+          <Composer
+            mode={hasSession ? 'session' : 'new'}
+            busy={busy}
+            draft={hasSession ? note : prompt}
+            onDraftChange={hasSession ? setNote : setPrompt}
+            repos={repos}
+            repoId={repoId}
+            onRepoChange={setRepoId}
+            title={title}
+            onTitleChange={setTitle}
+            onBrainstorm={() => action('create', () => api.createOperatorSession({ repoId, title, prompt }), (x) => { setSession(x.session); setMessages(x.messages); setOverview(null); setDraftPrStatus(null) })}
+            onAddNote={() => session && note.trim() && action('message', () => api.addOperatorMessage(session.id, note), (x) => { setMessages(x.messages); setNote('') })}
+            onAsk={() => session && action('ask', () => api.askQuestions(session.id), (x) => { setSession(x.session); setMessages(x.messages) })}
+            onGenerate={() => session && action('roadmap', () => api.generateRoadmap(session.id), (x) => { setSession(x.session); setMessages(x.messages); if (x.mission) void api.getMissionOverview(x.mission.id).then(setOverview) })}
+            canGenerate={canGenerate}
+          />
+        </div>
+
+        {panels.right && (
+          <div className="ck-right">
+            <div className="ck-card">
+              <div className="ck-panel-head"><span>Roadmap & Execution · 方案与执行</span></div>
+              <Timeline overview={overview} mission={session?.missionId ? overview?.mission : undefined} />
+              <div className="button-row" style={{ marginTop: 10 }}>
+                <button className="action primary" disabled={!session?.missionId || overview?.mission.status === 'approved' || Boolean(busy)} onClick={() => action('approve', () => api.approveRoadmap(session!.id), (x) => { setSession(x.session); setOverview(x.overview) })}>Approve · 批准</button>
+                <button className={`action${overview?.mission.status === 'approved' ? ' primary pulse' : ''}`} disabled={!session?.missionId || overview?.mission.status !== 'approved' || Boolean(busy)} onClick={() => action('start', () => api.startOperatorSession(session!.id), (x) => { setSession(x.session); setOverview(x.overview) })}>Start · 启动</button>
+                <button className="action" disabled={!session?.missionId || Boolean(busy)} onClick={() => action('pause', () => api.pauseOperatorSession(session!.id), (x) => { setSession(x.session); setOverview(x.overview) })}>Pause</button>
+                <button className="action" disabled={!session?.missionId || Boolean(busy)} onClick={() => action('resume', () => api.resumeOperatorSession(session!.id), (x) => { setSession(x.session); setOverview(x.overview) })}>Resume</button>
+                <button className="action" disabled={!session?.missionId || Boolean(busy)} onClick={() => action('draft-pr', () => api.createDraftPr(session!.id), (x) => { setOverview(x.overview); setDraftPrStatus(x.pr?.url ?? `${x.code ?? x.status}: ${x.reason ?? ''}`) })}>Draft PR</button>
               </div>
-            ))}
+              {draftPrStatus && <div className="running">Draft PR: {draftPrStatus}</div>}
+            </div>
+            <div className="ck-card"><AgentActivity overview={overview} session={session} busy={busy} /></div>
+            <div className="ck-card"><MissionSnapshot overview={overview} /></div>
+            <div className="ck-card"><ApprovalCard overview={overview} /></div>
+            <div className="ck-card"><DocumentPreview overview={overview} selectedId={selectedArtifactId} onSelect={setSelectedArtifactId} /></div>
           </div>
-        </div>
+        )}
 
-        <div className="panel execution">
-          <div className="panel-title">Roadmap & Execution · 方案与执行</div>
-          <Timeline overview={overview} mission={session?.missionId ? overview?.mission : undefined} />
-          <div className="button-row">
-            <button className="action" disabled={!session || Boolean(busy)} onClick={() => action('roadmap', () => api.generateRoadmap(session!.id), (x) => { setSession(x.session); setMessages(x.messages); if (x.mission) void api.getMissionOverview(x.mission.id).then(setOverview) })}>
-              Generate PRD · 生成方案
-            </button>
-            <button className="action primary" disabled={!session?.missionId || overview?.mission.status === 'approved' || Boolean(busy)} onClick={() => action('approve', () => api.approveRoadmap(session!.id), (x) => { setSession(x.session); setOverview(x.overview) })}>
-              Approve · 批准路线
-            </button>
-            <button className={`action${overview?.mission.status === 'approved' ? ' primary pulse' : ''}`} disabled={!session?.missionId || overview?.mission.status !== 'approved' || Boolean(busy)} onClick={() => action('start', () => api.startOperatorSession(session!.id), (x) => { setSession(x.session); setOverview(x.overview) })}>
-              Start · 启动执行
-            </button>
-            <button className="action" disabled={!session?.missionId || Boolean(busy)} onClick={() => action('pause', () => api.pauseOperatorSession(session!.id), (x) => { setSession(x.session); setOverview(x.overview) })}>
-              Pause · 暂停
-            </button>
-            <button className="action" disabled={!session?.missionId || Boolean(busy)} onClick={() => action('resume', () => api.resumeOperatorSession(session!.id), (x) => { setSession(x.session); setOverview(x.overview) })}>
-              Resume · 恢复
-            </button>
-            <button className="action" disabled={!session?.missionId || Boolean(busy)} onClick={() => action('draft-pr', () => api.createDraftPr(session!.id), (x) => { setOverview(x.overview); setDraftPrStatus(x.pr?.url ?? `${x.code ?? x.status}: ${x.reason ?? ''}`) })}>
-              Draft PR · 创建草稿
-            </button>
+        {panels.bottom && (
+          <div className="ck-bottom">
+            <div className="ck-bottom-grid">
+              <div className="ck-card"><RunPanel overview={overview} /></div>
+              <div className="ck-card"><ExecutionMonitor overview={overview} runLog={runLog} /></div>
+              <div className="ck-card"><ArtifactList overview={overview} selectedId={selectedArtifactId} onSelect={setSelectedArtifactId} /></div>
+              <div className="ck-card"><EventLog events={latestEvents} /></div>
+            </div>
           </div>
-          {busy && <div className="running">Working now · 正在处理：{actionName(busy)}</div>}
-          {draftPrStatus && <div className="running">Draft PR: {draftPrStatus}</div>}
-          <AgentActivity overview={overview} session={session} busy={busy} />
-          <MissionSnapshot overview={overview} />
-          <ApprovalCard overview={overview} />
-          <DocumentPreview overview={overview} selectedId={selectedArtifactId} onSelect={setSelectedArtifactId} />
-        </div>
-
-        <div className="panel observability">
-          <div className="panel-title">Observability · 运行状态</div>
-          <RunPanel overview={overview} />
-          <ExecutionMonitor overview={overview} runLog={runLog} />
-          <ArtifactList overview={overview} selectedId={selectedArtifactId} onSelect={setSelectedArtifactId} />
-          <EventLog events={latestEvents} />
-        </div>
-      </section>
+        )}
+      </div>
     </div>
   )
 }
@@ -462,30 +497,6 @@ function buildGuidance(opts: {
     title: 'Watch the mission move · 查看执行进展',
     body: '右侧是运行状态，中央是方案与审批，左侧可以继续补充上下文。',
   }
-}
-
-function ChoiceBar({ session, messages, busy, onChoice }: {
-  session: ApiOperatorSession | null
-  messages: ApiOperatorMessage[]
-  busy: string | null
-  onChoice: (choice: ApiOperatorChoice) => void
-}) {
-  if (!session || session.missionId) return null
-  const choices = [...messages].reverse().find((m) => m.choices && m.choices.length)?.choices
-  if (!choices || !choices.length) return null
-  return (
-    <div className="choice-bar">
-      <span>Next choice · 下一步选择</span>
-      <div className="choice-row">
-        {choices.map((c) => (
-          <button key={c.id} disabled={Boolean(busy)} onClick={() => onChoice(c)}>
-            <strong>{c.label}</strong>
-            <em>{c.labelEn}</em>
-          </button>
-        ))}
-      </div>
-    </div>
-  )
 }
 
 function AgentActivity({ overview, session, busy }: {

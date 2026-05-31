@@ -127,6 +127,8 @@ export const api = {
     post<{ session: ApiOperatorSession; messages: ApiOperatorMessage[] }>('/operator/sessions', body),
   getLatestOperatorSession: () =>
     get<{ session: ApiOperatorSession | null; messages: ApiOperatorMessage[] }>('/operator/sessions?latest=1'),
+  listOperatorSessions: () =>
+    get<{ sessions: ApiOperatorSession[] }>('/operator/sessions').then((r) => r.sessions),
   getOperatorSession: (id: string) =>
     get<{ session: ApiOperatorSession; messages: ApiOperatorMessage[] }>(`/operator/sessions/${id}`),
   addOperatorMessage: (id: string, content: string) =>
