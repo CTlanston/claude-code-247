@@ -19,6 +19,7 @@ export function Composer(props: {
   canGenerate: boolean
 }) {
   const busy = Boolean(props.busy)
+  const selectedRepo = props.repos.find((r) => r.id === props.repoId)
   if (props.mode === 'new') {
     return (
       <div className="ck-composer">
@@ -27,8 +28,13 @@ export function Composer(props: {
             <label>Repo · 仓库</label>
             <select value={props.repoId} onChange={(e) => props.onRepoChange(e.target.value)}>
               {props.repos.length === 0 && <option value="unknown">unknown</option>}
-              {props.repos.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+              {props.repos.map((r) => <option key={r.id} value={r.id}>{r.name} · {r.path}{r.enabled ? '' : ' · disabled'}</option>)}
             </select>
+            {selectedRepo && (
+              <div className="ck-repo-preflight" style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                {selectedRepo.path} · {selectedRepo.enabled ? 'enabled' : 'disabled — start will HOLD'} · the worker runs in an isolated git worktree of this repo
+              </div>
+            )}
           </div>
           <div>
             <label>Title · 标题</label>

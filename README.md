@@ -152,6 +152,15 @@ The current UX v2 surface includes:
   operator-readable language.
 - **Safety-preserving PR gate** — draft PR creation remains blocked unless
   `system.allow_remote_writes` and repo policy explicitly permit outward writes.
+- **Repo-bound worker (trust model)** — when you pick a repo and press `Start`,
+  the worker executes inside an **isolated `git worktree` of that repo** (checked
+  out at the committed `HEAD`, so your working tree and branches are untouched),
+  never an empty scratch directory. If the selected repo is missing, disabled, or
+  not a git repository, the mission **HOLDs** (`HOLD-TARGET-REPO-UNAVAILABLE`)
+  rather than writing throwaway files and reporting "done". Evidence records the
+  real `changed-paths.json`, repo path, and worktree path; touching a forbidden
+  path (`.env*`, `secrets/**`, `.github/**`, `AGENTS.md`, `CLAUDE.md`) blocks the
+  merge gate.
 
 For the detailed UX v2 implementation brief, see
 [`docs/handoff/operator-cockpit-ux-v2-prd-2026-05-31.md`](docs/handoff/operator-cockpit-ux-v2-prd-2026-05-31.md).

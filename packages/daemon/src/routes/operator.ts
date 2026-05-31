@@ -3,7 +3,16 @@ import { join } from 'path'
 import type { FastifyInstance } from 'fastify'
 import type { AedevDb, MissionArtifact, MissionDesign, OperatorChoice, OperatorMessageMeta, OperatorQuestion, Run, Task, ValidatorResult } from '@aedev/core'
 import { nowIso, validateMissionDesign } from '@aedev/core'
-import { ClaudeCodeAdapter, CodexCliAdapter, discoverWorkerSessions } from '@aedev/runner'
+import {
+  ClaudeCodeAdapter,
+  CodexCliAdapter,
+  TARGET_REPO_HOLD,
+  TargetRepoUnavailableError,
+  collectWorkspaceDiff,
+  createRepoBoundWorkspace,
+  discoverWorkerSessions,
+  validateTargetRepo,
+} from '@aedev/runner'
 import type { ClarificationField, ClarificationQuestion } from '../clarification-gate.js'
 import { ClarificationGate, scoreAmbiguity } from '../clarification-gate.js'
 import { skipFinalWriteIfCancelled } from '../cancellation.js'
@@ -216,8 +225,34 @@ export function registerOperatorRoutes(app: FastifyInstance, db: AedevDb, stateD
     const mission = db.getMission(session.missionId)
     if (!mission) return reply.code(404).send({ error: 'mission not found' })
     if (mission.status !== 'approved') return reply.code(400).send({ error: 'roadmap must be approved before execution' })
+
+    // P0 trust fix: on the real (non-mock) path, the worker must run inside the
+    // operator's selected git repo.  Pre-flight it here so an unavailable repo
+    // HOLDs immediately — we never start a worker that would write throwaway
+    // files in a scratch dir and report "done".
+    if (!operatorForceMock()) {
+      const preflight = await validateTargetRepo(db.getRepo(mission.repoId))
+      if (!preflight.ok) {
+        db.updateOperatorSession(session.id, { status: 'hold' })
+        db.insertEvent('operator.hold_created', 'mission', mission.id, { holdCode: preflight.code, reason: preflight.reason, sessionId: session.id })
+        db.insertHold({ entityType: 'mission', entityId: mission.id, code: preflight.code, reason: preflight.reason, nextAction: 'Register a valid, enabled git repo for this mission, then start again.' })
+        // 200 + structured hold (matches the generate-roadmap HOLD contract) so the
+        // cockpit surfaces the reason instead of a thrown HTTP error. The mission is
+        // NOT marked running/done — it stays approved with an active HOLD.
+        return {
+          session: db.getOperatorSession(session.id),
+          result: { status: 'blocked', mergeDecision: 'BLOCKED' },
+          hold: { code: preflight.code, reason: preflight.reason },
+          overview: buildMissionOverview(db, mission.id),
+        }
+      }
+    }
     try {
+      // Authoritative status: flip mission + session to running BEFORE dispatch so
+      // the cockpit Start button and status are never misleading (event before view).
+      db.updateMissionStatus(mission.id, 'running')
       db.updateOperatorSession(session.id, { status: 'running' })
+      db.insertEvent('operator.run_starting', 'mission', mission.id, { sessionId: session.id })
       db.insertEvent('operator.stage_changed', 'mission', mission.id, { stage: 'Worker', sessionId: session.id })
       const runPromise = runOperatorMission(db, stateDir, session.id, mission.id)
       if (process.env['VITEST']) {
@@ -971,10 +1006,16 @@ function registerEvidenceArtifacts(db: AedevDb, missionId: string, evidenceDir: 
   }
 }
 
+/** True when the cockpit uses the deterministic mock runner instead of a real local CLI.
+ *  Mock mode skips repo-bound execution (used by the UI e2e/screenshot harnesses). */
+function operatorForceMock(): boolean {
+  return /^(1|true|yes)$/i.test(process.env['AEDEV_COCKPIT_FORCE_MOCK'] ?? '') ||
+    (Boolean(process.env['VITEST']) && process.env['AEDEV_COCKPIT_FORCE_REAL'] !== '1')
+}
+
 async function runOperatorMission(db: AedevDb, stateDir: string, sessionId: string, missionId: string) {
   const workerSessions = await discoverWorkerSessions()
-  const forceMock = /^(1|true|yes)$/i.test(process.env['AEDEV_COCKPIT_FORCE_MOCK'] ?? '') ||
-    (Boolean(process.env['VITEST']) && process.env['AEDEV_COCKPIT_FORCE_REAL'] !== '1')
+  const forceMock = operatorForceMock()
   const validatorConfig = buildCockpitValidatorConfig(missionId)
   if (validatorConfig.configuredCount === 0) {
     db.insertEvent('operator.validators_not_configured', 'mission', missionId, {
@@ -1103,7 +1144,20 @@ function isTemplateRoadmapEnabled(): boolean {
   return Boolean(process.env['VITEST'])
 }
 
-function operatorLocalCliRunner(db: AedevDb, stateDir: string, sessions: Awaited<ReturnType<typeof discoverWorkerSessions>>, requireClaudeCoder = false) {
+/** Injectable adapter runners (default to the real CLIs); tests pass fakes that
+ *  exercise the repo-bound worktree without a live Claude/Codex session. */
+export interface OperatorRunnerDeps {
+  runClaude?: (prompt: string, workdir: string, options: Parameters<ClaudeCodeAdapter['run']>[2]) => Promise<Awaited<ReturnType<ClaudeCodeAdapter['run']>>>
+  runCodex?: (prompt: string, workdir: string, options: Parameters<CodexCliAdapter['run']>[2]) => Promise<Awaited<ReturnType<CodexCliAdapter['run']>>>
+}
+
+export function operatorLocalCliRunner(
+  db: AedevDb,
+  stateDir: string,
+  sessions: Awaited<ReturnType<typeof discoverWorkerSessions>>,
+  requireClaudeCoder = false,
+  deps: OperatorRunnerDeps = {},
+) {
   return {
     async runTask(task: Task) {
       const session = requireClaudeCoder
@@ -1113,12 +1167,24 @@ function operatorLocalCliRunner(db: AedevDb, stateDir: string, sessions: Awaited
       const started = new Date().toISOString()
       const startedMs = Date.now()
       const evidenceDir = join(stateDir, 'operator-evidence', task.id)
-      const workdir = join(stateDir, 'operator-workspaces', task.id)
       mkdirSync(evidenceDir, { recursive: true })
-      mkdirSync(workdir, { recursive: true })
-      writeFileSync(join(workdir, 'mission.md'), task.prompt)
       const logPath = join(evidenceDir, 'operator-run.log')
-      writeFileSync(logPath, `[${nowIso()}] starting ${session.provider} worker for task ${task.id}\n`)
+
+      // P0 trust fix: the worker MUST run inside an isolated git worktree of the
+      // operator's selected repo — not an empty scratch dir.  An invalid repo HOLDs.
+      const repo = db.getRepo(task.repoId)
+      let workspace
+      try {
+        workspace = await createRepoBoundWorkspace(repo!, task.id, stateDir)
+      } catch (e) {
+        const reason = (e as Error).message
+        db.insertEvent('operator.hold_created', 'mission', task.missionId, { holdCode: TARGET_REPO_HOLD, reason, taskId: task.id })
+        db.insertHold({ entityType: 'mission', entityId: task.missionId, code: TARGET_REPO_HOLD, reason, nextAction: 'Register a valid, enabled git repo for this mission, then start again.' })
+        throw e instanceof TargetRepoUnavailableError ? e : new TargetRepoUnavailableError(reason)
+      }
+      const workdir = workspace.worktreePath
+      const forbiddenPaths = repo!.forbiddenPaths?.length ? repo!.forbiddenPaths : ['.env*', 'secrets/**', '.github/**', 'AGENTS.md', 'CLAUDE.md']
+      writeFileSync(logPath, `[${nowIso()}] starting ${session.provider} worker for task ${task.id} in repo-bound worktree ${workdir}\n`)
       const run = db.insertRun({
         taskId: task.id,
         runnerMode: session.provider === 'claude-cli' ? 'claude-cli' : 'codex-cli',
@@ -1127,7 +1193,11 @@ function operatorLocalCliRunner(db: AedevDb, stateDir: string, sessions: Awaited
         evidenceDir,
       })
       db.updateTaskStatus(task.id, 'running')
-      db.insertEvent('operator.worker_started', 'mission', task.missionId, { taskId: task.id, runId: run.id, provider: session.provider, workdir, evidenceDir })
+      db.insertEvent('operator.repo_bound_workspace_ready', 'mission', task.missionId, {
+        taskId: task.id, runId: run.id, repoId: repo!.id, repoPath: repo!.path,
+        worktreePath: workdir, branch: repo!.defaultBranch, baseSha: workspace.baseSha, dirtyStatus: workspace.dirty ? 'dirty' : 'clean',
+      })
+      db.insertEvent('operator.worker_started', 'mission', task.missionId, { taskId: task.id, runId: run.id, provider: session.provider, workdir, evidenceDir, repoId: repo!.id })
       const appendLog = (stream: 'stdout' | 'stderr', chunk: string) => {
         mkdirSync(evidenceDir, { recursive: true })
         appendFileSync(logPath, `[${nowIso()}] ${stream}: ${chunk}`)
@@ -1138,9 +1208,13 @@ function operatorLocalCliRunner(db: AedevDb, stateDir: string, sessions: Awaited
         task.prompt,
         '',
         'Run as an evidence-gate worker for the Operator Cockpit.',
-        'Do not push to GitHub and do not edit secrets, .github, or AGENTS.md.',
-        'Create or update files only inside the current temporary workspace if you need scratch files.',
-        'Return a concise markdown report with: Plan, Concrete steps, Risks, Tests/checks, Done report.',
+        `Target repository: ${repo!.name}`,
+        `Working directory (an isolated git worktree of the repo): ${workdir}`,
+        `Default branch: ${repo!.defaultBranch}`,
+        `Evidence directory (read-only for you): ${evidenceDir}`,
+        'Make the smallest real change for this mission to repository files in your working directory.',
+        'Do not push to GitHub, do not merge, and do not edit these forbidden paths: ' + forbiddenPaths.join(', ') + '.',
+        'Stop at the evidence gate: leave the changes in the worktree and return a concise markdown report with Plan, Concrete steps, Risks, Tests/checks, Done report.',
       ].join('\n')
       const timeoutMs = Number(process.env['AEDEV_COCKPIT_WORKER_TIMEOUT_MS'] ?? '600000')
       const timeoutSource = process.env['AEDEV_COCKPIT_WORKER_TIMEOUT_MS'] ? 'env:AEDEV_COCKPIT_WORKER_TIMEOUT_MS' : 'default'
@@ -1151,26 +1225,47 @@ function operatorLocalCliRunner(db: AedevDb, stateDir: string, sessions: Awaited
         workerTimeoutMs: timeoutMs, timeoutSource, promptChars: prompt.length,
       })
       const result = session.provider === 'claude-cli'
-        ? await new ClaudeCodeAdapter().run(prompt, workdir, { timeoutMs, onStdout: (chunk) => appendLog('stdout', chunk), onStderr: (chunk) => appendLog('stderr', chunk) })
-        : await new CodexCliAdapter().run(prompt, workdir, { timeoutMs, sandbox: 'workspace-write', approvalPolicy: 'never', onStdout: (chunk) => appendLog('stdout', chunk), onStderr: (chunk) => appendLog('stderr', chunk) })
+        ? await (deps.runClaude ?? ((p, cwd, o) => new ClaudeCodeAdapter().run(p, cwd, o)))(prompt, workdir, { timeoutMs, onStdout: (chunk) => appendLog('stdout', chunk), onStderr: (chunk) => appendLog('stderr', chunk) })
+        : await (deps.runCodex ?? ((p, cwd, o) => new CodexCliAdapter().run(p, cwd, o)))(prompt, workdir, { timeoutMs, sandbox: 'workspace-write', approvalPolicy: 'never', onStdout: (chunk) => appendLog('stdout', chunk), onStderr: (chunk) => appendLog('stderr', chunk) })
       const transcript = result.transcript || result.error || '(no transcript)'
       appendFileSync(logPath, `\n[${nowIso()}] completed exitCode=${result.exitCode}\n`)
+
+      // Real repository diff from the worktree (honest evidence; feeds the engine's
+      // forbidden-path BLOCK gate via changed-paths.json).
+      const diff = await collectWorkspaceDiff(workdir, workspace.baseSha, forbiddenPaths)
+      writeFileSync(join(evidenceDir, 'changed-paths.json'), JSON.stringify({
+        changedPaths: diff.changedPaths,
+        forbiddenHits: diff.forbiddenHits,
+        repoPath: repo!.path,
+        worktreePath: workdir,
+        baseSha: workspace.baseSha,
+      }, null, 2))
       writeFileSync(join(evidenceDir, 'transcript-summary.md'), transcript)
       writeFileSync(join(evidenceDir, 'plan.md'), `# Plan\n\n${transcript}\n`)
-      writeFileSync(join(evidenceDir, 'diff-summary.md'), '# Diff Summary\n\nOperator Cockpit local CLI worker used an isolated temporary workspace and did not push to GitHub.\n')
+      writeFileSync(join(evidenceDir, 'diff-summary.md'), diff.summary)
       writeFileSync(join(evidenceDir, 'test-summary.md'), [
         '# Test Summary', '',
         `Provider: ${session.provider}`,
-        `Exit code: ${result.exitCode}`,
+        `Worker exit code: ${result.exitCode}`,
         `Duration: ${Math.round(result.durationMs / 1000)}s`,
         `Worker timeout: ${timeoutMs}ms (source: ${timeoutSource})`,
+        `Repository files changed: ${diff.changedPaths.length}`,
+        diff.forbiddenHits.length ? `Forbidden-path hits: ${diff.forbiddenHits.join(', ')}` : 'Forbidden-path scan: PASS',
         ...(result.error ? [`Error: ${result.error}`] : []),
         ...(result.exitCode === 124
           ? ['', 'Timed out at the worker budget — the worker was killed, not stuck. The full step trace (searches, commands, agent messages) is in operator-run.log. Raise AEDEV_COCKPIT_WORKER_TIMEOUT_MS or split the mission into smaller runs.']
           : []),
         '',
       ].join('\n'))
-      writeFileSync(join(evidenceDir, 'done-report.md'), `# Done Report\n\nTask: ${task.id}\nProvider: ${session.provider}\nExit code: ${result.exitCode}\n`)
+      writeFileSync(join(evidenceDir, 'done-report.md'), [
+        '# Done Report', '',
+        `Task: ${task.id}`,
+        `Provider: ${session.provider}`,
+        `Repo: ${repo!.name} (${repo!.path})`,
+        `Worktree: ${workdir}`,
+        `Worker exit code: ${result.exitCode}`,
+        `Repository files changed: ${diff.changedPaths.length}`,
+      ].join('\n') + '\n')
       writeFileSync(join(evidenceDir, 'model-usage.json'), JSON.stringify({
         provider: session.provider,
         inputTokens: result.inputTokens,
@@ -1194,7 +1289,7 @@ function operatorLocalCliRunner(db: AedevDb, stateDir: string, sessions: Awaited
         outputTokens: result.outputTokens,
         costUsd: result.costUsd,
       })
-      db.insertEvent('operator.task_progress', 'task', task.id, { progress: 1, evidenceDir, provider: session.provider, exitCode: result.exitCode })
+      db.insertEvent('operator.task_progress', 'task', task.id, { progress: 1, evidenceDir, provider: session.provider, exitCode: result.exitCode, changedPaths: diff.changedPaths.length })
       return {
         runId: run.id,
         taskId: task.id,

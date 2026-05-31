@@ -7,14 +7,16 @@
  *   - the daemon process chdirs into an isolated temp git repo, so the planner
  *     (which runs the local CLI with bypassPermissions in cwd) cannot touch the
  *     real repository,
- *   - the worker executes in an isolated temp workspace and never pushes.
+ *   - the worker executes in a repo-bound isolated git worktree of that fixture
+ *     repo (never an empty scratch dir) and never pushes.  This run also asserts
+ *     the worker ran inside the registered repo (no temp-dir fake success).
  *
  * The script FAILS only if a safety invariant is violated. Planner/worker HOLDs
  * are recorded as honest evidence, not crashes. An evidence report is written to
  * evidence/launch/.
  */
 import { execFileSync } from 'child_process'
-import { cpSync, mkdtempSync, mkdirSync, rmSync, writeFileSync, readdirSync, existsSync } from 'fs'
+import { cpSync, mkdtempSync, mkdirSync, rmSync, writeFileSync, readdirSync, readFileSync, existsSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { AedevDb } from '@aedev/core'
@@ -50,8 +52,13 @@ void main().catch((e) => {
 
 async function main(): Promise<void> {
   // Isolated git repo so the live planner runs against scratch, never the real tree.
+  // It must have a commit: the worker runs in a `git worktree add` of HEAD.
   execFileSync('git', ['init', '-q'], { cwd: sandboxRepo })
+  execFileSync('git', ['config', 'user.email', 'real-smoke@example.invalid'], { cwd: sandboxRepo })
+  execFileSync('git', ['config', 'user.name', 'real-smoke'], { cwd: sandboxRepo })
   writeFileSync(join(sandboxRepo, 'README.md'), '# Sandbox\n\nDisposable repo for the Operator Cockpit real smoke.\n')
+  execFileSync('git', ['add', '.'], { cwd: sandboxRepo })
+  execFileSync('git', ['commit', '-q', '-m', 'initial fixture commit'], { cwd: sandboxRepo })
   process.chdir(sandboxRepo)
 
   const repo = db.insertRepo({
@@ -97,10 +104,17 @@ async function main(): Promise<void> {
 
   // --- Safety assertions (these gate PASS/FAIL) ---
   if (missionId) {
-    const pr = await postJson(`/operator/sessions/${sessionId}/create-pr`, {}) as { status: string; code?: string }
-    log(`create-pr → status=${pr.status} code=${pr.code ?? '(none)'}`)
-    if (pr.status !== 'blocked') safetyFailures.push(`draft PR was not blocked (status=${pr.status})`)
-    if (pr.code !== 'REMOTE_WRITES_DISABLED') safetyFailures.push(`unexpected block code: ${pr.code}`)
+    // Capture status + body without throwing so a create-pr issue is recorded as
+    // evidence and the repo-binding invariant below still runs.
+    const prRes = await fetch(`${base}/operator/sessions/${sessionId}/create-pr`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })
+    const pr = await prRes.json() as { status?: string; code?: string; error?: string }
+    log(`create-pr → HTTP ${prRes.status} status=${pr.status ?? '(none)'} code=${pr.code ?? pr.error ?? '(none)'}`)
+    if (prRes.status !== 200) {
+      safetyFailures.push(`create-pr returned HTTP ${prRes.status}: ${pr.error ?? JSON.stringify(pr)}`)
+    } else {
+      if (pr.status !== 'blocked') safetyFailures.push(`draft PR was not blocked (status=${pr.status})`)
+      if (pr.code !== 'REMOTE_WRITES_DISABLED') safetyFailures.push(`unexpected block code: ${pr.code}`)
+    }
 
     const overview = await getJson(`/missions/${missionId}/overview`) as {
       mission: { githubPrUrl?: string }
@@ -115,6 +129,25 @@ async function main(): Promise<void> {
     }
     summarizeProviders(overview.events)
     log(`validatorStatus=${overview.validatorStatus}; evidenceDir=${overview.evidenceDir ?? '(none)'}`)
+
+    // Repo-bound worker invariant (the P0 trust fix): if a worker ran, it MUST have
+    // executed inside a git worktree of the registered repo — never a scratch dir.
+    const ready = overview.events.find((e) => e.type === 'operator.repo_bound_workspace_ready')
+    if (ready) {
+      const repoPath = String(ready.payload['repoPath'] ?? '')
+      const worktreePath = String(ready.payload['worktreePath'] ?? '')
+      log(`repo-bound workspace: repoPath=${repoPath} worktreePath=${worktreePath} dirty=${String(ready.payload['dirtyStatus'] ?? '?')}`)
+      if (repoPath !== sandboxRepo) safetyFailures.push(`worker repoPath ${repoPath} != registered fixture repo ${sandboxRepo}`)
+      if (!worktreePath.includes('operator-workspaces')) safetyFailures.push(`worker worktree ${worktreePath} is not an isolated repo-bound workspace`)
+      const changedPathsFile = overview.evidenceDir ? join(overview.evidenceDir, 'changed-paths.json') : ''
+      if (changedPathsFile && existsSync(changedPathsFile)) {
+        const cp = JSON.parse(readFileSync(changedPathsFile, 'utf8')) as { repoPath?: string; changedPaths?: string[] }
+        if (cp.repoPath && cp.repoPath !== sandboxRepo) safetyFailures.push(`evidence changed-paths repoPath ${cp.repoPath} != fixture repo`)
+        log(`worker changed ${cp.changedPaths?.length ?? 0} repo file(s): ${(cp.changedPaths ?? []).join(', ') || '(none)'}`)
+      }
+    } else {
+      log('No repo-bound worker ran this round (planner HOLD or no worker session); repo-binding invariant not exercised.')
+    }
     if (overview.evidenceDir && existsSync(overview.evidenceDir)) {
       log(`evidence files: ${readdirSync(overview.evidenceDir).join(', ')}`)
       // Persist a durable copy before the temp state dir is cleaned up.

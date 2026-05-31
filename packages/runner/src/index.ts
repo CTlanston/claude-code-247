@@ -8,6 +8,16 @@ export { MockRunner } from './mock-runner.js'
 export { DockerRunner } from './docker-runner.js'
 export { ClaudeDockerRunner, preflightClaudeDockerEnvironment } from './claude-docker-runner.js'
 export { WorktreeManager } from './worktree.js'
+export {
+  TARGET_REPO_HOLD,
+  TargetRepoUnavailableError,
+  validateTargetRepo,
+  createRepoBoundWorkspace,
+  removeRepoBoundWorkspace,
+  collectWorkspaceDiff,
+  pathMatches,
+} from './operator-workspace.js'
+export type { GitExec, RepoPreflight, RepoBoundWorkspace, WorkspaceDiff } from './operator-workspace.js'
 export { ClaudeCodeAdapter } from './claude-adapter.js'
 export { CodexCliAdapter } from './codex-adapter.js'
 export { LocalCliRunner } from './cli-runner.js'

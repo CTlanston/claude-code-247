@@ -26,10 +26,10 @@ export function App() {
         ))}
       </nav>
       <div className="page">
-        {tab === 'cockpit' && <CockpitPage />}
+        {tab === 'cockpit' && <CockpitPage onNavigate={(t) => setTab(t as Tab)} />}
         {tab === 'missions' && <MissionsPage />}
         {tab === 'tasks' && <TasksPage />}
-        {tab === 'approvals' && <ApprovalsPage />}
+        {tab === 'approvals' && <ApprovalsPage onNavigate={(t) => setTab(t as Tab)} />}
         {tab === 'memory' && <MemoryPage />}
       </div>
     </div>

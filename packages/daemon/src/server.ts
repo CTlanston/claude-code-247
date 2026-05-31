@@ -12,6 +12,7 @@ import { registerMemoryRoutes } from './routes/memory.js'
 import { registerSmokeRoutes } from './routes/smoke.js'
 import { registerOperatorRoutes } from './routes/operator.js'
 import type { OperatorRouteOptions } from './routes/operator.js'
+import { registerApprovalRoutes } from './routes/approvals.js'
 import { MissionRunner } from './mission-runner.js'
 import { discoverWorkerSessions } from '@aedev/runner'
 import { resolveStateDir } from './paths.js'
@@ -37,7 +38,7 @@ export function createServer(
   registerMemoryRoutes(app, db)
   registerSmokeRoutes(app, db, costRoller)
   registerOperatorRoutes(app, db, stateDir, operatorOptions)
-  app.get('/approvals', async () => ({ approvals: db.listApprovals() }))
+  registerApprovalRoutes(app, db, stateDir)
   app.post<{ Params: { id: string } }>('/missions/:id/run', async (req, reply) => {
     try {
       const runner = new MissionRunner(db, {
