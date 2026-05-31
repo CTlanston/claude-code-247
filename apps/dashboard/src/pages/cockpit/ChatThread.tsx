@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import Markdown from 'react-markdown'
 import type { ApiOperatorChoice, ApiOperatorMessage, ApiOperatorMessageMeta } from '../../api.js'
 import { ClarificationCard } from './ClarificationCard.js'
@@ -17,12 +17,13 @@ function MessageFooter({ meta }: { meta: ApiOperatorMessageMeta }) {
   return <div className="ck-msg-footer">Provider · {bits.join(' · ')}</div>
 }
 
-export function ChatThread({ messages, busy, canChoose, onChoice, onAnswer }: {
+export function ChatThread({ messages, busy, canChoose, onChoice, onAnswer, footer }: {
   messages: ApiOperatorMessage[]
   busy: string | null
   canChoose: boolean
   onChoice: (choice: ApiOperatorChoice) => void
   onAnswer: (answers: { questionId: string; value: string }[]) => void
+  footer?: ReactNode
 }) {
   const endRef = useRef<HTMLDivElement>(null)
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }) }, [messages.length])
@@ -63,6 +64,7 @@ export function ChatThread({ messages, busy, canChoose, onChoice, onAnswer }: {
           </div>
         )
       })}
+      {footer}
       <div ref={endRef} />
     </div>
   )
