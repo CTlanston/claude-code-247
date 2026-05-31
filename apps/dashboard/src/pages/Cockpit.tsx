@@ -12,6 +12,7 @@ import { useSSE } from '../hooks/useSSE.js'
 import { Sidebar } from './cockpit/Sidebar.js'
 import { ChatThread } from './cockpit/ChatThread.js'
 import { Composer } from './cockpit/Composer.js'
+import { ExecutionTimeline } from './cockpit/ExecutionTimeline.js'
 import './cockpit/cockpit.css'
 
 const DEFAULT_PROMPT = 'Brainstorm a low-risk improvement, produce PRD/ADR/roadmap, then execute to the draft PR/evidence gate.'
@@ -249,7 +250,14 @@ export function CockpitPage() {
           </div>
 
           {err && <div className="ck-banner error">Error: {err}</div>}
-          {!err && latestHold && session?.status === 'hold' && <div className="ck-banner error">Active HOLD · {latestHold}</div>}
+          {overview?.activeHolds && overview.activeHolds.length > 0 && (
+            <div className="ck-banner error">
+              {overview.activeHolds.map((h) => (
+                <div key={h.id}><strong>Active HOLD · {h.code}</strong> — {h.reason}{h.nextAction ? ` · Next: ${h.nextAction}` : ''}</div>
+              ))}
+            </div>
+          )}
+          {!err && !(overview?.activeHolds?.length) && latestHold && session?.status === 'hold' && <div className="ck-banner error">Active HOLD · {latestHold}</div>}
           {(guidance.primary || guidance.secondary) && (
             <div className="ck-composer-actions" style={{ marginBottom: 8 }}>
               {guidance.primary && <button className="ck-btn primary" disabled={guidance.primary.disabled || Boolean(busy)} onClick={guidance.primary.onClick}>{guidance.primary.label}</button>}
@@ -288,7 +296,13 @@ export function CockpitPage() {
           <div className="ck-right">
             <div className="ck-card">
               <div className="ck-panel-head"><span>Roadmap & Execution · 方案与执行</span></div>
-              <Timeline overview={overview} mission={session?.missionId ? overview?.mission : undefined} />
+              <ExecutionTimeline
+                overview={overview}
+                busy={busy}
+                onPause={() => session && action('pause', () => api.pauseOperatorSession(session.id), (x) => { setSession(x.session); setOverview(x.overview) })}
+                onStop={() => session?.missionId && action('stop', () => api.cancelMission(session.missionId!), () => { if (session.missionId) void api.getMissionOverview(session.missionId).then(setOverview) })}
+                onDiagnose={() => setPanels((p) => { const next = { ...p, bottom: true }; try { localStorage.setItem(PANELS_STORAGE_KEY, JSON.stringify(next)) } catch { /* ignore */ } return next })}
+              />
               <div className="button-row" style={{ marginTop: 10 }}>
                 <button className="action primary" disabled={!session?.missionId || overview?.mission.status === 'approved' || Boolean(busy)} onClick={() => action('approve', () => api.approveRoadmap(session!.id), (x) => { setSession(x.session); setOverview(x.overview) })}>Approve · 批准</button>
                 <button className={`action${overview?.mission.status === 'approved' ? ' primary pulse' : ''}`} disabled={!session?.missionId || overview?.mission.status !== 'approved' || Boolean(busy)} onClick={() => action('start', () => api.startOperatorSession(session!.id), (x) => { setSession(x.session); setOverview(x.overview) })}>Start · 启动</button>
@@ -588,17 +602,6 @@ function eventDetail(type: string, p: Record<string, unknown>): string {
     case 'operator.hold_created': return String(p['holdCode'] ?? '')
     default: return ''
   }
-}
-
-function Timeline({ overview, mission }: { overview: ApiMissionOverview | null; mission?: ApiMission }) {
-  const stages = overview?.stages ?? ['Intake', 'Brainstorm', 'PRD', 'ADR', 'Roadmap', 'Approved', 'Worker', 'Tests', 'Validators', 'PR/Waiting/Blocked'].map((stage, i) => ({ stage, status: i === 0 ? 'active' : 'pending' }))
-  return (
-    <div className="timeline">
-      {stages.map((s) => <div key={s.stage} className={`stage ${s.status}`}>{s.stage}</div>)}
-      <div className="progress"><span style={{ width: `${Math.round((overview?.progress ?? 0.08) * 100)}%` }} /></div>
-      <div className="mission-meta">{mission ? `${mission.title} · ${mission.status}` : 'No mission generated yet'}</div>
-    </div>
-  )
 }
 
 function MissionSnapshot({ overview }: { overview: ApiMissionOverview | null }) {
