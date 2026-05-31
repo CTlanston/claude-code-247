@@ -29,7 +29,13 @@ PORT="7247"
 mkdir -p "$LOG_DIR" "$AEDEV_HOME/state" "$LA_DIR"
 PNPM_DIR="$(dirname "$PNPM_BIN")"
 NODE_DIR="$(dirname "$NODE_BIN")"
+# The pnpm-managed `node` is a shim; globally-installed CLIs (claude, codex) live
+# in the REAL node bin dir (process.execPath), which is NOT the shim's dir.
+# discoverWorkerSessions() spawns `claude`/`codex` by name, so that dir MUST be on
+# the daemon's PATH — otherwise every brainstorm/roadmap/run HOLDs (HOLD-NO-LOCAL-CLI).
+NODE_REAL_DIR="$(dirname "$("$NODE_BIN" -p 'process.execPath' 2>/dev/null)")"
 PATH_VAL="$PNPM_DIR:$NODE_DIR:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+[ -n "$NODE_REAL_DIR" ] && [ "$NODE_REAL_DIR" != "." ] && PATH_VAL="$NODE_REAL_DIR:$PATH_VAL"
 
 sed -e "s#@@NODE@@#${NODE_BIN}#g" \
     -e "s#@@DAEMON_ENTRY@@#${ENTRY_REL}#g" \
