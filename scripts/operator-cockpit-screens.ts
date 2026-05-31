@@ -70,7 +70,7 @@ async function main(): Promise<void> {
     await page.goto(`http://127.0.0.1:${DASHBOARD_PORT}`, { waitUntil: 'domcontentloaded' })
     await shot(page, '01-desktop-initial')
 
-    await page.getByRole('button', { name: /New Brainstorm/ }).click()
+    await page.getByRole('button', { name: /Start Brainstorm/ }).first().click()
     await page.getByText('Initial brainstorm:', { exact: false }).waitFor({ timeout: 10_000 })
     await page.getByText('方向 OK，生成 PRD', { exact: false }).first().waitFor({ timeout: 10_000 })
     await shot(page, '02-desktop-brainstorm-choices')
@@ -102,8 +102,8 @@ async function main(): Promise<void> {
     await page.getByText('REMOTE_WRITES_DISABLED', { exact: false }).first().waitFor({ timeout: 10_000 })
     await shot(page, '08-desktop-draft-pr-blocked')
 
-    // Long Chinese prompt (also exercises the New Mission reset button).
-    await page.getByRole('button', { name: /New Mission/ }).first().click()
+    // Long Chinese prompt (also exercises the sidebar New reset button).
+    await page.getByRole('button', { name: '+ New' }).first().click()
     await page.locator('textarea').first().fill(LONG_CHINESE_PROMPT)
     await shot(page, '09-desktop-long-chinese-prompt')
     await page.close()
@@ -112,7 +112,8 @@ async function main(): Promise<void> {
     const mobile = await browser.newPage({ viewport: { width: 390, height: 844 } })
     await mobile.goto(`http://127.0.0.1:${DASHBOARD_PORT}`, { waitUntil: 'domcontentloaded' })
     await shot(mobile, '10-mobile-initial')
-    await mobile.getByRole('button', { name: /New Brainstorm/ }).click()
+    await mobile.getByRole('button', { name: '+ New' }).first().click() // reset to the new-mission composer (daemon already has the desktop session)
+    await mobile.getByRole('button', { name: /Start Brainstorm/ }).first().click()
     await mobile.getByText('Initial brainstorm:', { exact: false }).waitFor({ timeout: 10_000 })
     await shot(mobile, '11-mobile-brainstorm')
     await mobile.close()

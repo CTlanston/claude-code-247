@@ -56,7 +56,7 @@ try {
   browser = await chromium.launch()
   const page = await browser.newPage()
   await page.goto(`http://127.0.0.1:${DASHBOARD_PORT}`, { waitUntil: 'domcontentloaded' })
-  await page.getByRole('button', { name: /New Brainstorm/ }).click()
+  await page.getByRole('button', { name: /Start Brainstorm/ }).first().click()
   await page.getByText('Initial brainstorm:', { exact: false }).waitFor({ timeout: 10_000 })
   await page.getByRole('button', { name: /Generate PRD/ }).first().click()
   await page.getByText('Approval Gate').waitFor({ timeout: 10_000 })

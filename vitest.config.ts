@@ -4,7 +4,7 @@ export default defineConfig({
   test: {
     include: [
       'packages/*/src/**/*.test.ts',
-      'apps/*/src/**/*.test.ts',
+      'apps/*/src/**/*.test.{ts,tsx}',
     ],
     // Subprocess-spawning tests (docker-runner, preview-adapter, bridge-runner)
     // run fake binaries via child_process; under heavy parallel load the
@@ -13,4 +13,7 @@ export default defineConfig({
     testTimeout: 30_000,
     hookTimeout: 30_000,
   },
+  // React component tests (apps/dashboard/**/*.test.tsx, jsdom per-file) rely on
+  // the automatic JSX runtime so they don't need an explicit `import React`.
+  esbuild: { jsx: 'automatic' },
 })

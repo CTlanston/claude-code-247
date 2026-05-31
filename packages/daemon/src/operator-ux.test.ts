@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { AedevDb, nowIso } from '@aedev/core'
+import { AedevDb } from '@aedev/core'
 import { createServer } from './server.js'
 
 // Phase 1 (Operator Cockpit UX v2): structured questions, HOLD lifecycle, run progress.
