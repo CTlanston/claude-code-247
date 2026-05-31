@@ -1,9 +1,12 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import type { FastifyInstance } from 'fastify'
-import type { AedevDb, MissionArtifact, MissionDesign, OperatorChoice, Run, Task, ValidatorResult } from '@aedev/core'
+import type { AedevDb, MissionArtifact, MissionDesign, OperatorChoice, OperatorMessageMeta, OperatorQuestion, Run, Task, ValidatorResult } from '@aedev/core'
 import { nowIso, validateMissionDesign } from '@aedev/core'
 import { ClaudeCodeAdapter, CodexCliAdapter, discoverWorkerSessions } from '@aedev/runner'
+import type { ClarificationField, ClarificationQuestion } from '../clarification-gate.js'
+import { ClarificationGate, scoreAmbiguity } from '../clarification-gate.js'
+import { skipFinalWriteIfCancelled } from '../cancellation.js'
 import { MockValidator } from '@aedev/validators'
 import { IntakeService } from '../intake.js'
 import { MissionRunner } from '../mission-runner.js'
@@ -75,9 +78,10 @@ export function registerOperatorRoutes(app: FastifyInstance, db: AedevDb, stateD
       sessionId: session.id,
       role: 'assistant',
       content: 'Brainstorm is running on the local planner CLI. This can take a minute; the conversation will update automatically.',
+      meta: thinkingMeta(),
     })
     db.insertEvent('operator.session.created', 'operator_session', session.id, { repoId })
-    const brainstormPromise = completePlannerBrainstorm(db, session.id, prompt, title, repoId)
+    const brainstormPromise = completePlannerBrainstorm(db, stateDir, session.id, prompt, title, repoId)
     if (process.env['VITEST'] || process.env['NODE_ENV'] === 'test') {
       await brainstormPromise
     } else {
@@ -116,9 +120,10 @@ export function registerOperatorRoutes(app: FastifyInstance, db: AedevDb, stateD
       sessionId: session.id,
       role: 'assistant',
       content: 'Planner is preparing clarifying questions. · AI 正在准备需要你确认的问题，稍后会自动更新。',
+      meta: thinkingMeta(),
     })
     db.updateOperatorSession(session.id, { status: 'brainstorming' })
-    const followupPromise = completePlannerFollowup(db, session.id, requestPrompt, session.title, repoId, session.prompt)
+    const followupPromise = completePlannerFollowup(db, stateDir, session.id, requestPrompt, session.title, repoId, session.prompt)
     if (process.env['VITEST'] || process.env['NODE_ENV'] === 'test') {
       await followupPromise
     } else {
@@ -126,6 +131,27 @@ export function registerOperatorRoutes(app: FastifyInstance, db: AedevDb, stateD
     }
     return { session: db.getOperatorSession(session.id), messages: db.listOperatorMessages(session.id) }
   })
+
+  app.post<{ Params: { id: string }; Body: { answers?: { questionId: string; value: string }[] } }>(
+    '/operator/sessions/:id/answer-questions',
+    async (req, reply) => {
+      const session = db.getOperatorSession(req.params.id)
+      if (!session) return reply.code(404).send({ error: 'session not found' })
+      const answers = (req.body.answers ?? []).filter((a) => a && a.questionId && typeof a.value === 'string' && a.value.trim())
+      if (answers.length === 0) return reply.code(400).send({ error: 'answers are required' })
+      const messages = db.listOperatorMessages(session.id)
+      const byId = new Map(
+        messages.flatMap((m) => m.questions ?? []).map((q) => [q.id, q]),
+      )
+      const lines = answers.map((a) => `- ${byId.get(a.questionId)?.question ?? a.questionId} → ${a.value.trim()}`)
+      db.insertOperatorMessage({ sessionId: session.id, role: 'user', content: ['已确认 · Clarifications', '', ...lines].join('\n') })
+      db.insertEvent('operator.questions_answered', 'operator_session', session.id, {
+        answers: answers.map((a) => ({ questionId: a.questionId, field: byId.get(a.questionId)?.field, value: a.value.trim() })),
+      })
+      db.updateOperatorSession(session.id, { status: 'brainstorm_ready' })
+      return { session: db.getOperatorSession(session.id), messages: db.listOperatorMessages(session.id) }
+    },
+  )
 
   app.post<{ Params: { id: string } }>('/operator/sessions/:id/generate-roadmap', async (req, reply) => {
     const session = db.getOperatorSession(req.params.id)
@@ -140,6 +166,7 @@ export function registerOperatorRoutes(app: FastifyInstance, db: AedevDb, stateD
         holdCode: 'HOLD-ROADMAP-PLANNER',
         reason: generated.reason,
       })
+      db.insertHold({ entityType: 'operator_session', entityId: session.id, code: 'HOLD-ROADMAP-PLANNER', reason: generated.reason })
       return {
         session: db.getOperatorSession(session.id),
         messages: db.listOperatorMessages(session.id),
@@ -148,6 +175,7 @@ export function registerOperatorRoutes(app: FastifyInstance, db: AedevDb, stateD
     }
     const mission = intake.requestApproval(generated.mission.id)
     db.updateOperatorSession(session.id, { missionId: mission.id, status: 'roadmap_ready' })
+    resolveSessionHolds(db, session.id) // a successful roadmap supersedes any prior planner HOLD (PRD §D)
     registerDesignArtifacts(db, stateDir, mission.id)
     db.insertOperatorMessage({
       sessionId: session.id,
@@ -197,6 +225,11 @@ export function registerOperatorRoutes(app: FastifyInstance, db: AedevDb, stateD
         return { session: db.getOperatorSession(session.id), result, overview: buildMissionOverview(db, mission.id) }
       }
       void runPromise.catch((e) => {
+        // Cancellation fence: a Stop during the run must not be overwritten by a late failure.
+        if (skipFinalWriteIfCancelled(db, mission.id, 'operator.start.catch')) {
+          db.updateOperatorSession(session.id, { status: 'cancelled' })
+          return
+        }
         db.updateOperatorSession(session.id, { status: 'failed' })
         db.updateMissionStatus(mission.id, 'failed')
         db.insertEvent('operator.worker_failed', 'mission', mission.id, { sessionId: session.id, error: (e as Error).message })
@@ -252,6 +285,9 @@ export function registerOperatorRoutes(app: FastifyInstance, db: AedevDb, stateD
       }
       db.updateMissionGitHub(mission.id, { githubBranch: request.branch, githubPrUrl: info.url, githubPrNumber: info.number })
       db.insertEvent('operator.draft_pr_created', 'mission', mission.id, { url: info.url, number: info.number })
+      if (db.resolveHold(mission.id, 'HOLD-DRAFT-PR-EXECUTOR') > 0) {
+        db.insertEvent('operator.hold_resolved', 'mission', mission.id, { code: 'HOLD-DRAFT-PR-EXECUTOR' })
+      }
       return { status: 'created', pr: info, overview: buildMissionOverview(db, mission.id) }
     } catch (e) {
       const code = e instanceof DraftPrGateError ? e.code : e instanceof DraftPrExecutorUnavailableError ? 'DRAFT_PR_EXECUTOR_UNAVAILABLE' : 'DRAFT_PR_BLOCKED'
@@ -263,6 +299,7 @@ export function registerOperatorRoutes(app: FastifyInstance, db: AedevDb, stateD
           reason,
           nextAction: 'Configure a worker/side-effect remote-write executor; daemon-owned fake PR adapters are disabled.',
         })
+        db.insertHold({ entityType: 'mission', entityId: mission.id, code: 'HOLD-DRAFT-PR-EXECUTOR', reason, nextAction: 'Configure a worker/side-effect remote-write executor; daemon-owned fake PR adapters are disabled.' })
       }
       return { status: 'blocked', code, reason, overview: buildMissionOverview(db, mission.id) }
     }
@@ -287,6 +324,26 @@ export function registerOperatorRoutes(app: FastifyInstance, db: AedevDb, stateD
     db.updateOperatorSession(session.id, { status: 'approved' })
     db.updateMissionStatus(mission.id, 'approved')
     db.insertEvent('operator.stage_changed', 'mission', mission.id, { stage: 'Approved', sessionId: session.id, status: 'approved' })
+    return { session: db.getOperatorSession(session.id), overview: buildMissionOverview(db, mission.id) }
+  })
+
+  // Stop = operator cancel. Flips mission + session to `cancelled` immediately; the
+  // cancellation fence (cancellation.ts) then prevents the detached worker from
+  // overwriting this state when it later finishes/times out. This is a write fence,
+  // NOT a subprocess kill — the worker CLI is spawned inside the runner with no PID
+  // surfaced to this layer, so a true hard-kill is a documented engine follow-up.
+  app.post<{ Params: { id: string } }>('/operator/sessions/:id/stop', async (req, reply) => {
+    const session = db.getOperatorSession(req.params.id)
+    if (!session?.missionId) return reply.code(404).send({ error: 'session or mission not found' })
+    const mission = db.getMission(session.missionId)
+    if (!mission) return reply.code(404).send({ error: 'mission not found' })
+    db.updateMissionStatus(mission.id, 'cancelled')
+    db.updateOperatorSession(session.id, { status: 'cancelled' })
+    db.insertEvent('operator.cancel_requested', 'mission', mission.id, {
+      sessionId: session.id,
+      note: 'Operator pressed Stop. Mission/session marked cancelled; any in-flight worker result is fenced and ignored. Subprocess kill is not available at this layer.',
+    })
+    db.insertEvent('operator.stage_changed', 'mission', mission.id, { stage: 'PR/Waiting/Blocked', sessionId: session.id, status: 'cancelled' })
     return { session: db.getOperatorSession(session.id), overview: buildMissionOverview(db, mission.id) }
   })
 
@@ -320,6 +377,60 @@ function brainstormChoices(): OperatorChoice[] {
   ]
 }
 
+function toOperatorQuestion(q: ClarificationQuestion): OperatorQuestion {
+  return {
+    id: q.id,
+    field: q.field,
+    question: q.question,
+    options: q.choices.map((c) => ({
+      label: c.label,
+      ...(c.value ? { value: c.value } : {}),
+      ...(c.label === q.recommendedDefault ? { recommended: true } : {}),
+    })),
+  }
+}
+
+/**
+ * Build structured clarification questions for a session (PRD §B). Reuses the
+ * deterministic ClarificationGate generator. `fields` forces a specific set
+ * (used by the explicit "ask me 3 questions" follow-up); otherwise questions
+ * are derived from the prompt's ambiguity.
+ */
+function operatorQuestionsFor(db: AedevDb, stateDir: string, title: string, prompt: string, fields?: ClarificationField[]): OperatorQuestion[] {
+  const gate = new ClarificationGate(db, stateDir)
+  const ambiguity = fields
+    ? { score: 100, reasons: [], missing: fields }
+    : scoreAmbiguity({ title, description: prompt }, null)
+  return gate.generateQuestions(ambiguity).map(toOperatorQuestion)
+}
+
+function providerAuthMode(provider?: string): string {
+  if (provider && /-api$|^gemini-api$|^openai-api$/.test(provider)) return 'api'
+  return 'subscription'
+}
+
+/** Provider transparency for a "thinking" placeholder — shown before token usage
+ *  is known (the footer renders "tokens pending"). PRD §C/AC1: transparency must
+ *  be visible during thinking, not only on completion. */
+function thinkingMeta(): OperatorMessageMeta {
+  const provider = process.env['AEDEV_COCKPIT_PLANNER_PROVIDER'] ?? 'auto'
+  return { provider, authMode: providerAuthMode(provider), agentMode: 'single' }
+}
+
+/** Provider/token transparency for an assistant turn, from a role_done event payload. */
+function messageMeta(event: Record<string, unknown>): OperatorMessageMeta | undefined {
+  const provider = typeof event['provider'] === 'string' ? (event['provider'] as string) : undefined
+  if (!provider && typeof event['inputTokens'] !== 'number' && typeof event['outputTokens'] !== 'number') return undefined
+  return {
+    ...(provider ? { provider } : {}),
+    authMode: providerAuthMode(provider),
+    agentMode: 'single',
+    ...(typeof event['inputTokens'] === 'number' ? { inputTokens: event['inputTokens'] as number } : {}),
+    ...(typeof event['outputTokens'] === 'number' ? { outputTokens: event['outputTokens'] as number } : {}),
+    ...(event['costUsd'] !== undefined ? { costUsd: event['costUsd'] as number | null } : {}),
+  }
+}
+
 function renderBrainstorm(prompt: string): string {
   return [
     'Initial brainstorm:',
@@ -333,6 +444,7 @@ function renderBrainstorm(prompt: string): string {
 
 async function completePlannerBrainstorm(
   db: AedevDb,
+  stateDir: string,
   sessionId: string,
   prompt: string,
   title: string,
@@ -342,13 +454,18 @@ async function completePlannerBrainstorm(
     db.insertEvent('operator.role_started', 'operator_session', sessionId, { role: 'planner', provider: process.env['AEDEV_COCKPIT_PLANNER_PROVIDER'] ?? 'auto' })
     const brainstorm = await runPlannerBrainstorm(prompt, title, repoId)
     const isHold = Boolean(brainstorm.event['holdCode'])
+    const questions = isHold ? [] : operatorQuestionsFor(db, stateDir, title, prompt)
+    const meta = messageMeta(brainstorm.event)
     db.insertOperatorMessage({
       sessionId,
       role: 'assistant',
       content: brainstorm.content,
       ...(isHold ? {} : { choices: brainstormChoices() }),
+      ...(questions.length ? { questions } : {}),
+      ...(meta ? { meta } : {}),
     })
     db.updateOperatorSession(sessionId, { status: isHold ? 'hold' : 'brainstorm_ready' })
+    if (!isHold) resolveSessionHolds(db, sessionId)
     db.insertEvent('operator.role_done', 'operator_session', sessionId, brainstorm.event)
     if (typeof brainstorm.event['inputTokens'] === 'number' || typeof brainstorm.event['outputTokens'] === 'number') {
       db.insertEvent('operator.cost_updated', 'operator_session', sessionId, {
@@ -370,7 +487,14 @@ async function completePlannerBrainstorm(
       holdCode: 'HOLD-PLANNER-CLI',
       reason: (e as Error).message,
     })
+    db.insertHold({ entityType: 'operator_session', entityId: sessionId, code: 'HOLD-PLANNER-CLI', reason: (e as Error).message })
   }
+}
+
+/** Resolve any active session HOLDs and announce it so the UI clears stale banners (PRD §D). */
+function resolveSessionHolds(db: AedevDb, sessionId: string, code?: string): void {
+  const resolved = db.resolveHold(sessionId, code)
+  if (resolved > 0) db.insertEvent('operator.hold_resolved', 'operator_session', sessionId, { resolved, ...(code ? { code } : {}) })
 }
 
 async function runPlannerBrainstorm(prompt: string, title: string, repoId: string): Promise<{ content: string; event: Record<string, unknown> }> {
@@ -430,7 +554,7 @@ async function runPlannerFollowup(requestPrompt: string, title: string, repoId: 
 }
 
 async function runLocalPlannerText(systemPrompt: string, plannerPrompt: string, role: string, holdContextPrompt: string): Promise<{ content: string; event: Record<string, unknown> }> {
-  const timeoutMs = Number(process.env['AEDEV_COCKPIT_AI_TIMEOUT_MS'] ?? '120000')
+  const timeoutMs = Number(process.env['AEDEV_COCKPIT_AI_TIMEOUT_MS'] ?? '300000')
   const failures: string[] = []
   const plannerProvider = process.env['AEDEV_COCKPIT_PLANNER_PROVIDER']
 
@@ -488,6 +612,7 @@ function renderFollowupQuestions(prompt: string): string {
 
 async function completePlannerFollowup(
   db: AedevDb,
+  stateDir: string,
   sessionId: string,
   requestPrompt: string,
   title: string,
@@ -498,13 +623,19 @@ async function completePlannerFollowup(
     db.insertEvent('operator.role_started', 'operator_session', sessionId, { role: 'planner-followup', provider: process.env['AEDEV_COCKPIT_PLANNER_PROVIDER'] ?? 'auto' })
     const followup = await runPlannerFollowup(requestPrompt, title, repoId, originalPrompt)
     const isHold = Boolean(followup.event['holdCode'])
+    // "Ask me 3 questions" → always surface a structured 3-question set as cards.
+    const questions = isHold ? [] : operatorQuestionsFor(db, stateDir, title, originalPrompt, ['acceptance-criteria', 'target', 'scope'])
+    const meta = messageMeta(followup.event)
     db.insertOperatorMessage({
       sessionId,
       role: 'assistant',
       content: followup.content,
       ...(isHold ? {} : { choices: brainstormChoices() }),
+      ...(questions.length ? { questions } : {}),
+      ...(meta ? { meta } : {}),
     })
     db.updateOperatorSession(sessionId, { status: isHold ? 'hold' : 'brainstorm_ready' })
+    if (!isHold) resolveSessionHolds(db, sessionId)
     db.insertEvent('operator.role_done', 'operator_session', sessionId, followup.event)
     if (typeof followup.event['inputTokens'] === 'number' || typeof followup.event['outputTokens'] === 'number') {
       db.insertEvent('operator.cost_updated', 'operator_session', sessionId, {
@@ -526,6 +657,7 @@ async function completePlannerFollowup(
       holdCode: 'HOLD-PLANNER-CLI',
       reason: (e as Error).message,
     })
+    db.insertHold({ entityType: 'operator_session', entityId: sessionId, code: 'HOLD-PLANNER-CLI', reason: (e as Error).message })
   }
 }
 
@@ -577,7 +709,7 @@ async function generateRoadmapDesign(
     status: 'draft',
   })
 
-  const output = await runPlannerMissionDesign(session.prompt, session.title, repoId, mission.id)
+  const output = await runPlannerMissionDesign(session.prompt, session.title, repoId, mission.id, buildClarifications(db, session.id))
   if (!output.ok) {
     return {
       ok: false,
@@ -596,6 +728,16 @@ async function generateRoadmapDesign(
     const design = validateMissionDesign(output.design)
     writeDesignArtifacts(db, stateDir, mission.id, design)
     db.insertEvent('operator.artifact_written', 'mission', mission.id, { types: ['prd', 'adr', 'roadmap', 'task-dag', 'design'] })
+    // Planner task-size judgment (point 3): record the plan's scale. The cockpit
+    // executes the whole mission in ONE worker run today, so a large taskDag is a
+    // signal that the single run may exceed the worker budget.
+    const dag = design.taskDag ?? []
+    db.insertEvent('operator.plan_scale', 'mission', mission.id, {
+      taskDagCount: dag.length,
+      coderTaskCount: dag.filter((t) => t.role === 'coder').length,
+      largePlan: dag.length > 6,
+      note: 'Cockpit runs the whole mission in a single worker run; the taskDag is not yet executed per-task.',
+    })
     db.insertEvent('operator.cost_updated', 'operator_session', session.id, {
       scope: 'planner',
       provider: output.provider,
@@ -613,11 +755,26 @@ async function generateRoadmapDesign(
   }
 }
 
+/** Gather operator clarification answers for a session into planner-prompt lines (PRD §B step 3). */
+function buildClarifications(db: AedevDb, sessionId: string): string {
+  const events = db.queryEvents({ type: 'operator.questions_answered', entityId: sessionId })
+  const lines: string[] = []
+  for (const e of [...events].reverse()) {
+    const answers = e.payload['answers']
+    if (!Array.isArray(answers)) continue
+    for (const a of answers as Array<Record<string, unknown>>) {
+      if (a && a['value']) lines.push(`- ${a['field'] ?? 'note'}: ${String(a['value'])}`)
+    }
+  }
+  return lines.join('\n')
+}
+
 async function runPlannerMissionDesign(
   prompt: string,
   title: string,
   repoId: string,
   missionId: string,
+  clarifications = '',
 ): Promise<{
   ok: true
   design: unknown
@@ -650,10 +807,11 @@ async function runPlannerMissionDesign(
     '',
     'User request:',
     prompt,
+    ...(clarifications ? ['', 'Operator clarifications (treat as authoritative constraints):', clarifications] : []),
     '',
     'Design a low-risk evidence-gated mission. The taskDag must contain at least one coder task and expected evidence files.',
   ].join('\n')
-  const timeoutMs = Number(process.env['AEDEV_COCKPIT_AI_TIMEOUT_MS'] ?? '120000')
+  const timeoutMs = Number(process.env['AEDEV_COCKPIT_AI_TIMEOUT_MS'] ?? '300000')
   const provider = process.env['AEDEV_COCKPIT_PLANNER_PROVIDER']
   const failures: string[] = []
 
@@ -870,8 +1028,14 @@ async function runOperatorMission(db: AedevDb, stateDir: string, sessionId: stri
   }
   registerEvidenceArtifacts(db, result.missionId, result.evidenceDir)
   db.insertEvent('operator.evidence_written', 'mission', missionId, { sessionId, evidenceDir: result.evidenceDir })
-  db.updateOperatorSession(sessionId, { status: result.status })
-  db.insertEvent('operator.stage_changed', 'mission', missionId, { stage: 'PR/Waiting/Blocked', sessionId, status: result.status })
+  // Cancellation fence: if the operator pressed Stop while the worker was running,
+  // keep the session cancelled and discard the late worker result.
+  if (skipFinalWriteIfCancelled(db, missionId, 'operator.runMission.session', result.status)) {
+    db.updateOperatorSession(sessionId, { status: 'cancelled' })
+  } else {
+    db.updateOperatorSession(sessionId, { status: result.status })
+    db.insertEvent('operator.stage_changed', 'mission', missionId, { stage: 'PR/Waiting/Blocked', sessionId, status: result.status })
+  }
   return result
 }
 
@@ -978,7 +1142,14 @@ function operatorLocalCliRunner(db: AedevDb, stateDir: string, sessions: Awaited
         'Create or update files only inside the current temporary workspace if you need scratch files.',
         'Return a concise markdown report with: Plan, Concrete steps, Risks, Tests/checks, Done report.',
       ].join('\n')
-      const timeoutMs = Number(process.env['AEDEV_COCKPIT_WORKER_TIMEOUT_MS'] ?? '180000')
+      const timeoutMs = Number(process.env['AEDEV_COCKPIT_WORKER_TIMEOUT_MS'] ?? '600000')
+      const timeoutSource = process.env['AEDEV_COCKPIT_WORKER_TIMEOUT_MS'] ? 'env:AEDEV_COCKPIT_WORKER_TIMEOUT_MS' : 'default'
+      // Task-scale + timeout transparency (point 3): the whole mission runs in this
+      // single worker run, so record the budget it has to fit within up front.
+      db.insertEvent('operator.worker_scale', 'mission', task.missionId, {
+        taskId: task.id, runId: run.id, provider: session.provider,
+        workerTimeoutMs: timeoutMs, timeoutSource, promptChars: prompt.length,
+      })
       const result = session.provider === 'claude-cli'
         ? await new ClaudeCodeAdapter().run(prompt, workdir, { timeoutMs, onStdout: (chunk) => appendLog('stdout', chunk), onStderr: (chunk) => appendLog('stderr', chunk) })
         : await new CodexCliAdapter().run(prompt, workdir, { timeoutMs, sandbox: 'workspace-write', approvalPolicy: 'never', onStdout: (chunk) => appendLog('stdout', chunk), onStderr: (chunk) => appendLog('stderr', chunk) })
@@ -987,7 +1158,18 @@ function operatorLocalCliRunner(db: AedevDb, stateDir: string, sessions: Awaited
       writeFileSync(join(evidenceDir, 'transcript-summary.md'), transcript)
       writeFileSync(join(evidenceDir, 'plan.md'), `# Plan\n\n${transcript}\n`)
       writeFileSync(join(evidenceDir, 'diff-summary.md'), '# Diff Summary\n\nOperator Cockpit local CLI worker used an isolated temporary workspace and did not push to GitHub.\n')
-      writeFileSync(join(evidenceDir, 'test-summary.md'), `# Test Summary\n\nProvider: ${session.provider}\nExit code: ${result.exitCode}\n${result.error ? `Error: ${result.error}\n` : ''}`)
+      writeFileSync(join(evidenceDir, 'test-summary.md'), [
+        '# Test Summary', '',
+        `Provider: ${session.provider}`,
+        `Exit code: ${result.exitCode}`,
+        `Duration: ${Math.round(result.durationMs / 1000)}s`,
+        `Worker timeout: ${timeoutMs}ms (source: ${timeoutSource})`,
+        ...(result.error ? [`Error: ${result.error}`] : []),
+        ...(result.exitCode === 124
+          ? ['', 'Timed out at the worker budget — the worker was killed, not stuck. The full step trace (searches, commands, agent messages) is in operator-run.log. Raise AEDEV_COCKPIT_WORKER_TIMEOUT_MS or split the mission into smaller runs.']
+          : []),
+        '',
+      ].join('\n'))
       writeFileSync(join(evidenceDir, 'done-report.md'), `# Done Report\n\nTask: ${task.id}\nProvider: ${session.provider}\nExit code: ${result.exitCode}\n`)
       writeFileSync(join(evidenceDir, 'model-usage.json'), JSON.stringify({
         provider: session.provider,
@@ -1024,6 +1206,74 @@ function operatorLocalCliRunner(db: AedevDb, stateDir: string, sessions: Awaited
   }
 }
 
+const READABLE_STATUS: Record<string, string> = {
+  'operator.session.created': 'Session created',
+  'operator.stage_changed': 'Stage changed',
+  'operator.role_started': 'Planner started',
+  'operator.role_done': 'Planner finished',
+  'operator.roadmap_generation_started': 'Generating PRD / Roadmap',
+  'operator.roadmap_generation_done': 'PRD / Roadmap ready',
+  'operator.artifact_written': 'Artifacts written',
+  'operator.approval_recorded': 'Roadmap approved',
+  'operator.worker_assigned': 'Worker assigned',
+  'operator.worker_started': 'Worker started',
+  'operator.worker_log': 'Worker output',
+  'operator.task_progress': 'Worker progress',
+  'operator.worker_failed': 'Worker failed',
+  'operator.validator_started': 'Validators started',
+  'operator.validator_result': 'Validator result',
+  'operator.validator_done': 'Validators done',
+  'operator.evidence_written': 'Evidence written',
+  'operator.draft_pr_created': 'Draft PR created',
+  'operator.draft_pr_blocked': 'Draft PR blocked',
+  'operator.hold_created': 'Blocked (HOLD)',
+  'operator.hold_resolved': 'HOLD resolved',
+  'operator.questions_answered': 'Clarifications received',
+}
+
+/** Map a raw event type to a human-readable status label (PRD §E). */
+function readableStatus(type: string | undefined): string {
+  if (!type) return ''
+  return READABLE_STATUS[type] ?? type.replace(/^operator\./, '').replace(/[._]/g, ' ')
+}
+
+export interface RunProgress {
+  runId: string
+  status: string
+  exitCode: number | null
+  startedAt: string | null
+  lastHeartbeatAt: string | null
+  elapsedMs: number | null
+  sinceHeartbeatMs: number | null
+  stalled: boolean
+  lastProgressLabel: string
+}
+
+/** Heartbeat + stalled detection for the live execution view (PRD §E). */
+function computeRunProgress(latestRun: Run | undefined, events: Array<{ type: string; createdAt: string }>): RunProgress | null {
+  if (!latestRun) return null
+  const heartbeatTypes = new Set(['operator.worker_log', 'operator.task_progress', 'operator.worker_started'])
+  const beats = events.filter((e) => heartbeatTypes.has(e.type)) // events arrive newest-first
+  const startedAt = latestRun.startedAt ?? null
+  const lastHeartbeatAt = beats[0]?.createdAt ?? startedAt
+  const now = Date.now()
+  const elapsedMs = startedAt ? now - new Date(startedAt).getTime() : null
+  const sinceHeartbeatMs = lastHeartbeatAt ? now - new Date(lastHeartbeatAt).getTime() : null
+  const stallMs = Number(process.env['AEDEV_COCKPIT_STALL_MS'] ?? '90000')
+  const stalled = latestRun.status === 'running' && sinceHeartbeatMs !== null && sinceHeartbeatMs > stallMs
+  return {
+    runId: latestRun.id,
+    status: latestRun.status,
+    exitCode: latestRun.exitCode ?? null,
+    startedAt,
+    lastHeartbeatAt,
+    elapsedMs,
+    sinceHeartbeatMs,
+    stalled,
+    lastProgressLabel: readableStatus(events.find((e) => e.type.startsWith('operator.'))?.type),
+  }
+}
+
 function buildMissionOverview(db: AedevDb, missionId: string) {
   const mission = db.getMission(missionId)
   if (!mission) return null
@@ -1043,6 +1293,9 @@ function buildMissionOverview(db: AedevDb, missionId: string) {
   const cost = summarizeCost(runs, validators, events)
   const validatorsConfigured = db.queryEvents({ type: 'operator.validators_not_configured', entityId: mission.id, limit: 1 }).length === 0
   const validatorStatus = validators.length > 0 ? 'complete' : validatorsConfigured ? 'pending' : 'not_configured'
+  // Active blockers (table-backed) are shown prominently; historical holds stay in `holds` (events).
+  const activeHolds = [...db.listActiveHolds(mission.id), ...(session ? db.listActiveHolds(session.id) : [])]
+  const runProgress = computeRunProgress(latestRun, events)
   return {
     mission,
     stage: inferStage(mission.status, tasks, runs, validators),
@@ -1057,6 +1310,8 @@ function buildMissionOverview(db: AedevDb, missionId: string) {
     cliProvider: latestRun?.runnerMode ?? 'subscription-pool',
     progress: inferProgress(mission.status, tasks, validators),
     holds: events.filter((e) => /hold|held/i.test(e.type)),
+    activeHolds,
+    runProgress,
     evidenceDir: latestEvidence,
     cost,
     validatorStatus,

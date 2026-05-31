@@ -10,6 +10,7 @@ import { MergePolicy, RiskScorer, type MergePolicyEvidence } from '@aedev/valida
 import { BrowserQA, MockBrowserDriver, type BrowserQAResult } from '@aedev/qa'
 import type { PreviewAdapter, PreviewResult } from '@aedev/preview'
 import { RolePipeline } from './roles/role-pipeline.js'
+import { skipFinalWriteIfCancelled } from './cancellation.js'
 import { ReleasePipeline, type GitClient, type DeployFn, type DeployRequest, type ReleaseResult } from './release-pipeline.js'
 import { DraftPrGateError, type DraftPrRequest, type DraftPrInfo } from './draft-pr-gate.js'
 
@@ -337,9 +338,11 @@ export class MissionRunner {
         mission, run, risk, validatorResults, decision, browserQAResult, releaseResult, status: summaryStatus,
       }))
 
-      // 10. State machine
+      // 10. State machine — but never clobber an operator cancel (Stop fence).
       const dbStatus = summaryStatus === 'done' ? 'done' : summaryStatus === 'failed' ? 'failed' : 'paused'
-      this.db.updateMissionStatus(mission.id, dbStatus)
+      if (!skipFinalWriteIfCancelled(this.db, mission.id, 'mission-runner.complete', dbStatus)) {
+        this.db.updateMissionStatus(mission.id, dbStatus)
+      }
       this.db.insertEvent('mission.run_completed', 'mission', mission.id, {
         taskId: task.id,
         runId: run.runId,
@@ -371,7 +374,9 @@ export class MissionRunner {
         ...(draftPr !== undefined ? { draftPr } : {}),
       }
     } catch (e) {
-      this.db.updateMissionStatus(mission.id, 'failed')
+      if (!skipFinalWriteIfCancelled(this.db, mission.id, 'mission-runner.failed')) {
+        this.db.updateMissionStatus(mission.id, 'failed')
+      }
       this.db.insertEvent('mission.run_failed', 'mission', mission.id, { error: (e as Error).message })
       writeFileSync(join(evidenceDir, 'run-error.txt'), `${(e as Error).message}\n`)
       throw e

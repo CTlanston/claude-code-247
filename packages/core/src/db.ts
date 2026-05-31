@@ -3,7 +3,7 @@ import { runMigrations } from './migrations.js'
 import { generateId, nowIso } from './ids.js'
 import type {
   Repo, Mission, Task, Run, Approval, Event, RiskScore, ValidatorResult, MemoryItem,
-  OperatorSession, OperatorMessage, MissionArtifact, ModelUsage,
+  OperatorSession, OperatorMessage, MissionArtifact, ModelUsage, Hold, HoldStatus,
 } from './schema.js'
 import type { RiskLevel, RunnerMode, ValidatorName, ValidatorVerdict } from './schema.js'
 
@@ -322,8 +322,12 @@ export class AedevDb {
 
   insertOperatorMessage(m: Omit<OperatorMessage, 'id' | 'createdAt'>): OperatorMessage {
     const id = generateId(); const now = nowIso()
-    this.db.prepare(`INSERT INTO operator_messages (id,session_id,role,content,choices,created_at) VALUES (?,?,?,?,?,?)`).run(
-      id, m.sessionId, m.role, m.content, m.choices ? JSON.stringify(m.choices) : null, now
+    this.db.prepare(`INSERT INTO operator_messages (id,session_id,role,content,choices,questions,meta,created_at) VALUES (?,?,?,?,?,?,?,?)`).run(
+      id, m.sessionId, m.role, m.content,
+      m.choices ? JSON.stringify(m.choices) : null,
+      m.questions ? JSON.stringify(m.questions) : null,
+      m.meta ? JSON.stringify(m.meta) : null,
+      now
     )
     return { ...m, id, createdAt: now }
   }
@@ -336,8 +340,55 @@ export class AedevDb {
       role: r['role'] as OperatorMessage['role'],
       content: r['content'] as string,
       ...(r['choices'] ? { choices: JSON.parse(r['choices'] as string) as OperatorMessage['choices'] } : {}),
+      ...(r['questions'] ? { questions: JSON.parse(r['questions'] as string) as OperatorMessage['questions'] } : {}),
+      ...(r['meta'] ? { meta: JSON.parse(r['meta'] as string) as OperatorMessage['meta'] } : {}),
       createdAt: r['created_at'] as string,
     }))
+  }
+
+  // --- Holds (active-vs-historical, PRD §D) ---
+  insertHold(h: Omit<Hold, 'id' | 'status' | 'createdAt' | 'resolvedAt'> & { status?: HoldStatus }): Hold {
+    const id = generateId(); const now = nowIso()
+    const status: HoldStatus = h.status ?? 'active'
+    this.db.prepare(`INSERT INTO holds (id,entity_type,entity_id,code,reason,next_action,status,created_at,resolved_at) VALUES (?,?,?,?,?,?,?,?,?)`).run(
+      id, h.entityType, h.entityId, h.code, h.reason, h.nextAction ?? null, status, now, null
+    )
+    return { id, entityType: h.entityType, entityId: h.entityId, code: h.code, reason: h.reason, ...(h.nextAction ? { nextAction: h.nextAction } : {}), status, createdAt: now }
+  }
+
+  /** Resolve active holds for an entity (optionally a specific code). Returns count resolved. */
+  resolveHold(entityId: string, code?: string): number {
+    const now = nowIso()
+    const res = code
+      ? this.db.prepare(`UPDATE holds SET status='resolved', resolved_at=? WHERE entity_id=? AND code=? AND status='active'`).run(now, entityId, code)
+      : this.db.prepare(`UPDATE holds SET status='resolved', resolved_at=? WHERE entity_id=? AND status='active'`).run(now, entityId)
+    return res.changes
+  }
+
+  listActiveHolds(entityId?: string): Hold[] {
+    const rows = entityId
+      ? this.db.prepare(`SELECT * FROM holds WHERE entity_id=? AND status='active' ORDER BY created_at DESC`).all(entityId) as Record<string, unknown>[]
+      : this.db.prepare(`SELECT * FROM holds WHERE status='active' ORDER BY created_at DESC`).all() as Record<string, unknown>[]
+    return rows.map((r) => this.rowToHold(r))
+  }
+
+  listHolds(entityId: string): Hold[] {
+    const rows = this.db.prepare(`SELECT * FROM holds WHERE entity_id=? ORDER BY created_at DESC`).all(entityId) as Record<string, unknown>[]
+    return rows.map((r) => this.rowToHold(r))
+  }
+
+  private rowToHold(r: Record<string, unknown>): Hold {
+    return {
+      id: r['id'] as string,
+      entityType: r['entity_type'] as string,
+      entityId: r['entity_id'] as string,
+      code: r['code'] as string,
+      reason: r['reason'] as string,
+      ...(r['next_action'] ? { nextAction: r['next_action'] as string } : {}),
+      status: r['status'] as HoldStatus,
+      createdAt: r['created_at'] as string,
+      ...(r['resolved_at'] ? { resolvedAt: r['resolved_at'] as string } : {}),
+    }
   }
 
   upsertMissionArtifact(a: Omit<MissionArtifact, 'id' | 'createdAt' | 'updatedAt'>): MissionArtifact {

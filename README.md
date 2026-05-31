@@ -19,6 +19,37 @@
 > [ADR-0010](docs/adr/0010-three-plane-event-sourced.md); the dual-kernel
 > section further down is retained as v1.0.0 history.
 
+## Quick Start
+
+The fastest way to try the current product surface is the Operator Cockpit.
+It starts the TypeScript daemon on `7247` and the web app on `7248`.
+
+```bash
+# 1. Install workspace dependencies
+pnpm install
+
+# 2. Start the local daemon + Operator Cockpit web UI
+pnpm cockpit:dev
+
+# 3. Open the chat-first cockpit
+open http://127.0.0.1:7248
+```
+
+Then run the core operator flow:
+
+1. Click `Start Brainstorm` to start a planner conversation.
+2. Answer any clarification cards or add context in the composer.
+3. Click `Generate PRD` to create PRD / ADR / Roadmap artifacts.
+4. Review the plan in the side panel.
+5. Click `Approve` only when the plan is acceptable.
+6. Click `Start` to launch worker execution and watch the execution timeline.
+7. Use the bottom panel for logs, events, validators, token usage, and PR-gate status.
+
+The cockpit defaults to local CLI / subscription-style usage (`claude-cli` or
+`codex-cli`) and must not silently fall back to a paid API. If the planner or
+worker cannot run, the UI should show a current HOLD with a recovery action
+rather than fake success.
+
 ## 🆕 v2.4.0-patch1 — real end-to-end loop proven (E2E-Harvest)
 
 The core value loop has now run **end-to-end on real LLM work** for the first
@@ -98,6 +129,33 @@ token/cost usage is persisted. Architecture decision:
   `REMOTE_WRITES_DISABLED` unless `system.allow_remote_writes` is true (it was
   previously guarded only by the presence of a GitHub token).
 
+## Operator Cockpit
+
+Operator Cockpit is the human control plane for the local-first coding coworker.
+It is intended to feel more like Claude Code Desktop than a passive dashboard:
+chat first, explicit clarification, visible execution progress, and safety gates
+that stay obvious.
+
+The current UX v2 surface includes:
+
+- **Chat-first workspace** — a left session/history sidebar, main conversation,
+  right mission/artifact panel, and bottom execution/log panel.
+- **Structured clarification cards** — brainstorm follow-up questions should be
+  answerable through choices and free-form replies, not buried inside markdown.
+- **Provider and token transparency** — major planner/worker/validator actions
+  expose whether they used `claude-cli`, `codex-cli`, mock/test mode, or API-backed
+  validators, plus token/cost data when available.
+- **Current-only HOLDs** — active blockers are shown prominently, while
+  superseded historical HOLDs remain in logs/events instead of stale top banners.
+- **Live execution timeline** — after `Start`, the UI tracks queued, assigned,
+  worker, tests, evidence, validators, PR gate, and blocked/done states in
+  operator-readable language.
+- **Safety-preserving PR gate** — draft PR creation remains blocked unless
+  `system.allow_remote_writes` and repo policy explicitly permit outward writes.
+
+For the detailed UX v2 implementation brief, see
+[`docs/handoff/operator-cockpit-ux-v2-prd-2026-05-31.md`](docs/handoff/operator-cockpit-ux-v2-prd-2026-05-31.md).
+
 ### Running the E2E loop
 
 ```bash
@@ -168,7 +226,7 @@ the v2.0 plan.
 - **Live read-only watchdog dashboard** (new in v1.0.0 / M22b) — see
   below.
 
-## Quick start
+## Legacy / CLI Quick Start
 
 `aedev` is the primary control plane. The Python `claude247` kernel is
 installed alongside it during the parity window and handles worker execution

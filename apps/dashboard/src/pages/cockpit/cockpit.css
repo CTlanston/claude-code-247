@@ -1,0 +1,139 @@
+/* Operator Cockpit UX v2 — chat-first shell (PRD §A). Scoped under .cockpit-shell
+   so it does not affect the other dashboard tabs (which keep index.html styles). */
+
+.cockpit-shell {
+  --sidebar-w: 260px;
+  --right-w: 380px;
+  --bottom-h: 240px;
+  display: grid;
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr) var(--right-w);
+  grid-template-rows: minmax(0, 1fr) var(--bottom-h);
+  grid-template-areas:
+    "sidebar main right"
+    "sidebar bottom right";
+  gap: 12px;
+  height: calc(100vh - 150px);
+  min-height: 560px;
+}
+.cockpit-shell.no-sidebar { --sidebar-w: 0px; }
+.cockpit-shell.no-right { --right-w: 0px; }
+.cockpit-shell.no-bottom { --bottom-h: 0px; }
+
+.ck-sidebar { grid-area: sidebar; min-width: 0; overflow: hidden; display: flex; flex-direction: column; }
+.ck-main { grid-area: main; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.ck-right { grid-area: right; min-width: 0; overflow: auto; }
+.ck-bottom { grid-area: bottom; min-height: 0; overflow: auto; }
+.cockpit-shell.no-sidebar .ck-sidebar,
+.cockpit-shell.no-right .ck-right,
+.cockpit-shell.no-bottom .ck-bottom { display: none; }
+
+.ck-card {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #d9dde6;
+  border-radius: 14px;
+  padding: 14px;
+}
+
+/* --- Sidebar (session/mission history) --- */
+.ck-sidebar { background: rgba(255, 255, 255, 0.7); border: 1px solid #d9dde6; border-radius: 14px; padding: 12px; }
+.ck-sidebar .ck-sidebar-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
+.ck-sidebar .ck-sidebar-head strong { font-size: 13px; }
+.ck-sidebar input.ck-search { width: 100%; border: 1px solid #d9dde6; border-radius: 9px; padding: 7px 10px; margin-bottom: 10px; font-size: 12px; }
+.ck-session-list { overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+.ck-session {
+  text-align: left; border: 1px solid #e0e4ec; border-radius: 11px; padding: 9px 11px;
+  background: #fbfbfd; cursor: pointer; display: flex; flex-direction: column; gap: 4px;
+}
+.ck-session:hover { border-color: #c7d2fe; }
+.ck-session.active { border-color: #0071e3; background: #eff6ff; }
+.ck-session .ck-session-title { font-weight: 600; font-size: 12.5px; line-height: 1.3; }
+.ck-session .ck-session-meta { display: flex; justify-content: space-between; gap: 6px; font-size: 11px; color: #86868b; }
+.ck-badge { border-radius: 999px; padding: 1px 8px; font-size: 10.5px; font-weight: 600; background: #eef2ff; color: #4338ca; white-space: nowrap; }
+.ck-badge.running { background: #eff6ff; color: #1d4ed8; }
+.ck-badge.failed, .ck-badge.hold { background: #fff1f2; color: #b91c1c; }
+.ck-badge.approved, .ck-badge.done, .ck-badge.roadmap_ready { background: #ecfdf5; color: #047857; }
+.ck-badge.paused { background: #fff7ed; color: #c2410c; }
+.ck-badge.cancelled { background: #f3f4f6; color: #6b7280; }
+
+/* --- Main chat column --- */
+.ck-topbar { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.ck-topbar .ck-coach { flex: 1; min-width: 0; }
+.ck-topbar .ck-coach .ck-coach-kicker { font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; }
+.ck-topbar .ck-coach .ck-coach-title { font-weight: 600; font-size: 14px; }
+.ck-topbar .ck-coach .ck-coach-body { font-size: 12px; color: #4b5563; }
+.ck-toggles { display: flex; gap: 6px; }
+.ck-toggle { border: 1px solid #d9dde6; background: #fff; border-radius: 9px; padding: 5px 9px; font-size: 11.5px; cursor: pointer; color: #374151; }
+.ck-toggle.on { background: #111827; color: #fff; border-color: #111827; }
+
+.ck-thread { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 12px; padding: 6px 2px; }
+.ck-turn { display: flex; flex-direction: column; gap: 6px; max-width: 92%; }
+.ck-turn.user { align-self: flex-end; align-items: flex-end; }
+.ck-turn.assistant, .ck-turn.system { align-self: flex-start; }
+.ck-bubble {
+  border: 1px solid #e0e4ec; border-radius: 16px; padding: 11px 14px; background: #fff;
+  font-size: 13.5px; line-height: 1.55; overflow-wrap: anywhere;
+}
+.ck-turn.user .ck-bubble { background: #0071e3; color: #fff; border-color: #0071e3; }
+.ck-turn.assistant .ck-bubble { background: #f5f8ff; }
+.ck-turn.system .ck-bubble { background: #f3f4f6; color: #4b5563; font-style: italic; }
+.ck-role { font-size: 11px; color: #9ca3af; padding: 0 6px; }
+.ck-md > :first-child { margin-top: 0; }
+.ck-md > :last-child { margin-bottom: 0; }
+.ck-md h1, .ck-md h2, .ck-md h3 { font-size: 14px; margin: 10px 0 4px; }
+.ck-md ul, .ck-md ol { margin: 4px 0; padding-left: 20px; }
+.ck-md code { background: rgba(0, 0, 0, 0.06); padding: 1px 5px; border-radius: 5px; font-size: 12px; }
+.ck-md pre { background: #111827; color: #e5e7eb; padding: 10px; border-radius: 10px; overflow: auto; }
+.ck-md pre code { background: none; padding: 0; }
+.ck-md a { color: #0071e3; }
+
+/* --- Composer --- */
+.ck-composer { margin-top: 10px; border: 1px solid #d9dde6; border-radius: 14px; background: #fff; padding: 10px; }
+.ck-composer .ck-new-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+.ck-composer label { font-size: 11px; color: #6b7280; }
+.ck-composer select, .ck-composer input[type="text"] { width: 100%; border: 1px solid #d9dde6; border-radius: 9px; padding: 7px 9px; font-size: 12.5px; }
+.ck-composer textarea { width: 100%; border: 1px solid #d9dde6; border-radius: 10px; padding: 9px 11px; font-size: 13px; resize: vertical; min-height: 54px; font-family: inherit; }
+.ck-composer-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.ck-btn { border: none; border-radius: 999px; padding: 7px 14px; font-size: 12.5px; cursor: pointer; background: #e8eef8; color: #1d1d1f; }
+.ck-btn.primary { background: #0071e3; color: #fff; }
+.ck-btn.dark { background: #111827; color: #fff; }
+.ck-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.ck-btn.pulse { animation: ck-pulse 1.4s ease-in-out infinite; }
+@keyframes ck-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(0, 113, 227, 0.4); } 50% { box-shadow: 0 0 0 6px rgba(0, 113, 227, 0); } }
+
+/* --- Right + bottom panels (reuse existing inner components) --- */
+.ck-panel-head { display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 8px; }
+.ck-right .ck-card, .ck-bottom .ck-card { margin-bottom: 12px; }
+.ck-bottom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
+
+.ck-banner { border-radius: 12px; padding: 9px 12px; font-size: 12.5px; margin-bottom: 8px; }
+.ck-banner.error { background: #fff1f2; color: #b91c1c; border: 1px solid #fecdd3; }
+.ck-banner.notice { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+
+/* --- Responsive: single column on narrow screens (PRD AC9) --- */
+@media (max-width: 1100px) {
+  .cockpit-shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(320px, 1fr) auto auto;
+    grid-template-areas: "sidebar" "main" "right" "bottom";
+    height: auto;
+  }
+  .cockpit-shell.no-sidebar { --sidebar-w: auto; }
+  .ck-sidebar { max-height: 220px; }
+  .ck-bottom-grid { grid-template-columns: 1fr; }
+}
+
+/* --- Clarification cards (PRD §B) + transparency footer (§C/§F) --- */
+.ck-clar { border: 1px solid #c7d2fe; background: #f5f8ff; border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 12px; max-width: 100%; }
+.ck-clar.done { border-style: dashed; color: #047857; background: #ecfdf5; font-size: 12.5px; padding: 8px 12px; }
+.ck-clar-head { font-weight: 600; font-size: 13px; color: #3730a3; }
+.ck-clar-q { display: flex; flex-direction: column; gap: 6px; }
+.ck-clar-question { font-size: 13px; font-weight: 500; }
+.ck-clar-options { display: flex; flex-wrap: wrap; gap: 6px; }
+.ck-chip { border: 1px solid #d9dde6; background: #fff; border-radius: 999px; padding: 5px 11px; font-size: 12px; cursor: pointer; }
+.ck-chip:hover { border-color: #0071e3; }
+.ck-chip.selected { background: #0071e3; color: #fff; border-color: #0071e3; }
+.ck-chip.recommended { border-color: #6366f1; }
+.ck-chip.recommended.selected { background: #4f46e5; border-color: #4f46e5; }
+.ck-clar-free { border: 1px solid #d9dde6; border-radius: 9px; padding: 6px 10px; font-size: 12.5px; }
+.ck-msg-footer { margin-top: 8px; padding-top: 6px; border-top: 1px dashed #e0e4ec; font-size: 11px; color: #6b7280; }
+.ck-turn.user .ck-msg-footer { border-top-color: rgba(255, 255, 255, 0.4); color: rgba(255, 255, 255, 0.85); }
