@@ -30,4 +30,15 @@ describe('ChatThread', () => {
     render(<ChatThread messages={[messages[0]!]} busy={null} canChoose={false} onChoice={vi.fn()} onAnswer={vi.fn()} />)
     expect(screen.queryByText(/single planner/)).toBeNull()
   })
+
+  it('shows provider + "tokens pending" during the thinking phase (no token counts yet)', () => {
+    const thinking: ApiOperatorMessage[] = [{
+      id: 't1', sessionId: 's', role: 'assistant', createdAt: '2026-01-03',
+      content: 'Brainstorm is running on the local planner CLI.',
+      meta: { provider: 'codex', authMode: 'subscription', agentMode: 'single' }, // no tokens yet
+    }]
+    render(<ChatThread messages={thinking} busy="create" canChoose={false} onChoice={vi.fn()} onAnswer={vi.fn()} />)
+    expect(screen.getByText(/codex/)).toBeTruthy()
+    expect(screen.getByText(/tokens pending/)).toBeTruthy()
+  })
 })

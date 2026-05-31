@@ -4,6 +4,7 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { AedevDb } from '@aedev/core'
 import { createServer } from './server.js'
+import { skipFinalWriteIfCancelled } from './cancellation.js'
 
 // Phase 1 (Operator Cockpit UX v2): structured questions, HOLD lifecycle, run progress.
 // Deterministic: VITEST makes the planner brainstorm/followup synthetic, so no real CLI is hit.
@@ -106,5 +107,31 @@ describe('operator cockpit UX v2 — backend foundations', () => {
     expect(ov.runProgress).toBeTruthy()
     expect(ov.runProgress!.status).toBe('running')
     expect(ov.runProgress!.stalled).toBe(true)
+  })
+
+  it('Stop cancels mission+session and fences late worker final writes', async () => {
+    const app = createServer(db, new Date(), stateDir)
+    const repo = makeRepo()
+    const mission = db.insertMission({ repoId: repo.id, title: 'M', description: 'd', status: 'running' })
+    const session = db.insertOperatorSession({ repoId: repo.id, missionId: mission.id, title: 'M', prompt: 'p', status: 'running' })
+
+    // Operator presses Stop.
+    const stop = await app.inject({ method: 'POST', url: `/operator/sessions/${session.id}/stop` })
+    expect(stop.statusCode).toBe(200)
+    expect(db.getMission(mission.id)!.status).toBe('cancelled')
+    expect(db.getOperatorSession(session.id)!.status).toBe('cancelled')
+
+    // A late worker tries to write a final status. The fence must report "skip".
+    expect(skipFinalWriteIfCancelled(db, mission.id, 'test.worker.done', 'done')).toBe(true)
+    // Emulating the guarded call site (skip the write when fenced) keeps it cancelled,
+    // i.e. the worker can no longer flip cancelled → done/failed.
+    if (!skipFinalWriteIfCancelled(db, mission.id, 'test.worker.failed', 'failed')) {
+      db.updateMissionStatus(mission.id, 'failed')
+    }
+    expect(db.getMission(mission.id)!.status).toBe('cancelled')
+
+    // The skip is recorded as evidence in the event log.
+    expect(db.queryEvents({ type: 'mission.result_ignored_cancelled', entityId: mission.id }).length).toBeGreaterThan(0)
+    expect(db.queryEvents({ type: 'operator.cancel_requested', entityId: mission.id }).length).toBe(1)
   })
 })

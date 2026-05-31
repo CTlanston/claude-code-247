@@ -299,7 +299,7 @@ export function CockpitPage() {
                 overview={overview}
                 busy={busy}
                 onPause={() => session && action('pause', () => api.pauseOperatorSession(session.id), (x) => { setSession(x.session); setOverview(x.overview) })}
-                onStop={() => session?.missionId && action('stop', () => api.cancelMission(session.missionId!), () => { if (session.missionId) void api.getMissionOverview(session.missionId).then(setOverview) })}
+                onStop={() => session?.missionId && action('stop', () => api.stopOperatorSession(session.id), (x) => { setSession(x.session); setOverview(x.overview) })}
                 onDiagnose={() => setPanels((p) => { const next = { ...p, bottom: true }; try { localStorage.setItem(PANELS_STORAGE_KEY, JSON.stringify(next)) } catch { /* ignore */ } return next })}
               />
               <div className="button-row" style={{ marginTop: 10 }}>
@@ -479,7 +479,15 @@ function buildGuidance(opts: {
       secondary: { label: 'Pause · 暂停', onClick: opts.onPause, disabled: false },
     }
   }
-  if (missionStatus === 'failed' || missionStatus === 'cancelled') {
+  if (missionStatus === 'cancelled') {
+    return {
+      kicker: 'Cancelled · 已取消',
+      title: 'Cancelled — background worker result ignored · 已取消',
+      body: '已请求停止：mission 已标记 cancelled。正在运行的 worker 即使完成，其结果也会被丢弃，不会覆盖此状态。注意：当前层无法强杀子进程，detached worker 可能在后台继续运行到超时为止（hard-kill 属于 engine follow-up）。',
+      primary: { label: 'Start Over · 重新开始', onClick: opts.onReset, disabled: false },
+    }
+  }
+  if (missionStatus === 'failed') {
     const timedOut = latestRun?.exitCode === 124
     return {
       kicker: 'Failed · 执行失败',

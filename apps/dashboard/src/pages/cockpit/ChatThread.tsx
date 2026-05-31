@@ -4,13 +4,15 @@ import type { ApiOperatorChoice, ApiOperatorMessage, ApiOperatorMessageMeta } fr
 import { ClarificationCard } from './ClarificationCard.js'
 
 function MessageFooter({ meta }: { meta: ApiOperatorMessageMeta }) {
-  const bits: string[] = []
-  if (meta.provider) bits.push(meta.provider)
+  const bits: string[] = [meta.provider ?? 'unknown']
   if (meta.authMode) bits.push(meta.authMode === 'api' ? 'paid API' : meta.authMode)
   bits.push(meta.agentMode === 'multi' ? 'multi-agent' : 'single planner')
-  if (typeof meta.inputTokens === 'number' || typeof meta.outputTokens === 'number') {
-    bits.push(`${meta.inputTokens ?? 0} in / ${meta.outputTokens ?? 0} out`)
-  }
+  // During the thinking phase token usage isn't known yet — show "pending", never blank.
+  bits.push(
+    typeof meta.inputTokens === 'number' || typeof meta.outputTokens === 'number'
+      ? `${meta.inputTokens ?? 0} in / ${meta.outputTokens ?? 0} out`
+      : 'tokens pending',
+  )
   if (typeof meta.costUsd === 'number') bits.push(`$${meta.costUsd}`)
   return <div className="ck-msg-footer">Provider · {bits.join(' · ')}</div>
 }

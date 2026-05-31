@@ -53,6 +53,7 @@
 .ck-badge.failed, .ck-badge.hold { background: #fff1f2; color: #b91c1c; }
 .ck-badge.approved, .ck-badge.done, .ck-badge.roadmap_ready { background: #ecfdf5; color: #047857; }
 .ck-badge.paused { background: #fff7ed; color: #c2410c; }
+.ck-badge.cancelled { background: #f3f4f6; color: #6b7280; }
 
 /* --- Main chat column --- */
 .ck-topbar { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }

@@ -145,6 +145,8 @@ export const api = {
     post<{ session: ApiOperatorSession; result: { status: string; mergeDecision: string }; overview: ApiMissionOverview }>(`/operator/sessions/${id}/start`, {}),
   pauseOperatorSession: (id: string) =>
     post<{ session: ApiOperatorSession; overview: ApiMissionOverview }>(`/operator/sessions/${id}/pause`, {}),
+  stopOperatorSession: (id: string) =>
+    post<{ session: ApiOperatorSession; overview: ApiMissionOverview }>(`/operator/sessions/${id}/stop`, {}),
   resumeOperatorSession: (id: string) =>
     post<{ session: ApiOperatorSession; overview: ApiMissionOverview }>(`/operator/sessions/${id}/resume`, {}),
   createDraftPr: (id: string) =>

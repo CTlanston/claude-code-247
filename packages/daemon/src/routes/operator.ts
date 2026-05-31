@@ -6,6 +6,7 @@ import { nowIso, validateMissionDesign } from '@aedev/core'
 import { ClaudeCodeAdapter, CodexCliAdapter, discoverWorkerSessions } from '@aedev/runner'
 import type { ClarificationField, ClarificationQuestion } from '../clarification-gate.js'
 import { ClarificationGate, scoreAmbiguity } from '../clarification-gate.js'
+import { skipFinalWriteIfCancelled } from '../cancellation.js'
 import { MockValidator } from '@aedev/validators'
 import { IntakeService } from '../intake.js'
 import { MissionRunner } from '../mission-runner.js'
@@ -77,6 +78,7 @@ export function registerOperatorRoutes(app: FastifyInstance, db: AedevDb, stateD
       sessionId: session.id,
       role: 'assistant',
       content: 'Brainstorm is running on the local planner CLI. This can take a minute; the conversation will update automatically.',
+      meta: thinkingMeta(),
     })
     db.insertEvent('operator.session.created', 'operator_session', session.id, { repoId })
     const brainstormPromise = completePlannerBrainstorm(db, stateDir, session.id, prompt, title, repoId)
@@ -118,6 +120,7 @@ export function registerOperatorRoutes(app: FastifyInstance, db: AedevDb, stateD
       sessionId: session.id,
       role: 'assistant',
       content: 'Planner is preparing clarifying questions. · AI 正在准备需要你确认的问题，稍后会自动更新。',
+      meta: thinkingMeta(),
     })
     db.updateOperatorSession(session.id, { status: 'brainstorming' })
     const followupPromise = completePlannerFollowup(db, stateDir, session.id, requestPrompt, session.title, repoId, session.prompt)
@@ -222,6 +225,11 @@ export function registerOperatorRoutes(app: FastifyInstance, db: AedevDb, stateD
         return { session: db.getOperatorSession(session.id), result, overview: buildMissionOverview(db, mission.id) }
       }
       void runPromise.catch((e) => {
+        // Cancellation fence: a Stop during the run must not be overwritten by a late failure.
+        if (skipFinalWriteIfCancelled(db, mission.id, 'operator.start.catch')) {
+          db.updateOperatorSession(session.id, { status: 'cancelled' })
+          return
+        }
         db.updateOperatorSession(session.id, { status: 'failed' })
         db.updateMissionStatus(mission.id, 'failed')
         db.insertEvent('operator.worker_failed', 'mission', mission.id, { sessionId: session.id, error: (e as Error).message })
@@ -319,6 +327,26 @@ export function registerOperatorRoutes(app: FastifyInstance, db: AedevDb, stateD
     return { session: db.getOperatorSession(session.id), overview: buildMissionOverview(db, mission.id) }
   })
 
+  // Stop = operator cancel. Flips mission + session to `cancelled` immediately; the
+  // cancellation fence (cancellation.ts) then prevents the detached worker from
+  // overwriting this state when it later finishes/times out. This is a write fence,
+  // NOT a subprocess kill — the worker CLI is spawned inside the runner with no PID
+  // surfaced to this layer, so a true hard-kill is a documented engine follow-up.
+  app.post<{ Params: { id: string } }>('/operator/sessions/:id/stop', async (req, reply) => {
+    const session = db.getOperatorSession(req.params.id)
+    if (!session?.missionId) return reply.code(404).send({ error: 'session or mission not found' })
+    const mission = db.getMission(session.missionId)
+    if (!mission) return reply.code(404).send({ error: 'mission not found' })
+    db.updateMissionStatus(mission.id, 'cancelled')
+    db.updateOperatorSession(session.id, { status: 'cancelled' })
+    db.insertEvent('operator.cancel_requested', 'mission', mission.id, {
+      sessionId: session.id,
+      note: 'Operator pressed Stop. Mission/session marked cancelled; any in-flight worker result is fenced and ignored. Subprocess kill is not available at this layer.',
+    })
+    db.insertEvent('operator.stage_changed', 'mission', mission.id, { stage: 'PR/Waiting/Blocked', sessionId: session.id, status: 'cancelled' })
+    return { session: db.getOperatorSession(session.id), overview: buildMissionOverview(db, mission.id) }
+  })
+
   app.get<{ Params: { id: string } }>('/missions/:id/overview', async (req, reply) => {
     const overview = buildMissionOverview(db, req.params.id)
     if (!overview) return reply.code(404).send({ error: 'mission not found' })
@@ -379,6 +407,14 @@ function operatorQuestionsFor(db: AedevDb, stateDir: string, title: string, prom
 function providerAuthMode(provider?: string): string {
   if (provider && /-api$|^gemini-api$|^openai-api$/.test(provider)) return 'api'
   return 'subscription'
+}
+
+/** Provider transparency for a "thinking" placeholder — shown before token usage
+ *  is known (the footer renders "tokens pending"). PRD §C/AC1: transparency must
+ *  be visible during thinking, not only on completion. */
+function thinkingMeta(): OperatorMessageMeta {
+  const provider = process.env['AEDEV_COCKPIT_PLANNER_PROVIDER'] ?? 'auto'
+  return { provider, authMode: providerAuthMode(provider), agentMode: 'single' }
 }
 
 /** Provider/token transparency for an assistant turn, from a role_done event payload. */
@@ -692,6 +728,16 @@ async function generateRoadmapDesign(
     const design = validateMissionDesign(output.design)
     writeDesignArtifacts(db, stateDir, mission.id, design)
     db.insertEvent('operator.artifact_written', 'mission', mission.id, { types: ['prd', 'adr', 'roadmap', 'task-dag', 'design'] })
+    // Planner task-size judgment (point 3): record the plan's scale. The cockpit
+    // executes the whole mission in ONE worker run today, so a large taskDag is a
+    // signal that the single run may exceed the worker budget.
+    const dag = design.taskDag ?? []
+    db.insertEvent('operator.plan_scale', 'mission', mission.id, {
+      taskDagCount: dag.length,
+      coderTaskCount: dag.filter((t) => t.role === 'coder').length,
+      largePlan: dag.length > 6,
+      note: 'Cockpit runs the whole mission in a single worker run; the taskDag is not yet executed per-task.',
+    })
     db.insertEvent('operator.cost_updated', 'operator_session', session.id, {
       scope: 'planner',
       provider: output.provider,
@@ -982,8 +1028,14 @@ async function runOperatorMission(db: AedevDb, stateDir: string, sessionId: stri
   }
   registerEvidenceArtifacts(db, result.missionId, result.evidenceDir)
   db.insertEvent('operator.evidence_written', 'mission', missionId, { sessionId, evidenceDir: result.evidenceDir })
-  db.updateOperatorSession(sessionId, { status: result.status })
-  db.insertEvent('operator.stage_changed', 'mission', missionId, { stage: 'PR/Waiting/Blocked', sessionId, status: result.status })
+  // Cancellation fence: if the operator pressed Stop while the worker was running,
+  // keep the session cancelled and discard the late worker result.
+  if (skipFinalWriteIfCancelled(db, missionId, 'operator.runMission.session', result.status)) {
+    db.updateOperatorSession(sessionId, { status: 'cancelled' })
+  } else {
+    db.updateOperatorSession(sessionId, { status: result.status })
+    db.insertEvent('operator.stage_changed', 'mission', missionId, { stage: 'PR/Waiting/Blocked', sessionId, status: result.status })
+  }
   return result
 }
 
@@ -1091,6 +1143,13 @@ function operatorLocalCliRunner(db: AedevDb, stateDir: string, sessions: Awaited
         'Return a concise markdown report with: Plan, Concrete steps, Risks, Tests/checks, Done report.',
       ].join('\n')
       const timeoutMs = Number(process.env['AEDEV_COCKPIT_WORKER_TIMEOUT_MS'] ?? '600000')
+      const timeoutSource = process.env['AEDEV_COCKPIT_WORKER_TIMEOUT_MS'] ? 'env:AEDEV_COCKPIT_WORKER_TIMEOUT_MS' : 'default'
+      // Task-scale + timeout transparency (point 3): the whole mission runs in this
+      // single worker run, so record the budget it has to fit within up front.
+      db.insertEvent('operator.worker_scale', 'mission', task.missionId, {
+        taskId: task.id, runId: run.id, provider: session.provider,
+        workerTimeoutMs: timeoutMs, timeoutSource, promptChars: prompt.length,
+      })
       const result = session.provider === 'claude-cli'
         ? await new ClaudeCodeAdapter().run(prompt, workdir, { timeoutMs, onStdout: (chunk) => appendLog('stdout', chunk), onStderr: (chunk) => appendLog('stderr', chunk) })
         : await new CodexCliAdapter().run(prompt, workdir, { timeoutMs, sandbox: 'workspace-write', approvalPolicy: 'never', onStdout: (chunk) => appendLog('stdout', chunk), onStderr: (chunk) => appendLog('stderr', chunk) })
@@ -1099,7 +1158,18 @@ function operatorLocalCliRunner(db: AedevDb, stateDir: string, sessions: Awaited
       writeFileSync(join(evidenceDir, 'transcript-summary.md'), transcript)
       writeFileSync(join(evidenceDir, 'plan.md'), `# Plan\n\n${transcript}\n`)
       writeFileSync(join(evidenceDir, 'diff-summary.md'), '# Diff Summary\n\nOperator Cockpit local CLI worker used an isolated temporary workspace and did not push to GitHub.\n')
-      writeFileSync(join(evidenceDir, 'test-summary.md'), `# Test Summary\n\nProvider: ${session.provider}\nExit code: ${result.exitCode}\n${result.error ? `Error: ${result.error}\n` : ''}`)
+      writeFileSync(join(evidenceDir, 'test-summary.md'), [
+        '# Test Summary', '',
+        `Provider: ${session.provider}`,
+        `Exit code: ${result.exitCode}`,
+        `Duration: ${Math.round(result.durationMs / 1000)}s`,
+        `Worker timeout: ${timeoutMs}ms (source: ${timeoutSource})`,
+        ...(result.error ? [`Error: ${result.error}`] : []),
+        ...(result.exitCode === 124
+          ? ['', 'Timed out at the worker budget — the worker was killed, not stuck. The full step trace (searches, commands, agent messages) is in operator-run.log. Raise AEDEV_COCKPIT_WORKER_TIMEOUT_MS or split the mission into smaller runs.']
+          : []),
+        '',
+      ].join('\n'))
       writeFileSync(join(evidenceDir, 'done-report.md'), `# Done Report\n\nTask: ${task.id}\nProvider: ${session.provider}\nExit code: ${result.exitCode}\n`)
       writeFileSync(join(evidenceDir, 'model-usage.json'), JSON.stringify({
         provider: session.provider,
