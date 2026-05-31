@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>aedev cockpit — redesign explorations</title>
+<link rel="stylesheet" href="prototypes/base.css">
+<style>
+  body { background:var(--bg-sub); overflow-y:auto; }
+  .wrap { max-width:1080px; margin:0 auto; padding:44px 28px 80px; }
+  .eyebrow { font-size:var(--t-sm); font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); }
+  h1.big { font-size:34px; font-weight:600; letter-spacing:-.02em; margin:10px 0 14px; line-height:1.1; }
+  .lede { font-size:var(--t-lg); color:var(--fg-2); max-width:680px; line-height:1.6; }
+  .lede .mono { font-size:14px; background:var(--bg-inset); padding:1px 6px; border-radius:5px; }
+
+  .sec-label { font-size:var(--t-sm); font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--fg-muted); margin:48px 0 16px; }
+
+  .changes { display:grid; grid-template-columns:repeat(2,1fr); gap:14px; }
+  .change { background:var(--bg); border:var(--hair); border-radius:var(--r-lg); padding:18px 18px 16px; box-shadow:var(--sh-1); }
+  .change .ic { width:34px; height:34px; border-radius:var(--r-md); background:var(--accent-soft); color:var(--accent-soft-fg); display:flex; align-items:center; justify-content:center; margin-bottom:11px; }
+  .change h3 { font-size:var(--t-md); font-weight:600; margin:0 0 5px; }
+  .change p { font-size:var(--t-13); color:var(--fg-2); margin:0; line-height:1.55; }
+  .change .was { font-size:var(--t-xs); color:var(--fg-muted); margin-top:9px; }
+
+  .cards { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; }
+  .vcard { background:var(--bg); border:var(--hair); border-radius:var(--r-xl); overflow:hidden; box-shadow:var(--sh-2); display:flex; flex-direction:column; transition:transform .14s, box-shadow .14s; }
+  .vcard:hover { transform:translateY(-3px); box-shadow:var(--sh-pop); }
+  .vcard .thumb { height:152px; border-bottom:var(--hair); background:var(--bg-sub); }
+  .vcard .vbody { padding:18px; flex:1; display:flex; flex-direction:column; }
+  .vcard .vtag { font-size:var(--t-xs); font-weight:600; letter-spacing:.05em; text-transform:uppercase; color:var(--accent); }
+  .vcard h3 { font-size:var(--t-lg); font-weight:600; margin:6px 0 7px; }
+  .vcard p { font-size:var(--t-13); color:var(--fg-2); line-height:1.55; margin:0 0 14px; flex:1; }
+  .vcard .feat { font-size:var(--t-xs); color:var(--fg-3); margin:0 0 16px; line-height:1.7; }
+  .vcard .feat b { color:var(--fg-2); font-weight:500; }
+  .openbtn { text-decoration:none; }
+
+  .palette-row2 { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .sw { display:flex; flex-direction:column; gap:5px; align-items:center; }
+  .sw .chip2 { width:52px; height:36px; border-radius:8px; border:1px solid rgba(0,0,0,.06); }
+  .sw small { font-size:10px; color:var(--fg-muted); font-family:var(--font-mono); }
+  .systembar { display:flex; gap:26px; flex-wrap:wrap; background:var(--bg); border:var(--hair); border-radius:var(--r-lg); padding:20px; box-shadow:var(--sh-1); }
+  .next { background:var(--bg); border:var(--hair); border-left:3px solid var(--accent); border-radius:var(--r-lg); padding:18px 20px; margin-top:18px; box-shadow:var(--sh-1); }
+  .next h3 { margin:0 0 6px; font-size:var(--t-md); }
+  .next p { margin:0; color:var(--fg-2); font-size:var(--t-13); line-height:1.6; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">aedev · operator cockpit</div>
+  <h1 class="big">Cockpit redesign — three directions</h1>
+  <p class="lede">A Codex-clean rebuild of the cockpit. The history sidebar collapses, the right side becomes <b>toggleable docks</b> instead of fixed columns, and the big <span class="mono">TOKENS &amp; COST</span> block is gone — replaced by a thin top strip. The center is a real conversation thread: prompts, run outputs, collapsed process detail, and follow-up questions inline. Pick a direction and I'll write the implementation doc for Claude Code.</p>
+
+  <div class="sec-label">What changed · and why</div>
+  <div class="changes">
+    <div class="change">
+      <div class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5h18a1.5 1.5 0 0 1 1.5 1.5v12a1.5 1.5 0 0 1-1.5 1.5H3A1.5 1.5 0 0 1 1.5 18V6A1.5 1.5 0 0 1 3 4.5Zm6.5 0v15"/></svg></div>
+      <h3>Collapsible history, grouped by repo</h3>
+      <p>Missions group under their repo (like Claude Code groups by folder). One click folds the sidebar to a thin rail.</p>
+      <div class="was">was · always-on fixed list</div>
+    </div>
+    <div class="change">
+      <div class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 3 8l9 5 9-5-9-5Zm9 9-9 5-9-5"/></svg></div>
+      <h3>Right side becomes docks you choose</h3>
+      <p>Roadmap, Agent activity, Diff &amp; PR, Execution monitor, Approvals — each toggles independently. Show only what the moment needs.</p>
+      <div class="was">was · three fixed columns, all visible</div>
+    </div>
+    <div class="change">
+      <div class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg></div>
+      <h3>Compact top bar, no giant tokens block</h3>
+      <p>daemon · runs · model+provider · tokens · uptime · repo+branch — one quiet 52px strip instead of a full card.</p>
+      <div class="was">was · oversized TOKENS &amp; COST + EXECUTION MONITOR cards</div>
+    </div>
+    <div class="change">
+      <div class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l1.6 4.4L18 10l-4.4 1.6L12 16l-1.6-4.4L6 10l4.4-1.6L12 4Z"/></svg></div>
+      <h3>A real Codex-style thread</h3>
+      <p>Prompts, assistant replies, run outputs, and a <b>collapsed “Worked for…”</b> process block you can expand — plus inline follow-up question chips.</p>
+      <div class="was">was · decision buttons + answered chip + provider line stacked loosely</div>
+    </div>
+  </div>
+
+  <div class="sec-label">Shared design system</div>
+  <div class="systembar">
+    <div>
+      <div class="palette-sub" style="font-size:11px;color:var(--fg-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Surfaces &amp; accent</div>
+      <div class="palette-row2">
+        <div class="sw"><div class="chip2" style="background:#fff"></div><small>canvas</small></div>
+        <div class="sw"><div class="chip2" style="background:#f7f7f8"></div><small>sub</small></div>
+        <div class="sw"><div class="chip2" style="background:#f3f3f5"></div><small>inset</small></div>
+        <div class="sw"><div class="chip2" style="background:#18181b"></div><small>ink</small></div>
+        <div class="sw"><div class="chip2" style="background:#2f6df6"></div><small>accent</small></div>
+      </div>
+    </div>
+    <div>
+      <div class="palette-sub" style="font-size:11px;color:var(--fg-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Status vocabulary</div>
+      <div class="palette-row2">
+        <span class="badge badge-running"><span class="bdot"></span>running</span>
+        <span class="badge badge-approved"><span class="bdot"></span>approved</span>
+        <span class="badge badge-done"><span class="bdot"></span>done</span>
+        <span class="badge badge-pending"><span class="bdot"></span>pending</span>
+        <span class="badge badge-failed"><span class="bdot"></span>failed</span>
+        <span class="badge badge-draft"><span class="bdot"></span>draft</span>
+        <span class="badge badge-paused"><span class="bdot"></span>paused</span>
+      </div>
+      <div style="margin-top:12px;font-size:12px;color:var(--fg-3)">System fonts · <span class="mono" style="font-size:12px">system-ui</span> + <span class="mono" style="font-size:12px">ui-mono</span> — no web fonts, per the design system.</div>
+    </div>
+  </div>
+
+  <div class="sec-label">Three layouts to compare</div>
+  <div class="cards">
+    <a class="vcard openbtn" href="prototypes/A-codex-classic.html">
+      <div class="thumb">
+        <svg width="100%" height="100%" viewBox="0 0 300 152" preserveAspectRatio="none">
+          <rect width="300" height="152" fill="#f7f7f8"/>
+          <rect x="0" y="0" width="56" height="152" fill="#efeff2"/>
+          <rect x="56" y="0" width="244" height="18" fill="#fff"/><rect x="56" y="17" width="244" height="1" fill="#e8e8ec"/>
+          <rect x="68" y="34" width="120" height="9" rx="4" fill="#e3e9f6"/>
+          <rect x="180" y="56" width="46" height="22" rx="6" fill="#eef4ff"/>
+          <rect x="68" y="92" width="150" height="9" rx="4" fill="#ececf0"/>
+          <rect x="68" y="106" width="110" height="9" rx="4" fill="#ececf0"/>
+          <rect x="238" y="0" width="62" height="152" fill="#fff"/><rect x="238" y="0" width="1" height="152" fill="#e8e8ec"/>
+          <rect x="246" y="10" width="46" height="9" rx="4" fill="#2f6df6"/>
+          <rect x="246" y="30" width="46" height="30" rx="5" fill="#f3f3f5"/>
+          <rect x="246" y="66" width="46" height="30" rx="5" fill="#f3f3f5"/>
+        </svg>
+      </div>
+      <div class="vbody">
+        <span class="vtag">A · faithful</span>
+        <h3>Codex Classic</h3>
+        <p>Closest to Codex. A single right inspector with a tab strip — switch between docks one at a time. Calm, predictable, low chrome.</p>
+        <div class="feat"><b>Right:</b> tabbed inspector<br><b>Extras:</b> ⌘K palette · collapsible sidebar</div>
+        <span class="btn" style="align-self:flex-start">Open prototype →</span>
+      </div>
+    </a>
+
+    <a class="vcard openbtn" href="prototypes/B-dock-rail.html">
+      <div class="thumb">
+        <svg width="100%" height="100%" viewBox="0 0 300 152" preserveAspectRatio="none">
+          <rect width="300" height="152" fill="#f7f7f8"/>
+          <rect x="0" y="0" width="56" height="152" fill="#efeff2"/>
+          <rect x="56" y="0" width="244" height="18" fill="#fff"/><rect x="56" y="17" width="244" height="1" fill="#e8e8ec"/>
+          <rect x="68" y="34" width="120" height="9" rx="4" fill="#e3e9f6"/>
+          <rect x="68" y="92" width="150" height="9" rx="4" fill="#ececf0"/>
+          <rect x="68" y="106" width="110" height="9" rx="4" fill="#ececf0"/>
+          <rect x="214" y="0" width="64" height="152" fill="#fff"/><rect x="214" y="0" width="1" height="152" fill="#e8e8ec"/>
+          <rect x="222" y="10" width="48" height="34" rx="5" fill="#f3f3f5"/>
+          <rect x="222" y="50" width="48" height="34" rx="5" fill="#f3f3f5"/>
+          <rect x="222" y="90" width="48" height="34" rx="5" fill="#f3f3f5"/>
+          <rect x="278" y="0" width="22" height="152" fill="#fff"/><rect x="278" y="0" width="1" height="152" fill="#e8e8ec"/>
+          <rect x="284" y="12" width="11" height="11" rx="3" fill="#dbe6fb"/>
+          <rect x="284" y="30" width="11" height="11" rx="3" fill="#2f6df6"/>
+          <rect x="284" y="48" width="11" height="11" rx="3" fill="#e9e9ee"/>
+        </svg>
+      </div>
+      <div class="vbody">
+        <span class="vtag">B · the dock model</span>
+        <h3>Dock Rail</h3>
+        <p>A right activity-bar (扩展坞). Click an icon to open that dock; multiple stack in a column. The most literal answer to “docks I can hide and open.”</p>
+        <div class="feat"><b>Right:</b> icon rail + stacking docks<br><b>Extras:</b> ⌘K · per-dock close · badge counts</div>
+        <span class="btn" style="align-self:flex-start">Open prototype →</span>
+      </div>
+    </a>
+
+    <a class="vcard openbtn" href="prototypes/C-focus-flow.html">
+      <div class="thumb">
+        <svg width="100%" height="100%" viewBox="0 0 300 152" preserveAspectRatio="none">
+          <rect width="300" height="152" fill="#fbfbfc"/>
+          <rect x="0" y="0" width="20" height="152" fill="#efeff2"/>
+          <rect x="20" y="0" width="280" height="14" fill="#fff"/><rect x="20" y="14" width="280" height="1" fill="#e8e8ec"/>
+          <rect x="20" y="15" width="280" height="14" fill="#fff"/><rect x="20" y="29" width="280" height="1" fill="#e8e8ec"/>
+          <circle cx="44" cy="22" r="3" fill="#16a34a"/><rect x="52" y="19" width="20" height="6" rx="3" fill="#cfe0fb"/>
+          <circle cx="88" cy="22" r="3" fill="#2f6df6"/><rect x="96" y="19" width="20" height="6" rx="3" fill="#cfe0fb"/>
+          <rect x="96" y="44" width="120" height="8" rx="4" fill="#ececf0"/>
+          <rect x="96" y="58" width="96" height="8" rx="4" fill="#ececf0"/>
+          <rect x="200" y="40" width="78" height="58" rx="7" fill="#fff" stroke="#e8e8ec"/>
+          <rect x="206" y="47" width="40" height="6" rx="3" fill="#dbe6fb"/>
+          <rect x="32" y="86" width="78" height="46" rx="7" fill="#fff" stroke="#e8e8ec"/>
+          <rect x="118" y="120" width="84" height="20" rx="10" fill="#fff" stroke="#e8e8ec"/>
+          <circle cx="132" cy="130" r="5" fill="#2f6df6"/><circle cx="150" cy="130" r="5" fill="#e9e9ee"/><circle cx="168" cy="130" r="5" fill="#e9e9ee"/>
+        </svg>
+      </div>
+      <div class="vbody">
+        <span class="vtag">C · pushed</span>
+        <h3>Focus Flow</h3>
+        <p>A serene centered thread. A live <b>agent pipeline</b> rail runs under the top bar, and docks are floating, draggable cards the agent can auto-surface (Diff pops in when a run produces one).</p>
+        <div class="feat"><b>Right:</b> floating draggable docks<br><b>Extras:</b> pipeline rail · dock launcher · ⌘K · contextual auto-surface</div>
+        <span class="btn" style="align-self:flex-start">Open prototype →</span>
+      </div>
+    </a>
+  </div>
+
+  <div class="next">
+    <h3>Next step</h3>
+    <p>Open all three, click around (collapse the sidebar, toggle docks, expand a “Worked for…” block, hit ⌘K). Tell me which direction to lock — or mix pieces across them — and I’ll generate the implementation spec doc for Claude Code to apply to the real <span class="mono" style="font-size:12px">apps/dashboard</span>.</p>
+  </div>
+</div>
+</body>
+</html>

@@ -12,18 +12,43 @@ import { Sidebar } from './cockpit/Sidebar.js'
 import { ChatThread } from './cockpit/ChatThread.js'
 import { Composer } from './cockpit/Composer.js'
 import { ExecutionTimeline } from './cockpit/ExecutionTimeline.js'
+import { CommandPalette, type Command } from './cockpit/CommandPalette.js'
 import './cockpit/cockpit.css'
 
 const DEFAULT_PROMPT = 'Brainstorm a low-risk improvement, produce PRD/ADR/roadmap, then execute to the draft PR/evidence gate.'
 const SESSION_STORAGE_KEY = 'operatorCockpitSessionId'
 const PANELS_STORAGE_KEY = 'operatorCockpitPanels'
+const TAB_STORAGE_KEY = 'operatorCockpitInspectorTab'
 
-function loadPanelState(): { sidebar: boolean; right: boolean; bottom: boolean } {
+type InspectorTab = 'roadmap' | 'activity' | 'diff' | 'monitor' | 'approvals'
+const INSPECTOR_TABS: { id: InspectorTab; label: string }[] = [
+  { id: 'roadmap', label: 'Roadmap' },
+  { id: 'activity', label: 'Activity' },
+  { id: 'diff', label: 'Diff & PR' },
+  { id: 'monitor', label: 'Monitor' },
+  { id: 'approvals', label: 'Approvals' },
+]
+
+function loadPanelState(): { sidebar: boolean; inspector: boolean } {
   try {
     const raw = localStorage.getItem(PANELS_STORAGE_KEY)
-    if (raw) return { sidebar: true, right: true, bottom: true, ...JSON.parse(raw) }
+    if (raw) return { sidebar: true, inspector: true, ...JSON.parse(raw) }
   } catch { /* ignore */ }
-  return { sidebar: true, right: true, bottom: true }
+  return { sidebar: true, inspector: true }
+}
+
+function loadInspectorTab(): InspectorTab {
+  try {
+    const raw = localStorage.getItem(TAB_STORAGE_KEY)
+    if (raw && INSPECTOR_TABS.some((t) => t.id === raw)) return raw as InspectorTab
+  } catch { /* ignore */ }
+  return 'roadmap'
+}
+
+function fmtElapsed(ms: number | null | undefined): string {
+  if (ms == null) return '—'
+  const s = Math.round(ms / 1000)
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`
 }
 type GuidanceAction = { label: string; onClick: () => void; disabled: boolean }
 interface Guidance {
@@ -53,11 +78,24 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
   const [sessions, setSessions] = useState<ApiOperatorSession[]>([])
   const [note, setNote] = useState('')
   const [panels, setPanels] = useState(loadPanelState)
-  const togglePanel = (key: 'sidebar' | 'right' | 'bottom') => setPanels((p) => {
+  const [tab, setTab] = useState<InspectorTab>(loadInspectorTab)
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  const togglePanel = (key: 'sidebar' | 'inspector') => setPanels((p) => {
     const next = { ...p, [key]: !p[key] }
     try { localStorage.setItem(PANELS_STORAGE_KEY, JSON.stringify(next)) } catch { /* ignore */ }
     return next
   })
+  // Switch the inspector to a tab, opening it if it was hidden (single dock at a time).
+  const selectTab = (next: InspectorTab) => {
+    setTab(next)
+    try { localStorage.setItem(TAB_STORAGE_KEY, next) } catch { /* ignore */ }
+    setPanels((p) => {
+      if (p.inspector) return p
+      const merged = { ...p, inspector: true }
+      try { localStorage.setItem(PANELS_STORAGE_KEY, JSON.stringify(merged)) } catch { /* ignore */ }
+      return merged
+    })
+  }
 
   useEffect(() => {
     api.getRepos().then((r) => {
@@ -136,6 +174,17 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
     const timer = setInterval(load, latestRun.status === 'running' ? 1_000 : 5_000)
     return () => clearInterval(timer)
   }, [overview?.mission.id, overview?.runs?.[0]?.id, overview?.runs?.[0]?.status])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault()
+        setPaletteOpen((o) => !o)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   const latestEvents = useMemo(() => sse.events.slice(0, 12), [sse.events])
   const latestHold = useMemo(() => latestHoldMessage(messages), [messages])
@@ -223,40 +272,66 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
 
   const hasSession = Boolean(session)
   const canGenerate = Boolean(session) && !session?.missionId
+  const pendingCount = Math.max(pendingApprovals, sse.pendingApprovals)
+  const selectedRepoName = repos.find((r) => r.id === repoId)?.name ?? (repoId || '—')
+
+  const commands: Command[] = []
+  commands.push({ id: 'new', title: 'New mission · 新任务', hint: 'reset', run: resetMission })
+  commands.push({ id: 'toggle-sidebar', title: panels.sidebar ? 'Collapse history sidebar' : 'Expand history sidebar', hint: 'layout', run: () => togglePanel('sidebar') })
+  commands.push({ id: 'toggle-inspector', title: panels.inspector ? 'Hide inspector' : 'Show inspector', hint: 'layout', run: () => togglePanel('inspector') })
+  for (const t of INSPECTOR_TABS) commands.push({ id: `tab-${t.id}`, title: `Go to ${t.label}`, hint: 'inspector', run: () => selectTab(t.id) })
+  const missionStatusForCmd = overview?.mission.status
+  if (session?.missionId && missionStatusForCmd !== 'approved') {
+    commands.push({ id: 'approve', title: 'Approve roadmap · 批准', hint: 'action', run: () => action('approve', () => api.approveRoadmap(session.id), (x) => { setSession(x.session); setOverview(x.overview) }) })
+  }
+  if (session?.missionId && missionStatusForCmd === 'approved') {
+    commands.push({ id: 'start', title: 'Start execution · 启动', hint: 'action', run: () => action('start', () => api.startOperatorSession(session.id), (x) => { setSession(x.session); setOverview(x.overview) }) })
+  }
+  if (session?.missionId) {
+    commands.push({ id: 'pause', title: 'Pause mission · 暂停', hint: 'action', run: () => action('pause', () => api.pauseOperatorSession(session.id), (x) => { setSession(x.session); setOverview(x.overview) }) })
+    commands.push({ id: 'resume', title: 'Resume mission · 恢复', hint: 'action', run: () => action('resume', () => api.resumeOperatorSession(session.id), (x) => { setSession(x.session); setOverview(x.overview) }) })
+    commands.push({ id: 'draft-pr', title: 'Draft PR · 创建草稿', hint: 'action', run: () => action('draft-pr', () => api.createDraftPr(session.id), (x) => { setOverview(x.overview); setDraftPrStatus(x.pr?.url ?? `${x.code ?? x.status}: ${x.reason ?? ''}`) }) })
+  }
+  commands.push({ id: 'open-approvals', title: 'Open approvals page · 审批', hint: 'navigate', run: () => onNavigate?.('approvals') })
 
   return (
     <div className="cockpit">
-      <header className="cockpit-top">
-        <div>
-          <p className="eyebrow">Claude Code 24/7</p>
-          <h1>Operator Cockpit · AI 共创工作台</h1>
-        </div>
-        <div className="health-strip">
-          <span className={`dot${sse.connected ? '' : ' off'}`} /> daemon
-          <button className="link-count" onClick={() => onNavigate?.('approvals')} title="Open approvals · 打开审批">
-            <strong>{Math.max(pendingApprovals, sse.pendingApprovals)}</strong> approvals
-          </button>
-          <strong>{overview?.cost.runCount ?? 0}</strong> runs
-          <strong>{overview?.cost.costUsd ?? 'unknown'}</strong> cost
-        </div>
+      <header className="ck-topstrip">
+        <span className="ck-brand"><span className={`dot${sse.connected ? '' : ' off'}`} />aedev · cockpit</span>
+        <span className="ck-stat"><span className="k">provider</span><span className="v">{overview?.cliProvider ?? '—'}</span></span>
+        <span className="ck-stat"><span className="k">runs</span><span className="v">{overview?.cost.runCount ?? 0}</span></span>
+        <span className="ck-stat"><span className="k">tokens</span><span className="v">{overview?.cost.totalTokens ?? '—'}</span></span>
+        <span className="ck-stat"><span className="k">cost</span><span className="v">{overview?.cost.costUsd ?? 'unknown'}</span></span>
+        <span className="ck-strip-spacer" />
+        <span className="ck-stat"><span className="k">repo</span><span className="v">{selectedRepoName}</span></span>
+        <button className="ck-stat approvals" onClick={() => onNavigate?.('approvals')} title="Open approvals · 打开审批">
+          <span className="k">approvals</span><span className="v">{pendingCount}</span>
+        </button>
+        <button className="ck-kbd" title="Command palette (⌘K)" onClick={() => setPaletteOpen(true)}>⌘K</button>
       </header>
 
-      <div className={`cockpit-shell${panels.sidebar ? '' : ' no-sidebar'}${panels.right ? '' : ' no-right'}${panels.bottom ? '' : ' no-bottom'}`}>
-        {panels.sidebar && (
-          <Sidebar sessions={sessions} activeId={session?.id ?? null} onSelect={loadSession} onNew={resetMission} />
-        )}
+      <div className={`cockpit-shell${panels.sidebar ? '' : ' rail'}${panels.inspector ? '' : ' no-inspector'}`}>
+        <Sidebar
+          sessions={sessions}
+          repos={repos}
+          activeId={session?.id ?? null}
+          collapsed={!panels.sidebar}
+          onSelect={loadSession}
+          onNew={resetMission}
+          onToggle={() => togglePanel('sidebar')}
+        />
 
         <div className="ck-main">
           <div className="ck-topbar">
-            <button className="ck-toggle on" onClick={() => togglePanel('sidebar')} title="Toggle history · 历史">☰</button>
+            <button className={`ck-toggle${panels.sidebar ? ' on' : ''}`} onClick={() => togglePanel('sidebar')} title="Toggle history · 历史">☰</button>
             <div className="ck-coach">
               <div className="ck-coach-kicker">{guidance.kicker}</div>
               <div className="ck-coach-title">{guidance.title}</div>
               <div className="ck-coach-body">{guidance.body}</div>
             </div>
             <div className="ck-toggles">
-              <button className={`ck-toggle${panels.right ? ' on' : ''}`} onClick={() => togglePanel('right')}>Plan · 方案</button>
-              <button className={`ck-toggle${panels.bottom ? ' on' : ''}`} onClick={() => togglePanel('bottom')}>Logs · 日志</button>
+              <button className={`ck-toggle${panels.inspector ? ' on' : ''}`} onClick={() => togglePanel('inspector')} title="Toggle inspector · 检查器">Inspector</button>
+              <button className="ck-toggle" onClick={() => setPaletteOpen(true)} title="Command palette (⌘K)">⌘K</button>
             </div>
           </div>
 
@@ -283,6 +358,7 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
             canChoose={canGenerate}
             onChoice={handleChoice}
             onAnswer={(answers) => session && action('answer', () => api.answerQuestions(session.id, answers), (x) => { setSession(x.session); setMessages(x.messages) })}
+            footer={<ProcessBlock overview={overview} busy={busy} />}
           />
 
           <Composer
@@ -303,44 +379,67 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
           />
         </div>
 
-        {panels.right && (
-          <div className="ck-right">
-            <div className="ck-card">
-              <div className="ck-panel-head"><span>Roadmap & Execution · 方案与执行</span></div>
-              <ExecutionTimeline
-                overview={overview}
-                busy={busy}
-                onPause={() => session && action('pause', () => api.pauseOperatorSession(session.id), (x) => { setSession(x.session); setOverview(x.overview) })}
-                onStop={() => session?.missionId && action('stop', () => api.stopOperatorSession(session.id), (x) => { setSession(x.session); setOverview(x.overview) })}
-                onDiagnose={() => setPanels((p) => { const next = { ...p, bottom: true }; try { localStorage.setItem(PANELS_STORAGE_KEY, JSON.stringify(next)) } catch { /* ignore */ } return next })}
-              />
-              <div className="button-row" style={{ marginTop: 10 }}>
-                <button className="action primary" disabled={!session?.missionId || overview?.mission.status === 'approved' || Boolean(busy)} onClick={() => action('approve', () => api.approveRoadmap(session!.id), (x) => { setSession(x.session); setOverview(x.overview) })}>Approve · 批准</button>
-                <button className={`action${overview?.mission.status === 'approved' ? ' primary pulse' : ''}`} disabled={!session?.missionId || overview?.mission.status !== 'approved' || Boolean(busy)} onClick={() => action('start', () => api.startOperatorSession(session!.id), (x) => { setSession(x.session); setOverview(x.overview) })}>{busy === 'start' ? 'Starting… · 启动中' : 'Start · 启动'}</button>
-                <button className="action" disabled={!session?.missionId || Boolean(busy)} onClick={() => action('pause', () => api.pauseOperatorSession(session!.id), (x) => { setSession(x.session); setOverview(x.overview) })}>Pause</button>
-                <button className="action" disabled={!session?.missionId || Boolean(busy)} onClick={() => action('resume', () => api.resumeOperatorSession(session!.id), (x) => { setSession(x.session); setOverview(x.overview) })}>Resume</button>
-                <button className="action" disabled={!session?.missionId || Boolean(busy)} onClick={() => action('draft-pr', () => api.createDraftPr(session!.id), (x) => { setOverview(x.overview); setDraftPrStatus(x.pr?.url ?? `${x.code ?? x.status}: ${x.reason ?? ''}`) })}>Draft PR</button>
-              </div>
-              {draftPrStatus && <div className="running">Draft PR: {draftPrStatus}</div>}
+        {panels.inspector && (
+          <div className="ck-inspector">
+            <div className="ck-tabs" role="tablist">
+              {INSPECTOR_TABS.map((t) => (
+                <button
+                  key={t.id}
+                  role="tab"
+                  aria-selected={tab === t.id}
+                  className={`ck-tab${tab === t.id ? ' active' : ''}`}
+                  onClick={() => selectTab(t.id)}
+                >
+                  {t.label}
+                  {t.id === 'approvals' && pendingCount > 0 ? <span className="ck-tab-count">{pendingCount}</span> : null}
+                </button>
+              ))}
             </div>
-            <div className="ck-card"><AgentActivity overview={overview} session={session} busy={busy} /></div>
-            <div className="ck-card"><MissionSnapshot overview={overview} /></div>
-            <div className="ck-card"><ApprovalCard overview={overview} /></div>
-            <div className="ck-card"><DocumentPreview overview={overview} selectedId={selectedArtifactId} onSelect={setSelectedArtifactId} /></div>
-          </div>
-        )}
 
-        {panels.bottom && (
-          <div className="ck-bottom">
-            <div className="ck-bottom-grid">
-              <div className="ck-card"><RunPanel overview={overview} /></div>
-              <div className="ck-card"><ExecutionMonitor overview={overview} runLog={runLog} /></div>
-              <div className="ck-card"><ArtifactList overview={overview} selectedId={selectedArtifactId} onSelect={setSelectedArtifactId} /></div>
-              <div className="ck-card"><EventLog events={latestEvents} /></div>
+            <div className="ck-dock">
+              {tab === 'roadmap' && (
+                <>
+                  <ExecutionTimeline
+                    overview={overview}
+                    busy={busy}
+                    onPause={() => session && action('pause', () => api.pauseOperatorSession(session.id), (x) => { setSession(x.session); setOverview(x.overview) })}
+                    onStop={() => session?.missionId && action('stop', () => api.stopOperatorSession(session.id), (x) => { setSession(x.session); setOverview(x.overview) })}
+                    onDiagnose={() => selectTab('monitor')}
+                  />
+                  <div className="button-row" style={{ marginTop: 10 }}>
+                    <button className="action primary" disabled={!session?.missionId || overview?.mission.status === 'approved' || Boolean(busy)} onClick={() => action('approve', () => api.approveRoadmap(session!.id), (x) => { setSession(x.session); setOverview(x.overview) })}>Approve · 批准</button>
+                    <button className={`action${overview?.mission.status === 'approved' ? ' primary pulse' : ''}`} disabled={!session?.missionId || overview?.mission.status !== 'approved' || Boolean(busy)} onClick={() => action('start', () => api.startOperatorSession(session!.id), (x) => { setSession(x.session); setOverview(x.overview) })}>{busy === 'start' ? 'Starting… · 启动中' : 'Start · 启动'}</button>
+                    <button className="action" disabled={!session?.missionId || Boolean(busy)} onClick={() => action('pause', () => api.pauseOperatorSession(session!.id), (x) => { setSession(x.session); setOverview(x.overview) })}>Pause</button>
+                    <button className="action" disabled={!session?.missionId || Boolean(busy)} onClick={() => action('resume', () => api.resumeOperatorSession(session!.id), (x) => { setSession(x.session); setOverview(x.overview) })}>Resume</button>
+                    <button className="action" disabled={!session?.missionId || Boolean(busy)} onClick={() => action('draft-pr', () => api.createDraftPr(session!.id), (x) => { setOverview(x.overview); setDraftPrStatus(x.pr?.url ?? `${x.code ?? x.status}: ${x.reason ?? ''}`) })}>Draft PR</button>
+                  </div>
+                  {draftPrStatus && <div className="running">Draft PR: {draftPrStatus}</div>}
+                  <MissionSnapshot overview={overview} />
+                </>
+              )}
+              {tab === 'activity' && <AgentActivity overview={overview} session={session} busy={busy} />}
+              {tab === 'diff' && (
+                <>
+                  <DocumentPreview overview={overview} selectedId={selectedArtifactId} onSelect={setSelectedArtifactId} />
+                  <ArtifactList overview={overview} selectedId={selectedArtifactId} onSelect={setSelectedArtifactId} />
+                  {draftPrStatus && <div className="running">Draft PR: {draftPrStatus}</div>}
+                  {overview?.mission.githubPrUrl && <div className="running">PR: {overview.mission.githubPrUrl}</div>}
+                </>
+              )}
+              {tab === 'monitor' && (
+                <>
+                  <ExecutionMonitor overview={overview} runLog={runLog} />
+                  <RunPanel overview={overview} />
+                  <EventLog events={latestEvents} />
+                </>
+              )}
+              {tab === 'approvals' && <ApprovalCard overview={overview} />}
             </div>
           </div>
         )}
       </div>
+
+      <CommandPalette open={paletteOpen} commands={commands} onClose={() => setPaletteOpen(false)} />
     </div>
   )
 }
@@ -540,6 +639,32 @@ function buildGuidance(opts: {
     title: 'Watch the mission move · 查看执行进展',
     body: '右侧是运行状态，中央是方案与审批，左侧可以继续补充上下文。',
   }
+}
+
+/** Codex-style collapsed "Worked for…" process block (redesign §4). */
+function ProcessBlock({ overview, busy }: { overview: ApiMissionOverview | null; busy: string | null }) {
+  const rp = overview?.runProgress
+  const steps = (overview?.events ?? []).slice(0, 8).map((e) => ({ id: e.id, ...friendlyEvent(e.type, e.payload) }))
+  if (!rp && steps.length === 0 && !busy) return null
+  const running = rp?.status === 'running' || busy === 'start' || busy === 'create' || busy === 'roadmap'
+  const elapsed = fmtElapsed(rp?.elapsedMs)
+  const summary = running ? (rp ? `Working… · ${elapsed}` : 'Working…') : `Worked for ${elapsed}`
+  return (
+    <details className="ck-process">
+      <summary>
+        <span className={`ck-process-dot${running ? ' live' : ''}`} />
+        <span className="ck-process-summary">{summary}</span>
+        <span className="ck-process-meta">{steps.length} step{steps.length === 1 ? '' : 's'}</span>
+      </summary>
+      <div className="ck-process-steps">
+        {steps.length ? steps.map((s) => (
+          <div className="ck-process-step" key={s.id}>
+            <strong>{s.label}</strong>{s.detail ? <span>{s.detail}</span> : null}
+          </div>
+        )) : <div className="ck-role">No process events yet · 暂无过程事件</div>}
+      </div>
+    </details>
+  )
 }
 
 function AgentActivity({ overview, session, busy }: {
