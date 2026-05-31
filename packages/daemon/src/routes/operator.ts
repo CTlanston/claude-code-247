@@ -430,7 +430,7 @@ async function runPlannerFollowup(requestPrompt: string, title: string, repoId: 
 }
 
 async function runLocalPlannerText(systemPrompt: string, plannerPrompt: string, role: string, holdContextPrompt: string): Promise<{ content: string; event: Record<string, unknown> }> {
-  const timeoutMs = Number(process.env['AEDEV_COCKPIT_AI_TIMEOUT_MS'] ?? '120000')
+  const timeoutMs = Number(process.env['AEDEV_COCKPIT_AI_TIMEOUT_MS'] ?? '300000')
   const failures: string[] = []
   const plannerProvider = process.env['AEDEV_COCKPIT_PLANNER_PROVIDER']
 
@@ -653,7 +653,7 @@ async function runPlannerMissionDesign(
     '',
     'Design a low-risk evidence-gated mission. The taskDag must contain at least one coder task and expected evidence files.',
   ].join('\n')
-  const timeoutMs = Number(process.env['AEDEV_COCKPIT_AI_TIMEOUT_MS'] ?? '120000')
+  const timeoutMs = Number(process.env['AEDEV_COCKPIT_AI_TIMEOUT_MS'] ?? '300000')
   const provider = process.env['AEDEV_COCKPIT_PLANNER_PROVIDER']
   const failures: string[] = []
 
@@ -978,7 +978,7 @@ function operatorLocalCliRunner(db: AedevDb, stateDir: string, sessions: Awaited
         'Create or update files only inside the current temporary workspace if you need scratch files.',
         'Return a concise markdown report with: Plan, Concrete steps, Risks, Tests/checks, Done report.',
       ].join('\n')
-      const timeoutMs = Number(process.env['AEDEV_COCKPIT_WORKER_TIMEOUT_MS'] ?? '180000')
+      const timeoutMs = Number(process.env['AEDEV_COCKPIT_WORKER_TIMEOUT_MS'] ?? '600000')
       const result = session.provider === 'claude-cli'
         ? await new ClaudeCodeAdapter().run(prompt, workdir, { timeoutMs, onStdout: (chunk) => appendLog('stdout', chunk), onStderr: (chunk) => appendLog('stderr', chunk) })
         : await new CodexCliAdapter().run(prompt, workdir, { timeoutMs, sandbox: 'workspace-write', approvalPolicy: 'never', onStdout: (chunk) => appendLog('stdout', chunk), onStderr: (chunk) => appendLog('stderr', chunk) })

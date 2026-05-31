@@ -101,6 +101,7 @@ export function CockpitPage() {
   }, [overview?.mission.id, overview?.runs?.[0]?.id, overview?.runs?.[0]?.status])
 
   const latestEvents = useMemo(() => sse.events.slice(0, 12), [sse.events])
+  const latestHold = useMemo(() => latestHoldMessage(messages), [messages])
 
   async function action<T>(label: string, fn: () => Promise<T>, after?: (x: T) => void) {
     setBusy(label)
@@ -109,7 +110,12 @@ export function CockpitPage() {
     try {
       const out = await fn()
       after?.(out)
-      setNotice(actionDoneMessage(label))
+      if (isHoldResponse(out)) {
+        setErr(`${out.hold.code}: ${out.hold.reason}`)
+        setNotice('Planner 进入 HOLD，需要先修复本地 CLI/session，或显式开启模板 fallback 后重试。')
+      } else {
+        setNotice(actionDoneMessage(label))
+      }
     } catch (e) {
       setErr(formatError(e as Error))
       setNotice(null)
@@ -153,11 +159,16 @@ export function CockpitPage() {
     overview,
     busy,
     messages,
+    latestHold,
     sseConnected: sse.connected,
     onBrainstorm: () => action('create', () => api.createOperatorSession({ repoId, title, prompt }), (x) => { setSession(x.session); setMessages(x.messages); setOverview(null); setDraftPrStatus(null) }),
     onRoadmap: () => session && action('roadmap', () => api.generateRoadmap(session.id), (x) => { setSession(x.session); setMessages(x.messages); if (x.mission) void api.getMissionOverview(x.mission.id).then(setOverview) }),
     onApprove: () => session && action('approve', () => api.approveRoadmap(session.id), (x) => { setSession(x.session); setOverview(x.overview) }),
     onStart: () => session && action('start', () => api.startOperatorSession(session.id), (x) => { setSession(x.session); setOverview(x.overview) }),
+    onPause: () => session && action('pause', () => api.pauseOperatorSession(session.id), (x) => { setSession(x.session); setOverview(x.overview) }),
+    onResume: () => session && action('resume', () => api.resumeOperatorSession(session.id), (x) => { setSession(x.session); setOverview(x.overview) }),
+    onDraftPr: () => session && action('draft-pr', () => api.createDraftPr(session.id), (x) => { setOverview(x.overview); setDraftPrStatus(x.pr?.url ?? `${x.code ?? x.status}: ${x.reason ?? ''}`) }),
+    onReset: resetMission,
   })
 
   return (
@@ -177,6 +188,7 @@ export function CockpitPage() {
       </header>
 
       {err && <div className="error">Error: {err}</div>}
+      {!err && latestHold && session?.status === 'hold' && <div className="error">Planner HOLD: {latestHold}</div>}
       <section className={`coach-card ${sse.connected ? '' : 'warn'}`}>
         <div>
           <span>{guidance.kicker}</span>
@@ -277,6 +289,25 @@ function formatError(e: Error): string {
   return e.message
 }
 
+function isHoldResponse(out: unknown): out is { hold: { code: string; reason: string } } {
+  return Boolean(
+    out &&
+    typeof out === 'object' &&
+    'hold' in out &&
+    (out as { hold?: { code?: unknown; reason?: unknown } }).hold &&
+    typeof (out as { hold: { code?: unknown } }).hold.code === 'string' &&
+    typeof (out as { hold: { reason?: unknown } }).hold.reason === 'string',
+  )
+}
+
+function latestHoldMessage(messages: ApiOperatorMessage[]): string | null {
+  const message = [...messages].reverse().find((m) => /^HOLD-[A-Z-]+:/m.test(m.content))
+  if (!message) return null
+  const [headline] = message.content.split('\n')
+  const reason = message.content.match(/^Reason:\s*(.+)$/m)?.[1]
+  return [headline, reason].filter(Boolean).join(' · ')
+}
+
 function actionName(label: string): string {
   return ({
     create: '创建会话并启动 brainstorm',
@@ -311,11 +342,16 @@ function buildGuidance(opts: {
   overview: ApiMissionOverview | null
   busy: string | null
   messages: ApiOperatorMessage[]
+  latestHold: string | null
   sseConnected: boolean
   onBrainstorm: () => void
   onRoadmap: () => void
   onApprove: () => void
   onStart: () => void
+  onPause: () => void
+  onResume: () => void
+  onDraftPr: () => void
+  onReset: () => void
 }): Guidance {
   if (!opts.sseConnected) {
     return {
@@ -329,6 +365,15 @@ function buildGuidance(opts: {
       kicker: 'Working · 正在执行',
       title: actionName(opts.busy),
       body: '动作已提交。长任务会在后台运行，状态、agent 和日志会自动刷新。',
+    }
+  }
+  if (opts.session?.status === 'hold') {
+    return {
+      kicker: 'HOLD · 需要处理',
+      title: 'Planner 没有成功启动 · Planner needs local CLI access',
+      body: opts.latestHold ?? '请先修复本地 Claude/Codex CLI session，然后重新开始 brainstorm 或重试生成方案。',
+      primary: { label: 'Retry Brainstorm · 重试讨论', onClick: opts.onBrainstorm, disabled: false },
+      secondary: { label: 'Retry PRD · 重试方案', onClick: opts.onRoadmap, disabled: !opts.session },
     }
   }
   if (!opts.session) {
@@ -368,6 +413,48 @@ function buildGuidance(opts: {
       title: 'Agents are ready to run · Agents 已待命',
       body: '点击启动后会分配 coder worker，右侧显示 run、日志、tokens、evidence 和 validators。',
       primary: { label: 'Start Execution · 启动执行', onClick: opts.onStart, disabled: false },
+    }
+  }
+  const missionStatus = opts.overview?.mission.status
+  const latestRun = opts.overview?.runs?.[0]
+  if (missionStatus === 'running' || opts.session?.status === 'running') {
+    return {
+      kicker: 'Running · 执行中',
+      title: 'Worker is running · Worker 正在执行',
+      body: 'coder worker 正在运行。模型“思考”时可能一段时间没有新日志，这是正常的，不代表卡住；右侧 Observability 的 run、日志、tokens 会自动刷新。需要的话可以暂停。',
+      secondary: { label: 'Pause · 暂停', onClick: opts.onPause, disabled: false },
+    }
+  }
+  if (missionStatus === 'failed' || missionStatus === 'cancelled') {
+    const timedOut = latestRun?.exitCode === 124
+    return {
+      kicker: 'Failed · 执行失败',
+      title: timedOut ? 'Worker timed out · Worker 超时' : 'Worker failed · Worker 执行失败',
+      body: timedOut
+        ? '本次 worker 超出时间预算被中止（exit 124）。任务越大越容易超时——可以把目标拆小后重试，或调大 AEDEV_COCKPIT_WORKER_TIMEOUT_MS。右侧 Observability 有运行日志和已产出的证据。'
+        : `本次 worker 失败${latestRun?.exitCode != null ? `（exit ${latestRun.exitCode}）` : ''}。右侧 Observability 的运行日志和证据可用于判断原因，修复后可重新开始。`,
+      primary: { label: 'Start Over · 重新开始', onClick: opts.onReset, disabled: false },
+      secondary: { label: 'Draft PR · 创建草稿', onClick: opts.onDraftPr, disabled: false },
+    }
+  }
+  if (missionStatus === 'paused') {
+    return {
+      kicker: 'Paused · 已暂停',
+      title: 'Mission paused · 执行已暂停',
+      body: '可以恢复执行，或基于当前证据创建草稿 PR（remote writes 关闭时会被安全拦截，这是预期行为）。',
+      primary: { label: 'Resume · 恢复执行', onClick: opts.onResume, disabled: false },
+      secondary: { label: 'Draft PR · 创建草稿', onClick: opts.onDraftPr, disabled: false },
+    }
+  }
+  if (missionStatus === 'done' || missionStatus === 'waiting') {
+    const validatorsOff = opts.overview?.validatorStatus === 'not_configured'
+    return {
+      kicker: 'Done · 执行完成',
+      title: 'Reached the evidence gate · 已到达证据闸',
+      body: validatorsOff
+        ? '执行完成，证据已写入（右侧 Observability）。Validator 未配置（缺少 Gemini/OpenAI key）所以未运行；可直接创建草稿 PR。'
+        : '执行完成，validator 结果和证据见右侧 Observability；确认无误后可创建草稿 PR。',
+      primary: { label: 'Draft PR · 创建草稿', onClick: opts.onDraftPr, disabled: false },
     }
   }
   return {

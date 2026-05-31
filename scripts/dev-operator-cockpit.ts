@@ -1,4 +1,5 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
+import { delimiter, dirname } from 'node:path'
 
 const ROOT = process.cwd()
 const DAEMON_PORT = 7247
@@ -23,8 +24,18 @@ function commandFor(pid: number): string {
   }
 }
 
-function repoOwned(command: string, kind: 'daemon' | 'dashboard'): boolean {
-  if (!command.includes(ROOT)) return false
+function cwdFor(pid: number): string {
+  try {
+    const out = execFileSync('lsof', ['-a', '-p', String(pid), '-d', 'cwd', '-Fn'], { encoding: 'utf8' })
+    return out.split('\n').find((line) => line.startsWith('n'))?.slice(1) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+function repoOwned(pid: number, command: string, kind: 'daemon' | 'dashboard'): boolean {
+  const cwd = cwdFor(pid)
+  if (!command.includes(ROOT) && cwd !== ROOT && !cwd.startsWith(`${ROOT}/`)) return false
   if (kind === 'daemon') return command.includes('packages/daemon/src/main.ts')
   return command.includes('vite') && command.includes('7248')
 }
@@ -33,7 +44,7 @@ async function stopPort(port: number, kind: 'daemon' | 'dashboard'): Promise<voi
   const pid = listenerPid(port)
   if (!pid) return
   const command = commandFor(pid)
-  if (!replace || !repoOwned(command, kind)) {
+  if (!replace || !repoOwned(pid, command, kind)) {
     throw new Error(`Port ${port} is already in use by PID ${pid}: ${command}\nRun with --replace to stop repo-owned dev processes.`)
   }
   process.kill(pid, 'SIGTERM')
@@ -43,13 +54,16 @@ async function stopPort(port: number, kind: 'daemon' | 'dashboard'): Promise<voi
 }
 
 function start(name: string, command: string, args: string[]): ChildProcess {
+  const nodeBin = dirname(process.execPath)
+  const path = [nodeBin, process.env['PATH']].filter(Boolean).join(delimiter)
   const child = spawn(command, args, {
     cwd: ROOT,
     env: {
       ...process.env,
+      PATH: path,
       AEDEV_COCKPIT_PLANNER_PROVIDER: process.env['AEDEV_COCKPIT_PLANNER_PROVIDER'] ?? 'codex',
-      AEDEV_COCKPIT_AI_TIMEOUT_MS: process.env['AEDEV_COCKPIT_AI_TIMEOUT_MS'] ?? '120000',
-      AEDEV_COCKPIT_WORKER_TIMEOUT_MS: process.env['AEDEV_COCKPIT_WORKER_TIMEOUT_MS'] ?? '180000',
+      AEDEV_COCKPIT_AI_TIMEOUT_MS: process.env['AEDEV_COCKPIT_AI_TIMEOUT_MS'] ?? '300000',
+      AEDEV_COCKPIT_WORKER_TIMEOUT_MS: process.env['AEDEV_COCKPIT_WORKER_TIMEOUT_MS'] ?? '600000',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
