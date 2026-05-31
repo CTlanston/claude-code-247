@@ -212,6 +212,22 @@ export const MIGRATIONS: Migration[] = [
   { version: 3, name: 'event-log-v2', up: V3_EVENT_LOG_SQL },
   { version: 4, name: 'operator-cockpit', up: V4_OPERATOR_COCKPIT_SQL },
   { version: 5, name: 'operator-message-choices', up: `ALTER TABLE operator_messages ADD COLUMN choices TEXT;` },
+  { version: 6, name: 'operator-questions-meta-holds', up: `
+ALTER TABLE operator_messages ADD COLUMN questions TEXT;
+ALTER TABLE operator_messages ADD COLUMN meta TEXT;
+CREATE TABLE IF NOT EXISTS holds (
+  id TEXT PRIMARY KEY,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  code TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  next_action TEXT,
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at TEXT NOT NULL,
+  resolved_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_holds_entity ON holds(entity_type, entity_id, status);
+` },
 ]
 
 export function runMigrations(db: Database.Database): void {

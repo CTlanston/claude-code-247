@@ -166,13 +166,60 @@ export interface OperatorChoice {
   prompt?: string
 }
 
+export interface OperatorQuestionOption {
+  label: string
+  labelEn?: string
+  /** Concrete value folded into planning input when chosen. Defaults to label. */
+  value?: string
+  recommended?: boolean
+}
+
+/** A structured clarification question surfaced as an interactive card (PRD §B). */
+export interface OperatorQuestion {
+  id: string
+  field: string
+  question: string
+  options: OperatorQuestionOption[]
+  /** Populated once the operator answers. */
+  answer?: string
+}
+
+/** Provider/cost transparency attached to an assistant turn (PRD §C, §F). */
+export interface OperatorMessageMeta {
+  provider?: string
+  /** 'subscription' (local CLI) | 'api' (paid) | 'validator-only'. */
+  authMode?: string
+  /** Honest agent topology — the cockpit planner is a single agent today. */
+  agentMode?: 'single' | 'multi'
+  inputTokens?: number
+  outputTokens?: number
+  costUsd?: number | null
+}
+
 export interface OperatorMessage {
   id: string
   sessionId: string
   role: 'user' | 'assistant' | 'system'
   content: string
   choices?: OperatorChoice[]
+  questions?: OperatorQuestion[]
+  meta?: OperatorMessageMeta
   createdAt: string
+}
+
+export type HoldStatus = 'active' | 'resolved'
+
+/** A first-class HOLD record so the UI can show *active* blockers vs history (PRD §D). */
+export interface Hold {
+  id: string
+  entityType: string
+  entityId: string
+  code: string
+  reason: string
+  nextAction?: string
+  status: HoldStatus
+  createdAt: string
+  resolvedAt?: string
 }
 
 export interface MissionArtifact {

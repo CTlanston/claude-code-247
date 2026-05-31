@@ -21,8 +21,29 @@ export interface ApiOperatorChoice {
   action: 'generate-roadmap' | 'ask-questions' | 'add-constraints'
   prompt?: string
 }
+export interface ApiOperatorQuestionOption {
+  label: string; labelEn?: string; value?: string; recommended?: boolean
+}
+export interface ApiOperatorQuestion {
+  id: string; field: string; question: string; options: ApiOperatorQuestionOption[]; answer?: string
+}
+export interface ApiOperatorMessageMeta {
+  provider?: string; authMode?: string; agentMode?: 'single' | 'multi'
+  inputTokens?: number; outputTokens?: number; costUsd?: number | null
+}
 export interface ApiOperatorMessage {
-  id: string; sessionId: string; role: 'user' | 'assistant' | 'system'; content: string; choices?: ApiOperatorChoice[]; createdAt: string
+  id: string; sessionId: string; role: 'user' | 'assistant' | 'system'; content: string
+  choices?: ApiOperatorChoice[]; questions?: ApiOperatorQuestion[]; meta?: ApiOperatorMessageMeta; createdAt: string
+}
+export interface ApiHold {
+  id: string; entityType: string; entityId: string; code: string; reason: string
+  nextAction?: string; status: 'active' | 'resolved'; createdAt: string; resolvedAt?: string
+}
+export interface ApiRunProgress {
+  runId: string; status: string; exitCode: number | null
+  startedAt: string | null; lastHeartbeatAt: string | null
+  elapsedMs: number | null; sinceHeartbeatMs: number | null
+  stalled: boolean; lastProgressLabel: string
 }
 export interface ApiEvent {
   id: string; type: string; entityType?: string; entityId?: string; payload: Record<string, unknown>; createdAt: string
@@ -49,6 +70,8 @@ export interface ApiMissionOverview {
   cliProvider: string
   progress: number
   holds: Array<{ type: string; payload: Record<string, unknown> }>
+  activeHolds?: ApiHold[]
+  runProgress?: ApiRunProgress | null
   events: ApiEvent[]
   evidenceDir?: string
   validatorStatus?: string
@@ -110,6 +133,8 @@ export const api = {
     post<{ message: ApiOperatorMessage; messages: ApiOperatorMessage[] }>(`/operator/sessions/${id}/messages`, { content }),
   askQuestions: (id: string, prompt?: string) =>
     post<{ session: ApiOperatorSession; messages: ApiOperatorMessage[] }>(`/operator/sessions/${id}/ask`, { prompt }),
+  answerQuestions: (id: string, answers: { questionId: string; value: string }[]) =>
+    post<{ session: ApiOperatorSession; messages: ApiOperatorMessage[] }>(`/operator/sessions/${id}/answer-questions`, { answers }),
   generateRoadmap: (id: string) =>
     post<{ session: ApiOperatorSession; mission?: ApiMission; artifacts?: ApiMissionArtifact[]; messages: ApiOperatorMessage[]; hold?: { code: string; reason: string } }>(`/operator/sessions/${id}/generate-roadmap`, {}),
   approveRoadmap: (id: string) =>
