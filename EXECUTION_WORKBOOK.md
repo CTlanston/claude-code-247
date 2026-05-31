@@ -15,15 +15,49 @@ schema_version: 1
 version_target: production-usable-24x7
 current_part: III          # III = v2.4 real vertical slice -> production hardening
 current_stage: ProductionHardened_v2.4_Ready
-current_substage: e2e-2-gate-green-L3-operator-walk-pending
-last_updated_utc: 2026-05-30T07:10:50Z
-last_session_id: s_0037
-total_sessions: 38
+current_substage: operator-cockpit-repo-bound-worker-p0-fixed
+last_updated_utc: 2026-05-31T07:45:00Z
+last_session_id: s_0040
+total_sessions: 41
 weeks_elapsed: 0
 weeks_remaining: 0
 open_holds: 0
 blocked_on: none
 next_action: |
+  REPO-BOUND s_0040: The Operator Cockpit P0 trust break is fixed — the worker now
+  executes in a repo-bound isolated git worktree of the operator's selected repo
+  (git worktree add --detach HEAD), never an empty scratch dir. An unavailable,
+  non-git, or disabled repo HOLDs (HOLD-TARGET-REPO-UNAVAILABLE) instead of faking
+  "done". Evidence carries real changed-paths.json/diff-summary.md (feeds the
+  forbidden-path BLOCK gate). /start now sets mission+session running synchronously
+  (authoritative UI) after a real-mode repo preflight. P1: Approvals is a workbench
+  with a decision endpoint, the cockpit approvals counter shares /approvals, and
+  Tasks is a live (2s) view. Validation: pnpm install --frozen-lockfile PASS;
+  typecheck PASS; lint PASS; full suite 646 passed/6 skipped; cockpit e2e + screens
+  PASS; real-smoke PASS with a LIVE worker that modified 2 real fixture-repo files
+  in a worktree and stayed blocked on draft PR (REMOTE_WRITES_DISABLED). Merged to
+  main per operator instruction. The worker still runs the whole mission in ONE run
+  (no per-task DAG execution) and worktrees are not auto-pruned (cleaned on retry).
+
+  DOCS s_0039: Operator Cockpit UX v2 feedback was consolidated into
+  docs/handoff/operator-cockpit-ux-v2-prd-2026-05-31.md and README now has a
+  current Quick Start for `pnpm cockpit:dev` plus an Operator Cockpit section
+  describing the chat-first workspace, clarification cards, provider/token
+  transparency, current-only HOLDs, live execution timeline, and PR safety gate.
+  No branch merge/push was attempted because the target was not specified and
+  remote writes remain safety-gated.
+
+  HOTFIX s_0038: Operator Cockpit "New Brainstorm" / "Generate PRD" apparent
+  no-op was root-caused to the long-running daemon's PATH missing the pnpm
+  Node bin that contains local `claude` and `codex`. Fixed dev cockpit startup
+  to prepend dirname(process.execPath), fixed --replace ownership detection via
+  process cwd, and surfaced planner HOLDs prominently in the UI. Verified live:
+  restarted cockpit, daemon PATH includes /Users/lanston/Library/pnpm/nodejs/20.20.2/bin,
+  brainstorm is `brainstorm_ready`, and Generate PRD reached `pending_approval`
+  with PRD/ADR/Roadmap preview visible. Validation: pnpm install --frozen-lockfile
+  PASS; pnpm typecheck PASS; pnpm lint PASS; targeted cockpit/server tests PASS;
+  pre-edit full pnpm test PASS (100 files, 603 passed, 6 skipped).
+
   E2E-1 GREEN — the core value loop ran end-to-end on REAL LLM work for the first
   time (operator-directed live run; branch claude/e2e-1, commit edb4c37, isolated
   worktree to avoid the codex builder's commit race on codex/v24-vertical-slice).
@@ -693,6 +727,64 @@ ApprovalGateway: ntfy → 操作员手机
 - next_action: <见 §0>
 - notes: <一两句>
 ```
+
+### s_0040 — 2026-05-31T07:45:00Z — Operator Cockpit E2E product repair (repo-bound worker, P0 trust)
+
+- stage_in: cockpit was demoable but the worker ran in an EMPTY temp dir (`operator-workspaces/<task>` with only `mission.md`), wrote a throwaway README, and reported "done" — a P0 trust break → stage_out: the worker runs in a repo-bound isolated **git worktree** of the operator's selected repo; an unavailable/non-git/disabled repo HOLDs (`HOLD-TARGET-REPO-UNAVAILABLE`) instead of faking success
+- actor: claude (operator requested a full E2E product repair + PR + merge + README update; high autonomy)
+- shipped (P0):
+    - new `packages/runner/src/operator-workspace.ts`: `validateTargetRepo` + `createRepoBoundWorkspace` (`git worktree add --detach HEAD`) + `collectWorkspaceDiff`; injectable `GitExec`. Lives in the **runner plane** — GROUND RULE 8 forbids the daemon importing `child_process`.
+    - `operatorLocalCliRunner` now resolves `task.repoId` → repo, creates the repo-bound worktree, runs the worker inside it, emits `operator.repo_bound_workspace_ready {repoId,repoPath,worktreePath,baseSha,dirtyStatus}`, and writes real `changed-paths.json` + honest `diff-summary.md` (feeds the engine forbidden-path BLOCK gate). Invalid repo → HOLD + throw, never a fake "done".
+    - `/start`: real-mode repo preflight → 200 + structured HOLD when invalid (mission stays approved, no run); on success flips mission+session to `running` synchronously and emits `operator.run_starting` (authoritative UI). `MissionRunner` guard relaxed to accept `approved|running` (operator missions are never scheduler-dispatched).
+- shipped (P1):
+    - `/approvals` enriched (mission title, repo, session, age) + `POST /approvals/:id/decision` (approve transitions the mission, reject closes it); Approvals page is now a workbench (cards + Approve/Reject + open-in-cockpit); cockpit approvals counter polls `/approvals` (one source) and is clickable.
+    - `/tasks` enriched (mission/repo/latest run) + running-first sort + `?missionId` filter; Tasks page polls every 2s with search.
+    - cockpit: Start shows "Starting…" and stays disabled (backend `running`); evidence gate no longer labelled "paused"; duplicate "Start Brainstorm" CTA removed; repo selector shows `name · path · enabled` + worktree note.
+- tests: +35 new across runner/daemon/dashboard; full suite **646 passed / 6 skipped** (110 files); `typecheck` + `lint` clean.
+- live proof: `pnpm test:cockpit:real-smoke` **PASS** — worker ran in `repoPath=<fixture>` worktree under `operator-workspaces/`, changed 2 real repo files (`README.md`, `cockpit-smoke-note.md`), `create-pr` blocked `REMOTE_WRITES_DISABLED`, no PR URL. `test:cockpit:e2e` PASS, `test:cockpit:screens` PASS (11 imgs).
+- holds_opened: 0 · holds_resolved: 0
+- remote_writes: PR opened against `main` and merged at the operator's **explicit** instruction this session. `allow_remote_writes` governs the autonomous system's writes to *managed* repos; it does not gate this repo's own git under a direct operator command.
+- next_action: <见 §0>
+
+### s_0039 — 2026-05-31T06:03:13Z — Operator Cockpit UX v2 README + PRD handoff
+
+- stage_in: operator cockpit UX v2 implemented locally / docs missing current operator quick start → stage_out: UX v2 handoff PRD and README usage docs updated
+- actor: codex (operator requested merge/readme update with more detail and a `Quick Start` section)
+- shipped:
+    - added `docs/handoff/operator-cockpit-ux-v2-prd-2026-05-31.md` with a consolidated Claude Code prompt/PRD covering chat-first layout, clarification cards, provider/token transparency, active HOLD lifecycle, and live execution timeline
+    - updated `README.md` with a current top-level `Quick Start` for `pnpm cockpit:dev` and `http://127.0.0.1:7248`
+    - added an `Operator Cockpit` README section describing the UX v2 surface and linking to the handoff PRD
+    - renamed the older CLI-oriented quick start section to `Legacy / CLI Quick Start`
+- validation:
+    - `git diff --check` PASS
+- holds_opened: 0 · holds_resolved: 0
+- remote_writes: not attempted; no merge/push/PR mutation because no merge target was specified
+- next_action: if the intended target is `main`, explicitly approve a local branch merge and any remote write/push separately under the repo safety gate.
+
+### s_0038 — 2026-05-31T00:56:32Z — Operator Cockpit planner-path hotfix
+
+- stage_in: ProductionHardened_v2.4_Ready / operator cockpit L3 walk in progress → stage_out: operator cockpit brainstorm→PRD path verified locally
+- actor: codex (operator reported `New Brainstorm` / `Generate PRD` looked inert on http://127.0.0.1:7248)
+- root_cause:
+    - API requests were reaching the daemon; prior session messages showed `HOLD-PLANNER-CLI` and `HOLD-ROADMAP-PLANNER`
+    - the long-running daemon process PATH omitted `/Users/lanston/Library/pnpm/nodejs/20.20.2/bin`, where local `claude` and `codex` are installed
+    - the UI treated a 200 response containing `hold` as success and kept the main coach card on "Generate PRD", so the failure looked like no action
+    - `pnpm cockpit:dev` replacement safety also failed for PPID=1 daemon processes because `ps command` did not include the repo path
+- shipped:
+    - `scripts/dev-operator-cockpit.ts` now prepends `dirname(process.execPath)` to child PATH so daemon/dashboard inherit the pnpm Node CLI bin
+    - the same script now confirms repo ownership by process cwd as well as command text before replacing port listeners
+    - `apps/dashboard/src/pages/Cockpit.tsx` now detects HOLD responses, surfaces latest HOLD messages in the top error area, and uses a HOLD-specific coach state with retry actions
+- validation:
+    - boot/readiness: `EXECUTION_WORKBOOK.md` §0 read; `git status` checked (pre-existing unowned `scripts/install_launchd.sh` modification left untouched); `git log -5` checked; latest §9 entry read
+    - `pnpm install --frozen-lockfile` PASS
+    - pre-edit `pnpm typecheck` PASS; pre-edit `pnpm test -- --runInBand` PASS (100 files, 603 passed, 6 skipped)
+    - post-edit `pnpm typecheck` PASS
+    - post-edit `pnpm lint` PASS
+    - post-edit targeted tests PASS: `apps/dashboard/src/api.test.ts`, `packages/runner/src/worker-session-discovery.test.ts`, `packages/daemon/src/server.test.ts` (25 passed)
+    - live verification: `pnpm cockpit:dev` replaced old 7247/7248 processes; daemon PATH includes the pnpm Node bin; browser reload shows connected daemon; `Generate PRD` completed to `pending_approval` with PRD/ADR/Roadmap preview visible
+- holds_opened: 0 · holds_resolved: 0
+- remote_writes: not attempted; no PR/merge/push
+- next_action: continue operator review/merge path from §0; for the current cockpit page, review the generated plan and approve only if you want worker execution to begin.
 
 ### s_0036 — 2026-05-30T07:10:50Z — production workbook/handoff reconciliation after harvest
 

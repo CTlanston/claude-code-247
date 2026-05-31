@@ -1,0 +1,10 @@
+{
+  "changedPaths": [
+    "README.md",
+    "cockpit-smoke-note.md"
+  ],
+  "forbiddenHits": [],
+  "repoPath": "/tmp/claude-501/aedev-real-smoke-repo-u87ZMM",
+  "worktreePath": "/tmp/claude-501/aedev-real-smoke-state-8mrWtz/operator-workspaces/01KSYFBKSSYVHMPMV36HGJ9Y1A/repo",
+  "baseSha": "85972a8a55f8dc3db399ed119797e8e9727fa410"
+}

@@ -34,8 +34,9 @@ interface Guidance {
   secondary?: GuidanceAction
 }
 
-export function CockpitPage() {
+export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void } = {}) {
   const sse = useSSE('/api/events/stream')
+  const [pendingApprovals, setPendingApprovals] = useState(0)
   const [repos, setRepos] = useState<ApiRepo[]>([])
   const [repoId, setRepoId] = useState('')
   const [prompt, setPrompt] = useState(DEFAULT_PROMPT)
@@ -67,6 +68,15 @@ export function CockpitPage() {
 
   useEffect(() => {
     const load = () => api.listOperatorSessions().then(setSessions).catch(() => undefined)
+    void load()
+    const timer = setInterval(load, 4_000)
+    return () => clearInterval(timer)
+  }, [])
+
+  // Authoritative pending-approval count from the same /approvals source the
+  // Approvals page uses (the SSE state event can read 0 when disconnected).
+  useEffect(() => {
+    const load = () => api.getApprovals().then((a) => setPendingApprovals(a.filter((x) => x.status === 'pending').length)).catch(() => undefined)
     void load()
     const timer = setInterval(load, 4_000)
     return () => clearInterval(timer)
@@ -223,7 +233,9 @@ export function CockpitPage() {
         </div>
         <div className="health-strip">
           <span className={`dot${sse.connected ? '' : ' off'}`} /> daemon
-          <strong>{sse.pendingApprovals}</strong> approvals
+          <button className="link-count" onClick={() => onNavigate?.('approvals')} title="Open approvals · 打开审批">
+            <strong>{Math.max(pendingApprovals, sse.pendingApprovals)}</strong> approvals
+          </button>
           <strong>{overview?.cost.runCount ?? 0}</strong> runs
           <strong>{overview?.cost.costUsd ?? 'unknown'}</strong> cost
         </div>
@@ -304,7 +316,7 @@ export function CockpitPage() {
               />
               <div className="button-row" style={{ marginTop: 10 }}>
                 <button className="action primary" disabled={!session?.missionId || overview?.mission.status === 'approved' || Boolean(busy)} onClick={() => action('approve', () => api.approveRoadmap(session!.id), (x) => { setSession(x.session); setOverview(x.overview) })}>Approve · 批准</button>
-                <button className={`action${overview?.mission.status === 'approved' ? ' primary pulse' : ''}`} disabled={!session?.missionId || overview?.mission.status !== 'approved' || Boolean(busy)} onClick={() => action('start', () => api.startOperatorSession(session!.id), (x) => { setSession(x.session); setOverview(x.overview) })}>Start · 启动</button>
+                <button className={`action${overview?.mission.status === 'approved' ? ' primary pulse' : ''}`} disabled={!session?.missionId || overview?.mission.status !== 'approved' || Boolean(busy)} onClick={() => action('start', () => api.startOperatorSession(session!.id), (x) => { setSession(x.session); setOverview(x.overview) })}>{busy === 'start' ? 'Starting… · 启动中' : 'Start · 启动'}</button>
                 <button className="action" disabled={!session?.missionId || Boolean(busy)} onClick={() => action('pause', () => api.pauseOperatorSession(session!.id), (x) => { setSession(x.session); setOverview(x.overview) })}>Pause</button>
                 <button className="action" disabled={!session?.missionId || Boolean(busy)} onClick={() => action('resume', () => api.resumeOperatorSession(session!.id), (x) => { setSession(x.session); setOverview(x.overview) })}>Resume</button>
                 <button className="action" disabled={!session?.missionId || Boolean(busy)} onClick={() => action('draft-pr', () => api.createDraftPr(session!.id), (x) => { setOverview(x.overview); setDraftPrStatus(x.pr?.url ?? `${x.code ?? x.status}: ${x.reason ?? ''}`) })}>Draft PR</button>
@@ -434,8 +446,9 @@ function buildGuidance(opts: {
     return {
       kicker: 'Step 1 · 第一步',
       title: 'Start with a conversation · 先和 AI 讨论',
-      body: '输入你的目标，AI 会先 brainstorm、提出需要确认的问题，而不是直接开工。',
-      primary: { label: 'Start Brainstorm · 开始讨论', onClick: opts.onBrainstorm, disabled: false },
+      // The "Start Brainstorm" button lives in the composer below (with the repo +
+      // title + goal form), so the coach only guides — no duplicate CTA here.
+      body: '在下方选择目标 repo、填写标题与目标，然后点击 Start Brainstorm。AI 会先讨论、提出需要确认的问题，而不是直接开工。',
     }
   }
   if (opts.session.status === 'brainstorming') {
@@ -499,7 +512,10 @@ function buildGuidance(opts: {
       secondary: { label: 'Draft PR · 创建草稿', onClick: opts.onDraftPr, disabled: false },
     }
   }
-  if (missionStatus === 'paused') {
+  // Reaching the evidence gate leaves the mission db-status 'paused' (enum limit)
+  // but the session 'waiting' — that is NOT an operator pause, so show the gate.
+  const atEvidenceGate = opts.session?.status === 'waiting'
+  if (missionStatus === 'paused' && !atEvidenceGate) {
     return {
       kicker: 'Paused · 已暂停',
       title: 'Mission paused · 执行已暂停',
@@ -508,7 +524,7 @@ function buildGuidance(opts: {
       secondary: { label: 'Draft PR · 创建草稿', onClick: opts.onDraftPr, disabled: false },
     }
   }
-  if (missionStatus === 'done' || missionStatus === 'waiting') {
+  if (missionStatus === 'done' || missionStatus === 'waiting' || atEvidenceGate) {
     const validatorsOff = opts.overview?.validatorStatus === 'not_configured'
     return {
       kicker: 'Done · 执行完成',

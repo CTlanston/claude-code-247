@@ -111,7 +111,12 @@ export class MissionRunner {
   async runMission(missionId: string): Promise<MissionRunResult> {
     const mission = this.db.getMission(missionId)
     if (!mission) throw new Error(`Mission ${missionId} not found`)
-    if (mission.status !== 'approved') {
+    // `running` is accepted in addition to `approved` because the Operator Cockpit
+    // /start route flips the mission to `running` synchronously (authoritative UI)
+    // before dispatching this run.  Operator missions are never scheduler-dispatched
+    // (the scheduler only fires `mission.scheduled` events and emits `mission.unscheduled`
+    // after dispatch), so this does not enable duplicate/concurrent runs.
+    if (mission.status !== 'approved' && mission.status !== 'running') {
       throw new Error(`Mission ${missionId} must be approved before run (current status: ${mission.status})`)
     }
 

@@ -7,8 +7,14 @@ export interface ApiMission {
 export interface ApiRepo {
   id: string; name: string; path: string; enabled: boolean
 }
+export interface ApiTaskRun {
+  id: string; runnerMode: string; status: string; exitCode: number | null; evidenceDir: string | null
+}
 export interface ApiTask {
   id: string; title: string; status: string; missionId: string; createdAt: string
+  missionTitle?: string | null; missionStatus?: string | null
+  repoName?: string | null; repoPath?: string | null
+  runCount?: number; latestRun?: ApiTaskRun | null
 }
 export interface ApiOperatorSession {
   id: string; repoId?: string; missionId?: string; title: string; prompt: string; status: string
@@ -92,7 +98,12 @@ export interface ApiMissionOverview {
 }
 export interface ApiApproval {
   id: string; entityType: string; entityId: string; requiredReason: string
-  status: string; createdAt: string
+  status: string; createdAt: string; decidedBy?: string; decidedAt?: string; notes?: string
+  ageMs?: number
+  mission?: { id: string; title: string; status: string; repoId: string }
+  repo?: { id: string; name: string; path: string; enabled: boolean }
+  sessionId?: string
+  planPreviewTitle?: string
 }
 export interface ApiMemoryItem {
   id: string; type: string; title: string; content: string; approved: number; createdAt: string
@@ -115,8 +126,10 @@ export const api = {
   getStatus: () => get<{ status: string; missionOs: { autonomy: string; workerConcurrency: { min: number; max: number } } }>('/status'),
   getRepos: () => get<{ repos: ApiRepo[] }>('/repos').then((r) => r.repos),
   getMissions: () => get<{ missions: ApiMission[] }>('/missions').then((r) => r.missions),
-  getTasks: () => get<{ tasks: ApiTask[] }>('/tasks').then((r) => r.tasks),
+  getTasks: (missionId?: string) => get<{ tasks: ApiTask[] }>(`/tasks${missionId ? `?missionId=${encodeURIComponent(missionId)}` : ''}`).then((r) => r.tasks),
   getApprovals: () => get<{ approvals: ApiApproval[] }>('/approvals').then((r) => r.approvals),
+  decideApproval: (id: string, decision: 'approve' | 'reject' | 'request-changes', notes?: string) =>
+    post<{ status: string; decision: string; approval?: ApiApproval; approvals: ApiApproval[] }>(`/approvals/${id}/decision`, { decision, ...(notes ? { notes } : {}) }),
   getMemory: () => get<{ items: ApiMemoryItem[] }>('/memory').then((r) => r.items),
   approveMission: (id: string) => post(`/missions/${id}/approve`, {}),
   pauseMission: (id: string) => post(`/missions/${id}/status`, { status: 'paused' }),
@@ -142,7 +155,7 @@ export const api = {
   approveRoadmap: (id: string) =>
     post<{ session: ApiOperatorSession; mission: ApiMission; overview: ApiMissionOverview }>(`/operator/sessions/${id}/approve-roadmap`, {}),
   startOperatorSession: (id: string) =>
-    post<{ session: ApiOperatorSession; result: { status: string; mergeDecision: string }; overview: ApiMissionOverview }>(`/operator/sessions/${id}/start`, {}),
+    post<{ session: ApiOperatorSession; result: { status: string; mergeDecision: string }; overview: ApiMissionOverview; hold?: { code: string; reason: string } }>(`/operator/sessions/${id}/start`, {}),
   pauseOperatorSession: (id: string) =>
     post<{ session: ApiOperatorSession; overview: ApiMissionOverview }>(`/operator/sessions/${id}/pause`, {}),
   stopOperatorSession: (id: string) =>
