@@ -258,7 +258,13 @@ export function CockpitPage() {
           )}
           {notice && <div className="ck-banner notice">{notice}</div>}
 
-          <ChatThread messages={messages} busy={busy} canChoose={canGenerate} onChoice={handleChoice} />
+          <ChatThread
+            messages={messages}
+            busy={busy}
+            canChoose={canGenerate}
+            onChoice={handleChoice}
+            onAnswer={(answers) => session && action('answer', () => api.answerQuestions(session.id, answers), (x) => { setSession(x.session); setMessages(x.messages) })}
+          />
 
           <Composer
             mode={hasSession ? 'session' : 'new'}

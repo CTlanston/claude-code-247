@@ -120,3 +120,19 @@
   .ck-sidebar { max-height: 220px; }
   .ck-bottom-grid { grid-template-columns: 1fr; }
 }
+
+/* --- Clarification cards (PRD §B) + transparency footer (§C/§F) --- */
+.ck-clar { border: 1px solid #c7d2fe; background: #f5f8ff; border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 12px; max-width: 100%; }
+.ck-clar.done { border-style: dashed; color: #047857; background: #ecfdf5; font-size: 12.5px; padding: 8px 12px; }
+.ck-clar-head { font-weight: 600; font-size: 13px; color: #3730a3; }
+.ck-clar-q { display: flex; flex-direction: column; gap: 6px; }
+.ck-clar-question { font-size: 13px; font-weight: 500; }
+.ck-clar-options { display: flex; flex-wrap: wrap; gap: 6px; }
+.ck-chip { border: 1px solid #d9dde6; background: #fff; border-radius: 999px; padding: 5px 11px; font-size: 12px; cursor: pointer; }
+.ck-chip:hover { border-color: #0071e3; }
+.ck-chip.selected { background: #0071e3; color: #fff; border-color: #0071e3; }
+.ck-chip.recommended { border-color: #6366f1; }
+.ck-chip.recommended.selected { background: #4f46e5; border-color: #4f46e5; }
+.ck-clar-free { border: 1px solid #d9dde6; border-radius: 9px; padding: 6px 10px; font-size: 12.5px; }
+.ck-msg-footer { margin-top: 8px; padding-top: 6px; border-top: 1px dashed #e0e4ec; font-size: 11px; color: #6b7280; }
+.ck-turn.user .ck-msg-footer { border-top-color: rgba(255, 255, 255, 0.4); color: rgba(255, 255, 255, 0.85); }
