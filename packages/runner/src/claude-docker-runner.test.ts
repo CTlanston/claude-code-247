@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs
 import { join } from 'path'
 import { tmpdir } from 'os'
 import type { RunnerConfig, Task } from '@aedev/core'
-import { ClaudeDockerRunner, preflightClaudeDockerEnvironment, type DockerExecRequest } from './claude-docker-runner.js'
+import { ClaudeDockerRunner, preflightClaudeDockerEnvironment, renderDockerWorkerSummaries, runRepoTests, parseTestCounts, type DockerExecRequest } from './claude-docker-runner.js'
 
 let tmpRoot: string
 
@@ -317,5 +317,84 @@ describe('ClaudeDockerRunner', () => {
     expect(usage['inputTokens']).toBe(222)   // from cli-envelope, NOT result.json's 0
     expect(usage['outputTokens']).toBe(888)
     expect(usage['costUsd']).toBe(0.05)
+  })
+
+  it('writes rich, self-consistent evidence: done-report carries the worker summary + changed files; test-summary states the verification boundary (P6)', async () => {
+    const credentialPath = join(tmpRoot, 'credential.json')
+    writeFileSync(credentialPath, '{}')
+    const runner = new ClaudeDockerRunner({
+      image: 'claude-worker:test',
+      credentialProvider: async () => ({ path: credentialPath }),
+      runDocker: async () => ({
+        exitCode: 0,
+        stdout: JSON.stringify({
+          result: 'Added 8 contract tests in test_readme_artifacts.py. All 20 tests pass.',
+          usage: { input_tokens: 10, output_tokens: 20 },
+        }),
+        stderr: '',
+      }),
+    })
+
+    const result = await runner.run(makeTask(), makeConfig(tmpRoot))
+    const done = readFileSync(join(result.evidenceDir, 'done-report.md'), 'utf8')
+    const testSummary = readFileSync(join(result.evidenceDir, 'test-summary.md'), 'utf8')
+    // done-report now corroborates diff-summary instead of restating IDs: it carries
+    // the worker's own summary (which mentions the tests) + a changed-files section.
+    expect(done).toContain('Worker summary')
+    expect(done).toContain('All 20 tests pass')
+    expect(done).toContain('Changed files')
+    expect(done).toContain('Model usage')
+    // test-summary is honest about what the runner did NOT verify (no fake pass).
+    expect(testSummary).toContain('Verification boundary')
+    expect(testSummary).toMatch(/Repository files changed:/)
+    expect(testSummary).toMatch(/Test files in this change:/)
+    expect(testSummary).toContain('Final exit code: 0')
+  })
+
+  it('renderDockerWorkerSummaries: surfaces only the git-authoritative change set; the coder self-report is not used (P6 root fix)', () => {
+    const { doneReport, testSummary } = renderDockerWorkerSummaries({
+      taskId: 't1', exitCode: 0, dockerExitCode: 0,
+      changedPaths: ['README.md', 'tests/test_readme_artifacts.py'],
+      testCommands: ['pytest'],
+      inputTokens: 1, outputTokens: 2, costUsd: 0.5,
+      workdir: '/w', evidenceDir: '/e', transcript: 'did stuff',
+    })
+    expect(doneReport).toContain('real git diff')
+    expect(doneReport).toContain('tests/test_readme_artifacts.py')
+    // the coder's unreliable self-reported file list is NOT surfaced as curated evidence
+    expect(doneReport).not.toContain('Coder self-report')
+    expect(testSummary).toContain('tests/test_readme_artifacts.py')
+  })
+
+  it('parseTestCounts: parses pytest-style pass/fail summaries', () => {
+    expect(parseTestCounts('........\n20 passed in 0.09s')).toEqual({ passed: 20, summary: '20 passed in 0.09s' })
+    const mixed = parseTestCounts('1 failed, 19 passed in 0.2s')
+    expect(mixed.passed).toBe(19)
+    expect(mixed.failed).toBe(1)
+  })
+
+  it('runRepoTests: independently runs the repo test command and parses the result (P6 root fix)', async () => {
+    const ok = await runRepoTests(tmpRoot, ['echo "........"; echo "5 passed in 0.01s"'], 30_000)
+    expect(ok?.exitCode).toBe(0)
+    expect(ok?.passed).toBe(5)
+    // no test command -> no verified result (honest fallback, not a fake pass)
+    expect(await runRepoTests(tmpRoot, [], 30_000)).toBeUndefined()
+    // a failing run is still captured (non-undefined) with its real exit code + counts
+    const failing = await runRepoTests(tmpRoot, ['echo "1 failed, 2 passed"; exit 1'], 30_000)
+    expect(failing?.exitCode).toBe(1)
+    expect(failing?.failed).toBe(1)
+  })
+
+  it('renderDockerWorkerSummaries: test-summary reports runner-verified results when a real run is provided', () => {
+    const { testSummary } = renderDockerWorkerSummaries({
+      taskId: 't1', exitCode: 0, dockerExitCode: 0,
+      changedPaths: ['tests/test_x.py'], testCommands: ['pytest'],
+      verifiedTest: { command: 'pytest -q', exitCode: 0, passed: 20, summary: '20 passed in 0.09s' },
+      inputTokens: 0, outputTokens: 0, workdir: '/w', evidenceDir: '/e', transcript: 'x',
+    })
+    expect(testSummary).toContain('Runner-verified tests')
+    expect(testSummary).toContain('20 passed')
+    expect(testSummary).toContain('INDEPENDENTLY re-ran')
+    expect(testSummary).not.toContain('Verification boundary')
   })
 })

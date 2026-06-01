@@ -60,7 +60,10 @@ export class Daemon {
       }
     }
 
-    this.server = createServer(this.db, this.startTime, this.stateDir, {}, this.costRoller)
+    const allowRemoteWrites = allowRemoteWritesEnabled(this.stateDir)
+    this.server = createServer(this.db, this.startTime, this.stateDir, {
+      draftPrExecutor: new DraftPrGate({ allowRemoteWrites }, new GhGitRemoteWriter(), new GhDraftPrCreator()),
+    }, this.costRoller)
     await this.server.listen({ port: this.config.port ?? DEFAULT_PORT, host: '127.0.0.1' })
 
     // Mission scheduler — survives restart because state lives in the events table.

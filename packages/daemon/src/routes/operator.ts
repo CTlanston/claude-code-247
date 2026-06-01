@@ -2,9 +2,10 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFil
 import { join } from 'path'
 import type { FastifyInstance } from 'fastify'
 import type { AedevDb, MissionArtifact, MissionDesign, OperatorChoice, OperatorMessageMeta, OperatorQuestion, Run, Task, ValidatorResult } from '@aedev/core'
-import { nowIso, validateMissionDesign } from '@aedev/core'
+import { generateId, nowIso, validateMissionDesign } from '@aedev/core'
 import {
   ClaudeCodeAdapter,
+  ClaudeDockerRunner,
   CodexCliAdapter,
   TARGET_REPO_HOLD,
   TargetRepoUnavailableError,
@@ -293,17 +294,22 @@ export function registerOperatorRoutes(app: FastifyInstance, db: AedevDb, stateD
     if (approvals.length === 0) return reply.code(400).send({ error: 'operator approval is required before draft PR creation' })
     const allowRemoteWrites = allowRemoteWritesEnabled(stateDir)
     const executor = options.draftPrExecutor
+    const prEvidence = readDraftPrEvidence(overview.evidenceDir)
     const request: DraftPrRequest = {
       repo,
       missionId: mission.id,
       title: mission.title,
-      branch: `operator/${mission.id.slice(0, 8)}`,
+      branch: prEvidence.branch ?? `operator/${mission.id.slice(0, 8)}`,
       base: repo.defaultBranch,
-      changedPaths: [],
+      changedPaths: prEvidence.changedPaths,
       evidenceUri: overview.evidenceDir,
       riskScore: 0,
       validatorResults: overview.validators,
       rollbackNotes: 'Close the draft PR; no merge was performed by Operator Cockpit.',
+    }
+    const executorRequest: DraftPrRequest = {
+      ...request,
+      repo: prEvidence.worktreePath ? { ...repo, path: prEvidence.worktreePath } : repo,
     }
     try {
       if (!allowRemoteWrites) {
@@ -314,7 +320,7 @@ export function registerOperatorRoutes(app: FastifyInstance, db: AedevDb, stateD
       if (!executor) {
         throw new DraftPrExecutorUnavailableError('remote-write executor is not configured for Operator Cockpit')
       }
-      const info = await executor.openDraftPr(request)
+      const info = await executor.openDraftPr(executorRequest)
       if (/example\.invalid/i.test(info.url)) {
         throw new DraftPrExecutorUnavailableError('remote-write executor returned a non-production PR URL')
       }
@@ -439,6 +445,45 @@ function operatorQuestionsFor(db: AedevDb, stateDir: string, title: string, prom
   return gate.generateQuestions(ambiguity).map(toOperatorQuestion)
 }
 
+/**
+ * Parse the planner's own clarifying questions from a fenced ```json block (P3 —
+ * adaptive clarify). The planner is prompted to emit goal-specific questions as
+ * JSON; we use those instead of the deterministic template bank, falling back to
+ * the template only when the LLM produced none. Returns the structured questions
+ * plus the content with the JSON block stripped (so the chat shows prose, not raw
+ * JSON). Exported for unit testing.
+ */
+export function parseClarifyQuestions(content: string): { questions: OperatorQuestion[]; cleaned: string } {
+  const fence = content.match(/```json\s*([\s\S]*?)```/i)
+  const raw = fence?.[1]?.trim()
+  if (!raw) return { questions: [], cleaned: content }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return { questions: [], cleaned: content }
+  }
+  if (!Array.isArray(parsed) || parsed.length === 0) return { questions: [], cleaned: content }
+  const questions: OperatorQuestion[] = []
+  for (const item of parsed.slice(0, 4)) {
+    if (!item || typeof item !== 'object') continue
+    const q = item as { question?: unknown; options?: unknown }
+    const question = typeof q.question === 'string' ? q.question.trim() : ''
+    const options = (Array.isArray(q.options) ? q.options : [])
+      .map((o) => {
+        const oo = (o ?? {}) as { label?: unknown; recommended?: unknown }
+        const label = typeof oo.label === 'string' ? oo.label.trim() : ''
+        return label ? { label, ...(oo.recommended === true ? { recommended: true as const } : {}) } : null
+      })
+      .filter((o): o is { label: string; recommended?: true } => o !== null)
+    if (question && options.length >= 2) {
+      questions.push({ id: `clq-${generateId()}`, field: 'clarify', question, options })
+    }
+  }
+  const cleaned = content.replace(/```json\s*[\s\S]*?```/i, '').trim()
+  return { questions, cleaned }
+}
+
 function providerAuthMode(provider?: string): string {
   if (provider && /-api$|^gemini-api$|^openai-api$/.test(provider)) return 'api'
   return 'subscription'
@@ -489,12 +534,15 @@ async function completePlannerBrainstorm(
     db.insertEvent('operator.role_started', 'operator_session', sessionId, { role: 'planner', provider: process.env['AEDEV_COCKPIT_PLANNER_PROVIDER'] ?? 'auto' })
     const brainstorm = await runPlannerBrainstorm(prompt, title, repoId)
     const isHold = Boolean(brainstorm.event['holdCode'])
-    const questions = isHold ? [] : operatorQuestionsFor(db, stateDir, title, prompt)
+    // Prefer the planner's own goal-specific questions (parsed from its JSON block);
+    // fall back to the deterministic template only when the LLM produced none (P3).
+    const parsed = isHold ? { questions: [], cleaned: brainstorm.content } : parseClarifyQuestions(brainstorm.content)
+    const questions = isHold ? [] : (parsed.questions.length ? parsed.questions : operatorQuestionsFor(db, stateDir, title, prompt))
     const meta = messageMeta(brainstorm.event)
     db.insertOperatorMessage({
       sessionId,
       role: 'assistant',
-      content: brainstorm.content,
+      content: parsed.cleaned,
       ...(isHold ? {} : { choices: brainstormChoices() }),
       ...(questions.length ? { questions } : {}),
       ...(meta ? { meta } : {}),
@@ -554,6 +602,7 @@ async function runPlannerBrainstorm(prompt: string, title: string, repoId: strin
     prompt,
     '',
     'Return markdown with sections: Brainstorm, Operator Questions, Proposed PRD, ADR Questions, Roadmap, Approval Criteria, Execution Monitoring.',
+    'At the very end, append a fenced ```json code block: a JSON array of 2-4 clarifying questions SPECIFIC to this goal (not generic), each {"question": string, "options": [{"label": string, "recommended": boolean}]} with 2-3 options and exactly one recommended. This block powers the clickable clarification UI.',
     'Do not claim code was changed. This is planning only.',
   ].join('\n')
   return runLocalPlannerText(systemPrompt, plannerPrompt, 'planner', prompt)
@@ -584,6 +633,7 @@ async function runPlannerFollowup(requestPrompt: string, title: string, repoId: 
     requestPrompt,
     '',
     'Return an "Operator Questions" section with 3 numbered questions, each with a recommended option. Planning only.',
+    'Also append a fenced ```json code block: a JSON array of exactly 3 clarifying questions, each {"question": string, "options": [{"label": string, "recommended": boolean}]} with 2-3 options and exactly one recommended. This block powers the clickable clarification UI.',
   ].join('\n')
   return runLocalPlannerText(systemPrompt, plannerPrompt, 'planner-followup', requestPrompt)
 }
@@ -658,13 +708,15 @@ async function completePlannerFollowup(
     db.insertEvent('operator.role_started', 'operator_session', sessionId, { role: 'planner-followup', provider: process.env['AEDEV_COCKPIT_PLANNER_PROVIDER'] ?? 'auto' })
     const followup = await runPlannerFollowup(requestPrompt, title, repoId, originalPrompt)
     const isHold = Boolean(followup.event['holdCode'])
-    // "Ask me 3 questions" → always surface a structured 3-question set as cards.
-    const questions = isHold ? [] : operatorQuestionsFor(db, stateDir, title, originalPrompt, ['acceptance-criteria', 'target', 'scope'])
+    // Prefer the planner's own goal-specific questions; fall back to the template
+    // 3-question set ('ask me 3 questions') only when the LLM produced none (P3).
+    const parsed = isHold ? { questions: [], cleaned: followup.content } : parseClarifyQuestions(followup.content)
+    const questions = isHold ? [] : (parsed.questions.length ? parsed.questions : operatorQuestionsFor(db, stateDir, title, originalPrompt, ['acceptance-criteria', 'target', 'scope']))
     const meta = messageMeta(followup.event)
     db.insertOperatorMessage({
       sessionId,
       role: 'assistant',
-      content: followup.content,
+      content: parsed.cleaned,
       ...(isHold ? {} : { choices: brainstormChoices() }),
       ...(questions.length ? { questions } : {}),
       ...(meta ? { meta } : {}),
@@ -987,7 +1039,7 @@ function registerDesignArtifacts(db: AedevDb, stateDir: string, missionId: strin
   }
 }
 
-function registerEvidenceArtifacts(db: AedevDb, missionId: string, evidenceDir: string): void {
+export function registerEvidenceArtifacts(db: AedevDb, missionId: string, evidenceDir: string): void {
   if (!existsSync(evidenceDir)) return
   db.upsertMissionArtifact({ missionId, type: 'evidence', path: evidenceDir, title: 'Evidence directory' })
   const known: Array<[string, MissionArtifact['type'], string]> = [
@@ -999,10 +1051,40 @@ function registerEvidenceArtifacts(db: AedevDb, missionId: string, evidenceDir: 
     ['risk-report.md', 'report', 'Risk report'],
     ['transcript-summary.md', 'report', 'Worker transcript'],
     ['model-usage.json', 'report', 'Model usage'],
+    // P6: surface the Docker worker's real change evidence so the cockpit
+    // Working folder / overview artifacts show the diff + done report, not just docs.
+    ['diff-summary.md', 'report', 'Worker diff'],
+    ['done-report.md', 'report', 'Done report'],
+    ['changed-paths.json', 'report', 'Changed paths'],
+    ['local-commit.json', 'report', 'Local commit'],
   ]
   for (const [file, type, title] of known) {
     const path = join(evidenceDir, file)
     if (existsSync(path)) db.upsertMissionArtifact({ missionId, type, path, title })
+  }
+}
+
+function readDraftPrEvidence(evidenceDir: string): { changedPaths: string[]; branch?: string; worktreePath?: string } {
+  const changedPath = join(evidenceDir, 'changed-paths.json')
+  const commitPath = join(evidenceDir, 'local-commit.json')
+  let changedPaths: string[] = []
+  let worktreePath: string | undefined
+  if (existsSync(changedPath)) {
+    try {
+      const parsed = JSON.parse(readFileSync(changedPath, 'utf8')) as { changedPaths?: unknown; worktreePath?: unknown }
+      if (Array.isArray(parsed.changedPaths)) {
+        changedPaths = parsed.changedPaths.filter((p): p is string => typeof p === 'string')
+      }
+      if (typeof parsed.worktreePath === 'string' && parsed.worktreePath) worktreePath = parsed.worktreePath
+    } catch { /* ignored; DraftPrGate still fail-closes on forbidden paths it can see */ }
+  }
+  if (!existsSync(commitPath)) return { changedPaths, ...(worktreePath ? { worktreePath } : {}) }
+  try {
+    const parsed = JSON.parse(readFileSync(commitPath, 'utf8')) as { branch?: unknown }
+    const branch = typeof parsed.branch === 'string' && parsed.branch ? parsed.branch : undefined
+    return { changedPaths, ...(branch ? { branch } : {}), ...(worktreePath ? { worktreePath } : {}) }
+  } catch {
+    return { changedPaths, ...(worktreePath ? { worktreePath } : {}) }
   }
 }
 
@@ -1014,7 +1096,11 @@ function operatorForceMock(): boolean {
 }
 
 async function runOperatorMission(db: AedevDb, stateDir: string, sessionId: string, missionId: string) {
-  const workerSessions = await discoverWorkerSessions()
+  const dockerWorker = cockpitDockerWorkerEnabled()
+  const workerSessions = [
+    ...(dockerWorker ? [dockerWorkerSession()] : []),
+    ...await discoverWorkerSessions(),
+  ]
   const forceMock = operatorForceMock()
   const validatorConfig = buildCockpitValidatorConfig(missionId)
   if (validatorConfig.configuredCount === 0) {
@@ -1023,12 +1109,26 @@ async function runOperatorMission(db: AedevDb, stateDir: string, sessionId: stri
       note: 'Gemini/OpenAI validator keys are not configured; merge remains WAITING/BLOCKED.',
     })
   }
+  const mission = db.getMission(missionId)
+  const repo = mission ? db.getRepo(mission.repoId) : undefined
+  const runnerConfig = repo ? {
+    mode: dockerWorker ? 'claude-docker' as const : 'mock' as const,
+    maxConcurrentWorkers: 1,
+    worktreeBaseDir: join(stateDir, dockerWorker ? 'operator-docker-workspaces' : 'worktrees'),
+    outputBaseDir: join(stateDir, dockerWorker ? 'operator-docker-evidence' : 'evidence', 'tasks'),
+    sourceRepoPath: repo.path,
+    testCommands: repo.testCommands,
+    forbiddenPaths: repo.forbiddenPaths,
+    branchPrefix: `operator/${missionId.slice(0, 8)}`,
+  } : undefined
   const runnerOpts = forceMock
     ? { runner: operatorDraftRunner(db, stateDir) }
-    : { workerSessions, runner: operatorLocalCliRunner(db, stateDir, workerSessions, validatorConfig.configuredCount >= 2) }
+    : dockerWorker && runnerConfig
+      ? { workerSessions, runner: operatorDockerRunner(db, runnerConfig) }
+      : { workerSessions, runner: operatorLocalCliRunner(db, stateDir, workerSessions, validatorConfig.configuredCount >= 2) }
   db.insertEvent('operator.worker_assigned', 'mission', missionId, {
     sessionId,
-    mode: forceMock ? 'mock' : 'local-cli',
+    mode: forceMock ? 'mock' : dockerWorker ? 'claude-docker' : 'local-cli',
     availableSessions: workerSessions.length,
   })
   if (validatorConfig.configuredCount > 0) {
@@ -1037,6 +1137,7 @@ async function runOperatorMission(db: AedevDb, stateDir: string, sessionId: stri
   const result = await new MissionRunner(db, {
     stateDir,
     rolePipeline: new RolePipeline(),
+    ...(runnerConfig ? { runnerConfig } : {}),
     ...runnerOpts,
     ...validatorConfig.runnerOptions,
     riskFactors: () => ({
@@ -1078,6 +1179,61 @@ async function runOperatorMission(db: AedevDb, stateDir: string, sessionId: stri
     db.insertEvent('operator.stage_changed', 'mission', missionId, { stage: 'PR/Waiting/Blocked', sessionId, status: result.status })
   }
   return result
+}
+
+function cockpitDockerWorkerEnabled(): boolean {
+  if (/^(1|true|yes|docker)$/i.test(process.env['AEDEV_COCKPIT_WORKER'] ?? '')) return true
+  return Boolean(process.env['AEDEV_CLAUDE_DOCKER_IMAGE'] && process.env['AEDEV_CLAUDE_OAUTH_TOKEN'])
+}
+
+function dockerWorkerSession() {
+  return {
+    id: 'claude-docker',
+    provider: 'claude-docker' as const,
+    family: 'anthropic' as const,
+    healthy: true,
+    active: 0,
+    probeStatus: 'skipped' as const,
+    probedAt: new Date().toISOString(),
+  }
+}
+
+function operatorDockerRunner(db: AedevDb, runnerConfig: NonNullable<Parameters<ClaudeDockerRunner['run']>[1]>) {
+  const runner = new ClaudeDockerRunner({
+    image: process.env['AEDEV_CLAUDE_DOCKER_IMAGE'] ?? 'claude-code-247/runner:latest',
+    timeoutMs: Number(process.env['AEDEV_COCKPIT_WORKER_TIMEOUT_MS'] ?? '600000'),
+  })
+  return {
+    async runTask(task: Task) {
+      const run = db.insertRun({
+        taskId: task.id,
+        runnerMode: 'claude-docker',
+        status: 'running',
+        startedAt: new Date().toISOString(),
+      })
+      db.updateTaskStatus(task.id, 'running')
+      try {
+        const result = await runner.run(task, runnerConfig)
+        db.updateRun(run.id, {
+          status: result.exitCode === 0 ? 'done' : 'failed',
+          completedAt: new Date().toISOString(),
+          exitCode: result.exitCode,
+          evidenceDir: result.evidenceDir,
+        })
+        db.updateTaskStatus(task.id, result.exitCode === 0 ? 'done' : 'failed')
+        return { ...result, runId: run.id }
+      } catch (e) {
+        db.updateRun(run.id, {
+          status: 'failed',
+          completedAt: new Date().toISOString(),
+          exitCode: 1,
+          errorMessage: (e as Error).message,
+        })
+        db.updateTaskStatus(task.id, 'failed')
+        throw e
+      }
+    },
+  }
 }
 
 function operatorDraftRunner(db: AedevDb, stateDir: string) {

@@ -249,26 +249,35 @@ export class ClaudeDockerRunner implements RunnerInterface {
     // base + uncommitted), so validators + risk scoring see the true change set
     // instead of a stub.  Stale stub previously made validators rightly suspicious.
     const diff = await renderRealDiffSummary(workdir)
+    const commit = config.createLocalCommit === false
+      ? { attempted: false, created: false, sha: null, reason: 'disabled' }
+      : await createLocalCommit(workdir, config, diff.changedPaths, diff.baseSha)
     writeFileSync(join(evidenceDir, 'diff-summary.md'), diff.summary)
     // Emit the structured real git-diff file list so the daemon's mission-runner
     // gates forbidden paths on the actual diff (parity with the local-cli runner).
-    writeFileSync(join(evidenceDir, 'changed-paths.json'), JSON.stringify({ changedPaths: diff.changedPaths }, null, 2))
-    writeFileSync(join(evidenceDir, 'test-summary.md'), [
-      '# Test Summary',
-      '',
-      `Docker exit code: ${dockerResult.exitCode}`,
-      `Final exit code: ${exitCode}`,
-      dockerResult.spawnError ? `Spawn error: ${dockerResult.spawnError}` : '',
-    ].filter(Boolean).join('\n'))
-    writeFileSync(join(evidenceDir, 'done-report.md'), [
-      '# Done Report',
-      '',
-      `Task: ${task.id}`,
-      'Runner: claude-docker',
-      `Final exit code: ${exitCode}`,
-      `Worktree: ${workdir}`,
-      `Evidence: ${evidenceDir}`,
-    ].join('\n'))
+    writeFileSync(join(evidenceDir, 'changed-paths.json'), JSON.stringify({ changedPaths: diff.changedPaths, worktreePath: workdir }, null, 2))
+    writeFileSync(join(evidenceDir, 'local-commit.json'), JSON.stringify(commit, null, 2))
+    // P6: independently re-run the repo's tests on the host worktree so test-summary
+    // carries runner-verified results, not the coder's unverified claim. Best-effort —
+    // an absent test env falls back to the honest "not independently verified".
+    const verifiedTest = await runRepoTests(workdir, config.testCommands ?? [], Math.min(timeoutMs, 300_000))
+    const { testSummary, doneReport } = renderDockerWorkerSummaries({
+      taskId: task.id,
+      exitCode,
+      dockerExitCode: dockerResult.exitCode,
+      spawnError: dockerResult.spawnError,
+      changedPaths: diff.changedPaths,
+      testCommands: config.testCommands,
+      verifiedTest,
+      inputTokens,
+      outputTokens,
+      costUsd,
+      workdir,
+      evidenceDir,
+      transcript,
+    })
+    writeFileSync(join(evidenceDir, 'test-summary.md'), testSummary)
+    writeFileSync(join(evidenceDir, 'done-report.md'), doneReport)
     writeFileSync(join(evidenceDir, 'docker-meta.json'), JSON.stringify({
       runId,
       taskId: task.id,
@@ -301,7 +310,120 @@ export class ClaudeDockerRunner implements RunnerInterface {
  * and changed-file list.  Excludes the harness scaffolding files (prompt.txt,
  * result.json, cli-envelope.json).  Falls back to a clear "no changes" note.
  */
-async function renderRealDiffSummary(workdir: string): Promise<{ summary: string; changedPaths: string[] }> {
+/**
+ * Render the Docker worker's test-summary + done-report from real signals so the
+ * dual validators see self-consistent core evidence (P6 evidence hardening): the
+ * test-summary names the changed test files and states an explicit verification
+ * boundary (no faked "tests passed"), and the done-report aggregates the change
+ * set + the worker's own summary + model usage so it corroborates diff-summary.md.
+ * Pure + exported so the evidence-recheck harness reproduces exactly what the
+ * runner writes.
+ */
+export function renderDockerWorkerSummaries(input: {
+  taskId: string
+  exitCode: number
+  dockerExitCode: number
+  spawnError?: string
+  changedPaths: string[]
+  testCommands?: string[]
+  verifiedTest?: { command: string; exitCode: number; passed?: number; failed?: number; summary?: string }
+  inputTokens: number
+  outputTokens: number
+  costUsd?: number | null
+  workdir: string
+  evidenceDir: string
+  transcript: string
+}): { testSummary: string; doneReport: string } {
+  const testFiles = input.changedPaths.filter((p) => /(^|\/)(tests?|__tests__|spec)\//i.test(p) || /(test|spec)[^/]*\.[a-z]+$/i.test(p))
+  const testSummary = [
+    '# Test Summary',
+    '',
+    'Runner: claude-docker',
+    `Docker exit code: ${input.dockerExitCode}`,
+    `Final exit code: ${input.exitCode}`,
+    `Repository files changed: ${input.changedPaths.length}`,
+    `Test files in this change: ${testFiles.length ? testFiles.join(', ') : 'none'}`,
+    `Repo test command(s): ${input.testCommands && input.testCommands.length ? input.testCommands.join(' && ') : '(none configured)'}`,
+    input.spawnError ? `Spawn error: ${input.spawnError}` : '',
+    '',
+    ...(input.verifiedTest
+      ? [
+          `Runner-verified tests: \`${input.verifiedTest.command}\` -> exit ${input.verifiedTest.exitCode}${input.verifiedTest.passed != null ? `, ${input.verifiedTest.passed} passed` : ''}${input.verifiedTest.failed ? `, ${input.verifiedTest.failed} failed` : ''}`,
+          ...(input.verifiedTest.summary ? [input.verifiedTest.summary] : []),
+          'The runner INDEPENDENTLY re-ran the repository test suite on the host worktree; the result above is runner-verified (not coder-reported).',
+        ]
+      : [
+          'Verification boundary: the runner captured the worker container exit code; it did',
+          'NOT independently re-run the repository test suite on the host. Any test counts in',
+          'done-report.md "Worker summary" are worker-reported, corroborated by the exit code.',
+        ]),
+  ].filter(Boolean).join('\n')
+  // The real git diff is the AUTHORITATIVE change set. The coder's self-reported file
+  // list (from its own result.json) proved unreliable/hallucinated, so it is NOT used
+  // or surfaced as curated evidence — only git-derived facts go in, so the bundle
+  // cannot contradict itself. The raw coder output stays on disk (claude-docker-raw.json,
+  // demoted from the validator bundle) for provenance (P6 root fix, s_0042).
+  const doneReport = [
+    '# Done Report',
+    '',
+    `Task: ${input.taskId}`,
+    'Runner: claude-docker',
+    `Final exit code: ${input.exitCode}`,
+    `Worktree: ${input.workdir}`,
+    `Evidence: ${input.evidenceDir}`,
+    `Model usage: ${input.inputTokens} in / ${input.outputTokens} out${input.costUsd != null ? ` · $${input.costUsd}` : ''}`,
+    '',
+    `## Changed files (real git diff — authoritative) (${input.changedPaths.length})`,
+    ...(input.changedPaths.length ? input.changedPaths.map((p) => `- ${p}`) : ['- (none)']),
+    '',
+    '## Worker summary (worker-reported narrative)',
+    input.transcript,
+    '',
+  ].join('\n')
+  return { testSummary, doneReport }
+}
+
+/**
+ * Independently re-run the repo's test command(s) on the host worktree (P6 root
+ * fix): the runner — not the coder's self-report — produces the test verdict.
+ * Best-effort: a non-zero exit (real test failures) is captured with parsed counts;
+ * if the command cannot run at all (missing test env) we return undefined and the
+ * test-summary honestly falls back to "not independently verified". Never throws.
+ */
+export async function runRepoTests(
+  workdir: string,
+  testCommands: string[],
+  timeoutMs: number,
+): Promise<{ command: string; exitCode: number; passed?: number; failed?: number; summary?: string } | undefined> {
+  if (!testCommands.length) return undefined
+  const command = testCommands.join(' && ')
+  try {
+    const { stdout, stderr } = await execFileAsync('sh', ['-c', command], { cwd: workdir, timeout: timeoutMs, maxBuffer: 8 * 1024 * 1024 })
+    return { command, exitCode: 0, ...parseTestCounts(`${stdout}\n${stderr}`) }
+  } catch (e) {
+    const err = e as { code?: unknown; stdout?: string; stderr?: string }
+    // Non-zero exit (e.g. failing tests) still yields parseable output.
+    if (typeof err.code === 'number') {
+      return { command, exitCode: err.code, ...parseTestCounts(`${err.stdout ?? ''}\n${err.stderr ?? ''}`) }
+    }
+    // Could not run at all (command missing / no test env) — honest: no verified result.
+    return undefined
+  }
+}
+
+/** Best-effort test-count parse over common runner output (pytest/jest/go/etc.). */
+export function parseTestCounts(output: string): { passed?: number; failed?: number; summary?: string } {
+  const passed = output.match(/(\d+)\s+passed/i)
+  const failed = output.match(/(\d+)\s+failed/i)
+  const summary = output.split('\n').reverse().find((l) => /\d+\s+(passed|failed|error)/i.test(l))
+  return {
+    ...(passed ? { passed: Number(passed[1]) } : {}),
+    ...(failed ? { failed: Number(failed[1]) } : {}),
+    ...(summary ? { summary: summary.trim().slice(0, 200) } : {}),
+  }
+}
+
+async function renderRealDiffSummary(workdir: string): Promise<{ summary: string; changedPaths: string[]; baseSha?: string }> {
   if (!existsSync(join(workdir, '.git'))) {
     return { summary: '# Diff Summary\n\n(worktree is not a git repository)\n', changedPaths: [] }
   }
@@ -337,7 +459,7 @@ async function renderRealDiffSummary(workdir: string): Promise<{ summary: string
     '```',
     '',
   ]
-  return { summary: lines.join('\n') + '\n', changedPaths: uniq }
+  return { summary: lines.join('\n') + '\n', changedPaths: uniq, ...(base ? { baseSha: base } : {}) }
 }
 
 async function prepareWorktree(workdir: string, config: RunnerConfig): Promise<void> {
@@ -349,10 +471,64 @@ async function prepareWorktree(workdir: string, config: RunnerConfig): Promise<v
   }
   if (existsSync(join(source, '.git'))) {
     await execFileAsync('git', ['clone', '--no-hardlinks', source, workdir], { timeout: 120_000 })
+    await copyOriginRemote(source, workdir)
     return
   }
   mkdirSync(workdir, { recursive: true })
   cpSync(source, workdir, { recursive: true, force: true })
+}
+
+async function copyOriginRemote(source: string, workdir: string): Promise<void> {
+  try {
+    const { stdout } = await execFileAsync('git', ['-C', source, 'remote', 'get-url', 'origin'], { timeout: 30_000 })
+    const remote = stdout.trim()
+    if (remote) await execFileAsync('git', ['-C', workdir, 'remote', 'set-url', 'origin', remote], { timeout: 30_000 })
+  } catch {
+    // Best effort: a checkout with no origin can still produce evidence, but PR push will block later.
+  }
+}
+
+async function createLocalCommit(workdir: string, config: RunnerConfig, changedPaths: string[], baseSha?: string): Promise<{
+  attempted: boolean
+  created: boolean
+  sha: string | null
+  branch?: string
+  reason?: string
+}> {
+  if (!existsSync(join(workdir, '.git'))) return { attempted: true, created: false, sha: null, reason: 'worktree is not a git repository' }
+  const head = await currentHead(workdir)
+  if (baseSha && head && head !== baseSha) {
+    return { attempted: true, created: true, sha: head, branch: await currentBranch(workdir), reason: 'worker already created a local commit' }
+  }
+  if (changedPaths.length === 0) return { attempted: true, created: false, sha: null, reason: 'no changes' }
+  const branch = `${config.branchPrefix ?? 'operator'}/${Date.now()}`
+  await execFileAsync('git', ['-C', workdir, 'switch', '-c', branch], { timeout: 30_000 })
+  await execFileAsync('git', ['-C', workdir, 'add', '--', ...changedPaths], { timeout: 30_000 })
+  await execFileAsync('git', [
+    '-C', workdir,
+    '-c', 'user.name=claude-code-247',
+    '-c', 'user.email=claude-code-247@example.invalid',
+    'commit',
+    '-m', '[P5] operator cockpit worker output',
+  ], { timeout: 60_000 })
+  const sha = (await execFileAsync('git', ['-C', workdir, 'rev-parse', 'HEAD'], { timeout: 30_000 })).stdout.trim()
+  return { attempted: true, created: true, sha, branch }
+}
+
+async function currentHead(workdir: string): Promise<string | null> {
+  try {
+    return (await execFileAsync('git', ['-C', workdir, 'rev-parse', 'HEAD'], { timeout: 30_000 })).stdout.trim() || null
+  } catch {
+    return null
+  }
+}
+
+async function currentBranch(workdir: string): Promise<string | undefined> {
+  try {
+    return (await execFileAsync('git', ['-C', workdir, 'branch', '--show-current'], { timeout: 30_000 })).stdout.trim() || undefined
+  } catch {
+    return undefined
+  }
 }
 
 /**

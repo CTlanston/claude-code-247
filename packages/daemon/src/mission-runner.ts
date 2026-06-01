@@ -607,14 +607,22 @@ function copyPrdIntoEvidence(stateDir: string, evidenceDir: string, mission: Mis
   }
 }
 
-function importTaskEvidence(taskEvidenceDir: string, missionEvidenceDir: string): void {
+export function importTaskEvidence(taskEvidenceDir: string, missionEvidenceDir: string): void {
   if (!existsSync(taskEvidenceDir)) return
+  // Worker-owned evidence: the latest task run is authoritative and must fully
+  // replace any earlier vintage, so a stale changed-paths.json can't contradict a
+  // fresh diff-summary.md from a later run (P6 single-vintage fix).
   const workerAuthoritativeEvidence = new Set([
     'plan.md',
     'diff-summary.md',
     'test-summary.md',
     'done-report.md',
     'transcript-summary.md',
+    'changed-paths.json',
+    'local-commit.json',
+    'model-usage.json',
+    'claude-docker-raw.json',
+    'docker-meta.json',
   ])
   for (const entry of readdirSync(taskEvidenceDir)) {
     const src = join(taskEvidenceDir, entry)
@@ -640,10 +648,28 @@ function ensureRequiredEvidence(evidenceDir: string): void {
   }
 }
 
-function readEvidenceBundle(evidenceDir: string): Record<string, string> {
+/**
+ * Raw machine/coder dumps that are kept on disk for provenance but excluded from
+ * the validator bundle: per ADR-0008/0009 validators judge curated evidence, not
+ * raw dumps. Crucially this keeps an unreliable coder self-report (e.g. a
+ * hallucinated result.json naming the wrong test file) from contradicting the
+ * authoritative git diff. The discrepancy is instead surfaced, labelled, in
+ * done-report.md (P6: demote, don't hide).
+ */
+const NON_EVIDENCE_BUNDLE_FILES = new Set([
+  'claude-docker-raw.json',
+  'cli-envelope.json',
+  'result.json',
+  'docker-meta.json',
+  'stdout.log',
+  'stderr.log',
+])
+
+export function readEvidenceBundle(evidenceDir: string): Record<string, string> {
   const out: Record<string, string> = {}
   if (!existsSync(evidenceDir)) return out
   for (const entry of readdirSync(evidenceDir)) {
+    if (NON_EVIDENCE_BUNDLE_FILES.has(entry)) continue
     const full = join(evidenceDir, entry)
     try {
       if (statSync(full).isFile()) out[entry] = readFileSync(full, 'utf-8')

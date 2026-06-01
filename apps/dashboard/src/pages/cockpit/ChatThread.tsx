@@ -49,7 +49,9 @@ export function ChatThread({ messages, busy, canChoose, onChoice, onAnswer, foot
                 : <div style={{ whiteSpace: 'pre-wrap' }}>{m.content}</div>}
               {m.meta && <MessageFooter meta={m.meta} />}
             </div>
-            {m.questions && m.questions.length > 0 && (
+            {m.questions && m.questions.length > 0 && answered && (
+              // Unanswered clarifications live in the bottom blocking ClarificationPopup
+              // (redesign v2, P3/#6); inline we only keep the read-only answered summary.
               <ClarificationCard questions={m.questions} answered={answered} busy={busy} onSubmit={onAnswer} />
             )}
             {m.id === lastChoiceId && m.choices && (

@@ -15,15 +15,57 @@ schema_version: 1
 version_target: production-usable-24x7
 current_part: III          # III = v2.4 real vertical slice -> production hardening
 current_stage: ProductionHardened_v2.4_Ready
-current_substage: operator-cockpit-repo-bound-worker-p0-fixed
-last_updated_utc: 2026-05-31T07:45:00Z
-last_session_id: s_0040
-total_sessions: 41
+current_substage: operator-cockpit-hermus-p5-real-draft-pr
+last_updated_utc: 2026-06-01T05:48:36Z
+last_session_id: s_0042
+total_sessions: 43
 weeks_elapsed: 0
 weeks_remaining: 0
 open_holds: 0
 blocked_on: none
 next_action: |
+  P6 EVIDENCE HARDENING s_0042 (DONE — dual validators move INCONCLUSIVE to PASS: evidence root-fixed + runner-verified tests + capable OpenAI model):
+  Enriched the claude-docker worker's test-summary/done-report, registered diff/done
+  as artifacts, and built a Gemini+OpenAI evidence re-check harness. The re-check
+  (read-only; no worker run; no remote writes) re-ran both validators on the EXACT
+  s_0041 evidence BEFORE vs AFTER the enrichment and PROVED the enrichment alone does
+  NOT move them off inconclusive — both stayed INCONCLUSIVE. Real root cause
+  (ground-truthed via `gh pr view 3` = README.md + tests/test_readme_artifacts.py,
+  +60/-5): the validator bundle also carries the coder self-report claude-docker-raw.json
+  which HALLUCINATED a different filename (test_readme_artifact_paths.py), branch
+  (shadow/issue-p5), and counts (2 tests/14 pass) vs the transcript's "8 tests/20 pass"
+  vs the real git diff — three conflicting accounts + a mixed-vintage changed-paths.json.
+  The validators are correct. REAL FIX IMPLEMENTED (operator chose C: fix at source):
+  git diff is authoritative; the coder's self-reported file list is NOT used/surfaced;
+  the raw coder dump is DEMOTED from the validator bundle (on disk for provenance);
+  single-vintage importTaskEvidence; the runner now INDEPENDENTLY re-runs the repo
+  tests (runner-verified counts) instead of trusting the coder; and the OpenAI
+  validator default was bumped gpt-4o-mini -> gpt-4o (mini misread present files as
+  "missing"). RESULT (re-check, read-only, provably-clean bundle, runner-verified 20
+  passed): BEFORE both INCONCLUSIVE -> AFTER BOTH PASS (gemini-2.5-pro + gpt-4o). No
+  evidence massaged. Validation: typecheck PASS; targeted tests PASS (runner 18,
+  validators 14, aggregation 4, server 16). No commit; AEDEV_ALLOW_REMOTE_WRITES off;
+  Draft PR #3 read-only/untouched (gh-verified). NEXT (optional): wire hermus testCommands
+  in repos.yaml for live runs; cockpit e2e skeleton; a fresh live run for dual-PASS e2e.
+
+  P5 REAL PR s_0041: Operator Cockpit now completed the real hermus-agent loop:
+  planner brainstorm + goal-specific clarify questions, PRD/ADR/Roadmap, approval,
+  Docker worker (`claude-code-247/runner:latest` with `AEDEV_CLAUDE_OAUTH_TOKEN`),
+  Gemini+OpenAI validators, evidence gate, and a real GitHub Draft PR:
+  https://github.com/CTlanston/hermus-agent/pull/3 (draft=true, OPEN, branch
+  `shadow/issue-p5-readme-artifacts`, +60/-5, README.md +
+  tests/test_readme_artifacts.py). Remote writes were enabled only in the dev
+  daemon process for this run, then the daemon was restarted without
+  `AEDEV_ALLOW_REMOTE_WRITES`; `~/.aedev/state.db` has hermus-agent registered
+  and local-workspace re-enabled. Validators were both inconclusive (evidence
+  consistency complaints), so merge policy stayed WAITING; PR is draft-only and
+  unmerged. P5 also required live wiring fixes: Operator routes now receive the
+  real DraftPrGate executor, Cockpit can route to ClaudeDockerRunner when the
+  Docker image/token are configured, Docker runner records local commits when the
+  worker already committed, and the Docker runner wrapper creates DB run rows so
+  validator FKs are honest. Validation: typecheck PASS; targeted daemon/runner
+  tests PASS (29/29, then daemon 16/16 after run-row fix).
+
   REPO-BOUND s_0040: The Operator Cockpit P0 trust break is fixed — the worker now
   executes in a repo-bound isolated git worktree of the operator's selected repo
   (git worktree add --detach HEAD), never an empty scratch dir. An unavailable,
@@ -727,6 +769,55 @@ ApprovalGateway: ntfy → 操作员手机
 - next_action: <见 §0>
 - notes: <一两句>
 ```
+
+### s_0042 — 2026-06-01T05:48:36Z — P6 evidence hardening (validator consistency)
+
+- stage_in: s_0041 opened real Draft PR #3 but both validators were inconclusive on evidence consistency → stage_out: the Docker worker's evidence is now self-consistent and mission-visible (no merge attempted; PR #3 untouched, still WAITING)
+- actor: claude (operator P6 task; PR #3 read-only, `AEDEV_ALLOW_REMOTE_WRITES` not set, no commit)
+- root cause: the claude-docker worker wrote thin summaries — `test-summary.md` was only container/final exit codes and `done-report.md` only task IDs — while its own `transcript-summary.md` claimed "8 contract tests added, all 20 tests pass" and `diff-summary.md` added `tests/test_readme_artifacts.py`. Gemini correctly flagged the test-count vs new-test-file contradiction; OpenAI correctly flagged an unclear done-report. `importTaskEvidence` already copied the files into mission evidence, but their **content** didn't corroborate each other.
+- shipped (fix the evidence, not the prompt; no faked pass):
+    - `packages/runner/src/claude-docker-runner.ts`: rich, self-consistent `test-summary.md` (changed-file count, test files in the diff, repo test command, explicit "verification boundary — the runner did NOT re-run the suite; test counts are worker-reported") + `done-report.md` (changed-files list + model usage + the worker's own summary), so done-report corroborates diff-summary.
+    - `packages/daemon/src/routes/operator.ts` `registerEvidenceArtifacts`: also registers `diff-summary.md` / `done-report.md` / `changed-paths.json` / `local-commit.json` so the cockpit overview/Working folder surfaces the worker's real change evidence (was docs + test-summary/transcript/model-usage only).
+    - exported `importTaskEvidence` + `readEvidenceBundle` (`mission-runner.ts`) and `registerEvidenceArtifacts` (`operator.ts`) for targeted tests.
+- tests: `packages/runner/src/claude-docker-runner.test.ts` +1 enriched-evidence test (14/14); new `packages/daemon/src/operator-evidence-aggregation.test.ts` (3) covering task→mission import, validator-bundle visibility, and artifact registration.
+- validation (of what shipped): `@aedev/daemon` + `@aedev/runner` typecheck PASS; `pnpm vitest run server.test + claude-docker-runner.test + operator-evidence-aggregation.test` PASS (33/33); enriched-summary logic extracted to exported `renderDockerWorkerSummaries` (runner test still 14/14).
+- **VALIDATOR RE-CHECK — the enrichment did NOT fix it** (`scripts/operator-cockpit-p6-evidence-recheck.ts`, Gemini+OpenAI via secrets MCP, read-only, no worker run, no remote writes): re-ran both validators on the EXACT s_0041 evidence BEFORE (as-shipped) vs AFTER (enriched summaries). Result: **both still INCONCLUSIVE in both phases.** The rigorous before/after isolation proved the summary enrichment alone does not move the verdict.
+- **REVISED ROOT CAUSE** (ground-truthed via `gh pr view 3`): PR #3 truly contains `README.md` + `tests/test_readme_artifacts.py` (+60/-5). But the validator bundle also carries the coder self-report `claude-docker-raw.json` (a model-authored result.json) that HALLUCINATED a different filename `tests/test_readme_artifact_paths.py`, branch `shadow/issue-p5`, and counts "2 tests/14 pass"; the transcript prose says "8 tests/20 pass"; the real git `diff-summary.md` says `test_readme_artifacts.py`. THREE conflicting accounts in one bundle (+ a 22:11-vs-22:16 mixed-vintage `changed-paths.json` matching the hallucinated name) → validators correctly inconclusive. The enrichment was a genuine improvement but on the wrong layer.
+- **REAL FIX — IMPLEMENTED (operator chose C: fix at source) + RE-CHECKED:** (1) `readEvidenceBundle` demotes raw machine/coder dumps (`claude-docker-raw.json`, logs, `cli-envelope.json`, `docker-meta.json`) from the validator bundle (kept on disk); (2) `importTaskEvidence` single-vintage (changed-paths/model-usage/raw/local-commit/docker-meta overwritten by the latest run); (3) `renderDockerWorkerSummaries` (extracted/exported) surfaces ONLY the git-authoritative change set — the coder's self-reported file list is NOT used/surfaced (it proved hallucinated), so curated evidence cannot contradict itself. (The earlier option-1 "discrepancy note" was removed — under C there is no coder-authored change set to reconcile.) Tests: claude-docker-runner 15/15, operator-evidence-aggregation 4/4, server.test 16/16; daemon+runner typecheck PASS.
+- **RE-CHECK RESULT** (`scripts/operator-cockpit-p6-evidence-recheck.ts`, read-only, no worker/remote): BEFORE both INCONCLUSIVE → AFTER **Gemini PASS; OpenAI INCONCLUSIVE at this step — root-caused to a weak validator model + no independent test run, both fixed in FINAL below**. Gemini now reports "all core evidence present and consistent; diff-summary aligns perfectly with the plan" — the filename hallucination is resolved at source. OpenAI's residual is a DIFFERENT, legitimate gap: the coder transcript claims "20 tests pass" but the runner did NOT independently re-run the suite (test-summary states this honestly), so a strict validator won't confirm tests passed. Not an evidence-consistency bug → needs real host-side test execution. NOT chasing OpenAI by massaging evidence (would be gaming).
+- safety: no commit; `AEDEV_ALLOW_REMOTE_WRITES` not set; no push/merge; Draft PR #3 read-only (gh-verified, not modified).
+- P6 remaining: the OpenAI residual's real fix = host-side independent test execution (worker runs repo testCommands in the worktree + records real pass/fail counts, replacing the coder's unverified claim) — operator-gated, bigger change; scripted cockpit e2e skeleton.
+- **FINAL — dual-PASS achieved (host-side test execution + capable OpenAI model):** added `runRepoTests` (the runner INDEPENDENTLY re-runs the repo's `testCommands` on the worktree → a runner-verified test-summary with real pass/fail counts; honest fallback when no test env) AND bumped the OpenAI validator default `gpt-4o-mini` → `gpt-4o` (mini misread present files as "missing" / invented contradictions). Re-check on the provably-clean bundle (0 files mention the hallucinated name; test-summary is runner-verified `python3 -m pytest -q` → exit 0, 20 passed): **BEFORE both INCONCLUSIVE → AFTER Gemini PASS + OpenAI PASS.** No evidence was massaged — the change set is the real git diff and the test result is runner-verified. Tests: runner 18, validators 14, aggregation 4, server 16; typecheck PASS. No commit; remote writes off; Draft PR #3 read-only.
+- holds_opened: 0 · holds_resolved: 0
+- next_action: see §0 next_action
+
+### s_0041 — 2026-06-01T05:18:32Z — Operator Cockpit P5 real Draft PR on hermus-agent
+
+- stage_in: P4 honest Draft PR UI was live, but P5 still needed the real worker/remote-write path → stage_out: cockpit-driven hermus-agent run opened real Draft PR #3
+- actor: codex (operator said "这里你去给我执行一下"; used local OAuth token file without printing it and one-process remote-write enable)
+- shipped:
+    - wired the daemon's Operator Cockpit `/create-pr` route to the real `DraftPrGate` (`GhGitRemoteWriter` + `GhDraftPrCreator`) instead of an absent executor
+    - added Cockpit Docker-worker routing when `AEDEV_CLAUDE_DOCKER_IMAGE` + `AEDEV_CLAUDE_OAUTH_TOKEN` / `AEDEV_COCKPIT_WORKER=docker` are configured
+    - made `ClaudeDockerRunner` preserve the source repo's GitHub origin, emit `changed-paths.json` with `worktreePath`, write `local-commit.json`, and reuse worker-created commits instead of attempting an empty second commit
+    - wrapped the Docker runner with a DB-backed run row so validator results reference a real run id (no FK drift)
+- live proof:
+    - session `01KT0RTSB4XREVN9SP4CJF51XK`, mission `01KT0RVZXMABZBNTARGV8Z0TXZ`
+    - repo `hermus-agent` registered/enabled in `~/.aedev/state.db`; `local-workspace` restored to enabled after the run
+    - planner produced goal-specific clarify questions; answers recorded: exact paths, only direct contradictions, existing docs checks
+    - Docker run `01KT0SKWBFB7682ZS9JT6D14V3` (`runnerMode=claude-docker`) completed exit 0, evidence at `/Users/lanston/.aedev/state/operator-docker-evidence/tasks/01KT0SKWBE5CNKFBYN0WHV8VP9`
+    - validators: Gemini inconclusive + OpenAI inconclusive, so merge decision stayed WAITING; no merge attempted
+    - Draft PR #3 verified via `gh`: https://github.com/CTlanston/hermus-agent/pull/3, draft=true, OPEN, branch `shadow/issue-p5-readme-artifacts`, base `main`, +60/-5, files `README.md` and `tests/test_readme_artifacts.py`
+- validation:
+    - `pnpm typecheck` PASS after executor/docker wiring
+    - `pnpm vitest run packages/daemon/src/server.test.ts packages/runner/src/claude-docker-runner.test.ts --testTimeout 180000` PASS (29/29)
+    - after run-row fix: `pnpm --filter @aedev/daemon typecheck` PASS; `pnpm vitest run packages/daemon/src/server.test.ts --testTimeout 180000` PASS (16/16)
+- safety:
+    - OAuth token read from `~/.claude-code-247/oauth-token.txt` only into child process env; not printed
+    - `AEDEV_ALLOW_REMOTE_WRITES=true` was process-local for the live run; daemon restarted afterward without it (remote writes off)
+    - `hermus-agent` local checkout stayed clean; PR branch lives remotely and in isolated Docker worktree
+    - no merge; PR remains draft-only
+- holds_opened: 0 · holds_resolved: 0
+- next_action: P6 hardening: fix evidence consistency for validators (mission evidence should include/preview worker diff-summary + done-report clearly), add a scripted cockpit P5 e2e harness, then review Draft PR #3 manually; do not merge until validator evidence concerns are resolved or explicitly accepted.
 
 ### s_0040 — 2026-05-31T07:45:00Z — Operator Cockpit E2E product repair (repo-bound worker, P0 trust)
 

@@ -18,12 +18,23 @@ const messages: ApiOperatorMessage[] = [
 ]
 
 describe('ChatThread', () => {
-  it('renders the transparency footer, markdown, and a clarification card', () => {
+  it('renders the transparency footer and markdown; unanswered clarifications move to the bottom popup', () => {
     render(<ChatThread messages={messages} busy={null} canChoose={true} onChoice={vi.fn()} onAnswer={vi.fn()} />)
     expect(screen.getByText(/single planner/)).toBeTruthy()
     expect(screen.getByText(/codex-cli/)).toBeTruthy()
     expect(screen.getByText('Plan')).toBeTruthy()   // markdown heading
-    expect(screen.getByText('Scope?')).toBeTruthy()  // clarification card
+    // Unanswered clarification questions are no longer rendered inline — the bottom
+    // blocking ClarificationPopup owns them now (redesign v2, P3/#6).
+    expect(screen.queryByText('Scope?')).toBeNull()
+  })
+
+  it('shows a read-only answered summary inline once clarifications are answered', () => {
+    const answered: ApiOperatorMessage[] = [
+      messages[1]!,
+      { id: 'u2', sessionId: 's', role: 'user', content: '已确认 · Clarifications\n- Scope? → Small', createdAt: '2026-01-03' },
+    ]
+    render(<ChatThread messages={answered} busy={null} canChoose={false} onChoice={vi.fn()} onAnswer={vi.fn()} />)
+    expect(screen.getByText(/Answered/)).toBeTruthy()
   })
 
   it('does not fabricate a footer when meta is absent', () => {
