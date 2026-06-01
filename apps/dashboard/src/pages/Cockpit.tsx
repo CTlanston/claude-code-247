@@ -11,23 +11,14 @@ import { useSSE } from '../hooks/useSSE.js'
 import { Sidebar } from './cockpit/Sidebar.js'
 import { ChatThread } from './cockpit/ChatThread.js'
 import { Composer } from './cockpit/Composer.js'
-import { ExecutionTimeline } from './cockpit/ExecutionTimeline.js'
+import { Observation } from './cockpit/Observation.js'
+import { ClarificationPopup } from './cockpit/ClarificationPopup.js'
 import { CommandPalette, type Command } from './cockpit/CommandPalette.js'
 import './cockpit/cockpit.css'
 
 const DEFAULT_PROMPT = 'Brainstorm a low-risk improvement, produce PRD/ADR/roadmap, then execute to the draft PR/evidence gate.'
 const SESSION_STORAGE_KEY = 'operatorCockpitSessionId'
 const PANELS_STORAGE_KEY = 'operatorCockpitPanels'
-const TAB_STORAGE_KEY = 'operatorCockpitInspectorTab'
-
-type InspectorTab = 'roadmap' | 'activity' | 'diff' | 'monitor' | 'approvals'
-const INSPECTOR_TABS: { id: InspectorTab; label: string }[] = [
-  { id: 'roadmap', label: 'Roadmap' },
-  { id: 'activity', label: 'Activity' },
-  { id: 'diff', label: 'Diff & PR' },
-  { id: 'monitor', label: 'Monitor' },
-  { id: 'approvals', label: 'Approvals' },
-]
 
 function loadPanelState(): { sidebar: boolean; inspector: boolean } {
   try {
@@ -37,20 +28,13 @@ function loadPanelState(): { sidebar: boolean; inspector: boolean } {
   return { sidebar: true, inspector: true }
 }
 
-function loadInspectorTab(): InspectorTab {
-  try {
-    const raw = localStorage.getItem(TAB_STORAGE_KEY)
-    if (raw && INSPECTOR_TABS.some((t) => t.id === raw)) return raw as InspectorTab
-  } catch { /* ignore */ }
-  return 'roadmap'
-}
-
 function fmtElapsed(ms: number | null | undefined): string {
   if (ms == null) return '—'
   const s = Math.round(ms / 1000)
   return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`
 }
 type GuidanceAction = { label: string; onClick: () => void; disabled: boolean }
+type DraftPrResult = { status: string; code?: string; reason?: string; url?: string; number?: number }
 interface Guidance {
   kicker: string
   title: string
@@ -69,34 +53,20 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
   const [session, setSession] = useState<ApiOperatorSession | null>(null)
   const [messages, setMessages] = useState<ApiOperatorMessage[]>([])
   const [overview, setOverview] = useState<ApiMissionOverview | null>(null)
-  const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null)
-  const [runLog, setRunLog] = useState('')
-  const [draftPrStatus, setDraftPrStatus] = useState<string | null>(null)
+  const [draftPrStatus, setDraftPrStatus] = useState<DraftPrResult | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [sessions, setSessions] = useState<ApiOperatorSession[]>([])
   const [note, setNote] = useState('')
   const [panels, setPanels] = useState(loadPanelState)
-  const [tab, setTab] = useState<InspectorTab>(loadInspectorTab)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [skippedClarify, setSkippedClarify] = useState<Set<string>>(() => new Set())
   const togglePanel = (key: 'sidebar' | 'inspector') => setPanels((p) => {
     const next = { ...p, [key]: !p[key] }
     try { localStorage.setItem(PANELS_STORAGE_KEY, JSON.stringify(next)) } catch { /* ignore */ }
     return next
   })
-  // Switch the inspector to a tab, opening it if it was hidden (single dock at a time).
-  const selectTab = (next: InspectorTab) => {
-    setTab(next)
-    try { localStorage.setItem(TAB_STORAGE_KEY, next) } catch { /* ignore */ }
-    setPanels((p) => {
-      if (p.inspector) return p
-      const merged = { ...p, inspector: true }
-      try { localStorage.setItem(PANELS_STORAGE_KEY, JSON.stringify(merged)) } catch { /* ignore */ }
-      return merged
-    })
-  }
-
   useEffect(() => {
     api.getRepos().then((r) => {
       setRepos(r)
@@ -164,18 +134,6 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
   }, [session?.id, session?.status])
 
   useEffect(() => {
-    const latestRun = overview?.runs?.[0]
-    if (!overview?.mission.id || !latestRun) {
-      setRunLog('')
-      return
-    }
-    const load = () => api.getRunLog(overview.mission.id, latestRun.id).then((x) => setRunLog(x.text)).catch(() => undefined)
-    void load()
-    const timer = setInterval(load, latestRun.status === 'running' ? 1_000 : 5_000)
-    return () => clearInterval(timer)
-  }, [overview?.mission.id, overview?.runs?.[0]?.id, overview?.runs?.[0]?.status])
-
-  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
         e.preventDefault()
@@ -186,8 +144,19 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  const latestEvents = useMemo(() => sse.events.slice(0, 12), [sse.events])
   const latestHold = useMemo(() => latestHoldMessage(messages), [messages])
+  // The latest planner clarification that's neither answered nor skipped — drives
+  // the bottom blocking popup (redesign v2, P3/#6).
+  const pendingClarify = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i]!
+      if (m.role === 'assistant' && m.questions && m.questions.length > 0) {
+        const answered = messages.slice(i + 1).some((l) => l.role === 'user' && /已确认|Clarifications/.test(l.content))
+        return answered || skippedClarify.has(m.id) ? null : m
+      }
+    }
+    return null
+  }, [messages, skippedClarify])
 
   async function action<T>(label: string, fn: () => Promise<T>, after?: (x: T) => void) {
     setBusy(label)
@@ -212,7 +181,7 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
 
   function loadSession(id: string) {
     if (id === session?.id) return
-    setOverview(null); setRunLog(''); setDraftPrStatus(null); setErr(null); setNote('')
+    setOverview(null); setDraftPrStatus(null); setErr(null); setNote('')
     api.getOperatorSession(id).then((x) => {
       setSession(x.session)
       setMessages(x.messages)
@@ -229,8 +198,6 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
     setSession(null)
     setMessages([])
     setOverview(null)
-    setSelectedArtifactId(null)
-    setRunLog('')
     setDraftPrStatus(null)
     setErr(null)
     setPrompt(DEFAULT_PROMPT)
@@ -266,20 +233,21 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
     onStart: () => session && action('start', () => api.startOperatorSession(session.id), (x) => { setSession(x.session); setOverview(x.overview) }),
     onPause: () => session && action('pause', () => api.pauseOperatorSession(session.id), (x) => { setSession(x.session); setOverview(x.overview) }),
     onResume: () => session && action('resume', () => api.resumeOperatorSession(session.id), (x) => { setSession(x.session); setOverview(x.overview) }),
-    onDraftPr: () => session && action('draft-pr', () => api.createDraftPr(session.id), (x) => { setOverview(x.overview); setDraftPrStatus(x.pr?.url ?? `${x.code ?? x.status}: ${x.reason ?? ''}`) }),
+    onDraftPr: () => session && action('draft-pr', () => api.createDraftPr(session.id), (x) => { setOverview(x.overview); setDraftPrStatus({ status: x.status, code: x.code, reason: x.reason, url: x.pr?.url, number: x.pr?.number }) }),
     onReset: resetMission,
+    onStop: () => session?.missionId && action('stop', () => api.stopOperatorSession(session.id), (x) => { setSession(x.session); setOverview(x.overview) }),
   })
 
   const hasSession = Boolean(session)
   const canGenerate = Boolean(session) && !session?.missionId
   const pendingCount = Math.max(pendingApprovals, sse.pendingApprovals)
   const selectedRepoName = repos.find((r) => r.id === repoId)?.name ?? (repoId || '—')
+  const selectedRepo = repos.find((r) => r.id === repoId) ?? null
 
   const commands: Command[] = []
   commands.push({ id: 'new', title: 'New mission · 新任务', hint: 'reset', run: resetMission })
   commands.push({ id: 'toggle-sidebar', title: panels.sidebar ? 'Collapse history sidebar' : 'Expand history sidebar', hint: 'layout', run: () => togglePanel('sidebar') })
   commands.push({ id: 'toggle-inspector', title: panels.inspector ? 'Hide inspector' : 'Show inspector', hint: 'layout', run: () => togglePanel('inspector') })
-  for (const t of INSPECTOR_TABS) commands.push({ id: `tab-${t.id}`, title: `Go to ${t.label}`, hint: 'inspector', run: () => selectTab(t.id) })
   const missionStatusForCmd = overview?.mission.status
   if (session?.missionId && missionStatusForCmd !== 'approved') {
     commands.push({ id: 'approve', title: 'Approve roadmap · 批准', hint: 'action', run: () => action('approve', () => api.approveRoadmap(session.id), (x) => { setSession(x.session); setOverview(x.overview) }) })
@@ -290,7 +258,7 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
   if (session?.missionId) {
     commands.push({ id: 'pause', title: 'Pause mission · 暂停', hint: 'action', run: () => action('pause', () => api.pauseOperatorSession(session.id), (x) => { setSession(x.session); setOverview(x.overview) }) })
     commands.push({ id: 'resume', title: 'Resume mission · 恢复', hint: 'action', run: () => action('resume', () => api.resumeOperatorSession(session.id), (x) => { setSession(x.session); setOverview(x.overview) }) })
-    commands.push({ id: 'draft-pr', title: 'Draft PR · 创建草稿', hint: 'action', run: () => action('draft-pr', () => api.createDraftPr(session.id), (x) => { setOverview(x.overview); setDraftPrStatus(x.pr?.url ?? `${x.code ?? x.status}: ${x.reason ?? ''}`) }) })
+    commands.push({ id: 'draft-pr', title: 'Draft PR · 创建草稿', hint: 'action', run: () => action('draft-pr', () => api.createDraftPr(session.id), (x) => { setOverview(x.overview); setDraftPrStatus({ status: x.status, code: x.code, reason: x.reason, url: x.pr?.url, number: x.pr?.number }) }) })
   }
   commands.push({ id: 'open-approvals', title: 'Open approvals page · 审批', hint: 'navigate', run: () => onNavigate?.('approvals') })
 
@@ -350,6 +318,18 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
               {guidance.secondary && <button className="ck-btn" disabled={guidance.secondary.disabled || Boolean(busy)} onClick={guidance.secondary.onClick}>{guidance.secondary.label}</button>}
             </div>
           )}
+          {draftPrStatus && (draftPrStatus.status === 'created' && draftPrStatus.url ? (
+            <div className="ck-pr-outcome created">
+              <strong>✓ Draft PR created · 草稿 PR 已创建</strong>
+              <a href={draftPrStatus.url} target="_blank" rel="noreferrer">{draftPrStatus.url}</a>
+            </div>
+          ) : (
+            <div className="ck-pr-outcome blocked">
+              <strong>Draft PR blocked · 被安全门拦截{draftPrStatus.code ? ` · ${draftPrStatus.code}` : ''}</strong>
+              {draftPrStatus.reason && <span>{draftPrStatus.reason}</span>}
+              <span className="ck-pr-remedy">{draftPrRemediation(draftPrStatus.code)}</span>
+            </div>
+          ))}
           {notice && <div className="ck-banner notice">{notice}</div>}
 
           <ChatThread
@@ -360,6 +340,15 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
             onAnswer={(answers) => session && action('answer', () => api.answerQuestions(session.id, answers), (x) => { setSession(x.session); setMessages(x.messages) })}
             footer={<ProcessBlock overview={overview} busy={busy} />}
           />
+
+          {pendingClarify && pendingClarify.questions && pendingClarify.questions.length > 0 && (
+            <ClarificationPopup
+              questions={pendingClarify.questions}
+              busy={busy}
+              onSubmit={(answers) => session && action('answer', () => api.answerQuestions(session.id, answers), (x) => { setSession(x.session); setMessages(x.messages) })}
+              onSkip={() => setSkippedClarify((s) => new Set(s).add(pendingClarify.id))}
+            />
+          )}
 
           <Composer
             mode={hasSession ? 'session' : 'new'}
@@ -381,60 +370,7 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
 
         {panels.inspector && (
           <div className="ck-inspector">
-            <div className="ck-tabs" role="tablist">
-              {INSPECTOR_TABS.map((t) => (
-                <button
-                  key={t.id}
-                  role="tab"
-                  aria-selected={tab === t.id}
-                  className={`ck-tab${tab === t.id ? ' active' : ''}`}
-                  onClick={() => selectTab(t.id)}
-                >
-                  {t.label}
-                  {t.id === 'approvals' && pendingCount > 0 ? <span className="ck-tab-count">{pendingCount}</span> : null}
-                </button>
-              ))}
-            </div>
-
-            <div className="ck-dock">
-              {tab === 'roadmap' && (
-                <>
-                  <ExecutionTimeline
-                    overview={overview}
-                    busy={busy}
-                    onPause={() => session && action('pause', () => api.pauseOperatorSession(session.id), (x) => { setSession(x.session); setOverview(x.overview) })}
-                    onStop={() => session?.missionId && action('stop', () => api.stopOperatorSession(session.id), (x) => { setSession(x.session); setOverview(x.overview) })}
-                    onDiagnose={() => selectTab('monitor')}
-                  />
-                  <div className="button-row" style={{ marginTop: 10 }}>
-                    <button className="action primary" disabled={!session?.missionId || overview?.mission.status === 'approved' || Boolean(busy)} onClick={() => action('approve', () => api.approveRoadmap(session!.id), (x) => { setSession(x.session); setOverview(x.overview) })}>Approve · 批准</button>
-                    <button className={`action${overview?.mission.status === 'approved' ? ' primary pulse' : ''}`} disabled={!session?.missionId || overview?.mission.status !== 'approved' || Boolean(busy)} onClick={() => action('start', () => api.startOperatorSession(session!.id), (x) => { setSession(x.session); setOverview(x.overview) })}>{busy === 'start' ? 'Starting… · 启动中' : 'Start · 启动'}</button>
-                    <button className="action" disabled={!session?.missionId || Boolean(busy)} onClick={() => action('pause', () => api.pauseOperatorSession(session!.id), (x) => { setSession(x.session); setOverview(x.overview) })}>Pause</button>
-                    <button className="action" disabled={!session?.missionId || Boolean(busy)} onClick={() => action('resume', () => api.resumeOperatorSession(session!.id), (x) => { setSession(x.session); setOverview(x.overview) })}>Resume</button>
-                    <button className="action" disabled={!session?.missionId || Boolean(busy)} onClick={() => action('draft-pr', () => api.createDraftPr(session!.id), (x) => { setOverview(x.overview); setDraftPrStatus(x.pr?.url ?? `${x.code ?? x.status}: ${x.reason ?? ''}`) })}>Draft PR</button>
-                  </div>
-                  {draftPrStatus && <div className="running">Draft PR: {draftPrStatus}</div>}
-                  <MissionSnapshot overview={overview} />
-                </>
-              )}
-              {tab === 'activity' && <AgentActivity overview={overview} session={session} busy={busy} />}
-              {tab === 'diff' && (
-                <>
-                  <DocumentPreview overview={overview} selectedId={selectedArtifactId} onSelect={setSelectedArtifactId} />
-                  <ArtifactList overview={overview} selectedId={selectedArtifactId} onSelect={setSelectedArtifactId} />
-                  {draftPrStatus && <div className="running">Draft PR: {draftPrStatus}</div>}
-                  {overview?.mission.githubPrUrl && <div className="running">PR: {overview.mission.githubPrUrl}</div>}
-                </>
-              )}
-              {tab === 'monitor' && (
-                <>
-                  <ExecutionMonitor overview={overview} runLog={runLog} />
-                  <RunPanel overview={overview} />
-                  <EventLog events={latestEvents} />
-                </>
-              )}
-              {tab === 'approvals' && <ApprovalCard overview={overview} />}
-            </div>
+            <Observation overview={overview} repo={selectedRepo} session={session} />
           </div>
         )}
       </div>
@@ -442,6 +378,14 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
       <CommandPalette open={paletteOpen} commands={commands} onClose={() => setPaletteOpen(false)} />
     </div>
   )
+}
+
+/** Honest, actionable remediation for a blocked Draft PR (redesign v2, P4 / #4). */
+function draftPrRemediation(code?: string): string {
+  if (code === 'DRAFT_PR_EXECUTOR_UNAVAILABLE') {
+    return '没有配置 remote-write executor · No remote-write executor configured. Real Draft PRs need the worker-side executor + an authed GitHub token (P5).'
+  }
+  return 'Remote writes 默认关闭（安全门）· Remote writes are off by default (safety gate). Enabling allow_remote_writes for this repo (P5) lets the worker push a real Draft PR; until then "blocked" is the expected, safe outcome.'
 }
 
 function formatError(e: Error): string {
@@ -502,7 +446,7 @@ function actionDoneMessage(label: string): string {
   } as Record<string, string>)[label] ?? '操作完成。'
 }
 
-function buildGuidance(opts: {
+export function buildGuidance(opts: {
   session: ApiOperatorSession | null
   overview: ApiMissionOverview | null
   busy: string | null
@@ -517,6 +461,7 @@ function buildGuidance(opts: {
   onResume: () => void
   onDraftPr: () => void
   onReset: () => void
+  onStop: () => void
 }): Guidance {
   if (!opts.sseConnected) {
     return {
@@ -565,7 +510,11 @@ function buildGuidance(opts: {
       primary: { label: 'Generate PRD · 生成方案', onClick: opts.onRoadmap, disabled: false },
     }
   }
-  if (opts.overview?.mission.status === 'pending_approval') {
+  // Drive the decision off the always-present session.status (roadmap_ready after
+  // Generate, approved after Approve). overview.mission.status is fetched async and
+  // may be null/failed/HOLD'd — gating on it dropped the inline Approve/Start to a
+  // no-button "Monitor" default after Generate (redesign #2). overview stays a fallback.
+  if (opts.session.status === 'roadmap_ready' || opts.overview?.mission.status === 'pending_approval') {
     return {
       kicker: 'Approval · 批准关口',
       title: 'Roadmap is waiting for you · 路线图等待确认',
@@ -573,7 +522,7 @@ function buildGuidance(opts: {
       primary: { label: 'Approve · 批准路线', onClick: opts.onApprove, disabled: false },
     }
   }
-  if (opts.overview?.mission.status === 'approved') {
+  if (opts.session.status === 'approved' || opts.overview?.mission.status === 'approved') {
     return {
       kicker: 'Ready · 可以执行',
       title: 'Agents are ready to run · Agents 已待命',
@@ -588,7 +537,8 @@ function buildGuidance(opts: {
       kicker: 'Running · 执行中',
       title: 'Worker is running · Worker 正在执行',
       body: 'coder worker 正在运行。模型“思考”时可能一段时间没有新日志，这是正常的，不代表卡住；右侧 Observability 的 run、日志、tokens 会自动刷新。需要的话可以暂停。',
-      secondary: { label: 'Pause · 暂停', onClick: opts.onPause, disabled: false },
+      primary: { label: 'Pause · 暂停', onClick: opts.onPause, disabled: false },
+      secondary: { label: 'Stop · 停止', onClick: opts.onStop, disabled: false },
     }
   }
   if (missionStatus === 'cancelled') {
@@ -667,41 +617,6 @@ function ProcessBlock({ overview, busy }: { overview: ApiMissionOverview | null;
   )
 }
 
-function AgentActivity({ overview, session, busy }: {
-  overview: ApiMissionOverview | null
-  session: ApiOperatorSession | null
-  busy: string | null
-}) {
-  const agents = [
-    { id: 'planner', label: 'Planner · 规划', active: busy === 'create' || busy === 'roadmap' || session?.status === 'brainstorming' },
-    { id: 'architect', label: 'Architect · 架构', active: overview?.stage === 'ADR' || overview?.stage === 'Roadmap' },
-    { id: 'coder', label: 'Coder · 执行', active: overview?.stage === 'Worker' || overview?.runs.some((r) => r.status === 'running') },
-    { id: 'validator', label: 'Validator · 验证', active: overview?.stage === 'Validators' },
-  ]
-  const rows = (overview?.events ?? []).map((e) => ({ id: e.id, ...friendlyEvent(e.type, e.payload) })).slice(0, 6)
-  return (
-    <div className="agent-activity">
-      <div className="subhead">Agent Activity · Agent 动作</div>
-      <div className="agent-grid">
-        {agents.map((agent) => (
-          <div key={agent.id} className={`agent-pill ${agent.active ? 'active' : ''}`}>
-            <strong>{agent.label}</strong>
-            <span>{agent.active ? 'Working' : 'Ready'}</span>
-          </div>
-        ))}
-      </div>
-      <div className="activity-feed">
-        {rows.length ? rows.map((r) => (
-          <div className="activity-row" key={r.id}>
-            <strong>{r.label}</strong>
-            {r.detail && <span>{r.detail}</span>}
-          </div>
-        )) : <p>No agent events yet · 暂无 agent 事件</p>}
-      </div>
-    </div>
-  )
-}
-
 const EVENT_LABELS: Record<string, string> = {
   'operator.session.created': '已创建会话 · Session created',
   'operator.role_started': 'Planner 开始分析 · Planner thinking',
@@ -752,111 +667,3 @@ function eventDetail(type: string, p: Record<string, unknown>): string {
   }
 }
 
-function MissionSnapshot({ overview }: { overview: ApiMissionOverview | null }) {
-  if (!overview) return <div className="empty">Generate a PRD to see mission detail.</div>
-  return (
-    <div className="snapshot">
-      <div><span>Stage</span><strong>{overview.stage}</strong></div>
-      <div><span>CLI</span><strong>{overview.cliProvider}</strong></div>
-      <div><span>Agents</span><strong>{overview.activeAgents.join(', ')}</strong></div>
-      <div><span>Holds</span><strong>{overview.holds.length}</strong></div>
-    </div>
-  )
-}
-
-function RunPanel({ overview }: { overview: ApiMissionOverview | null }) {
-  return (
-    <div className="run-panel">
-      <div className="subhead">Tokens & Cost</div>
-      <p>{overview?.cost.note ?? 'Usage appears here when provider data is available.'}</p>
-      <div className="metric-row"><span>Input</span><strong>{overview?.cost.inputTokens ?? 'unknown'}</strong></div>
-      <div className="metric-row"><span>Output</span><strong>{overview?.cost.outputTokens ?? 'unknown'}</strong></div>
-      <div className="metric-row"><span>Total tokens</span><strong>{overview?.cost.totalTokens ?? 'unknown'}</strong></div>
-      <div className="metric-row"><span>Scope</span><strong>{overview?.cost.scope ?? 'unknown'}</strong></div>
-      <div className="metric-row"><span>Cost</span><strong>{overview?.cost.costUsd ?? 'unknown'}</strong></div>
-      <div className="subhead">Validators</div>
-      {overview?.validators.length ? overview.validators.map((v) => (
-        <div key={v.id} className={`validator ${v.verdict}`}>
-          <strong>{v.validator}: {v.verdict}</strong>
-          <p>{v.summary || 'No summary'}</p>
-        </div>
-      )) : <div className="empty">{overview?.validatorStatus === 'not_configured' ? (overview.validatorNote ?? 'Validators are not configured.') : 'No validator results yet.'}</div>}
-    </div>
-  )
-}
-
-function ApprovalCard({ overview }: { overview: ApiMissionOverview | null }) {
-  if (!overview) return null
-  const approval = overview.approvals?.[0]
-  return (
-    <div className="approval-card">
-      <div className="subhead">Approval Gate</div>
-      <div className="metric-row"><span>Status</span><strong>{approval?.status ?? (overview.mission.status === 'approved' ? 'approved' : 'not requested')}</strong></div>
-      <div className="metric-row"><span>Reason</span><strong>{approval?.requiredReason ?? 'Roadmap approval required before execution'}</strong></div>
-    </div>
-  )
-}
-
-function DocumentPreview({ overview, selectedId, onSelect }: { overview: ApiMissionOverview | null; selectedId: string | null; onSelect: (id: string) => void }) {
-  const previewable = overview?.artifacts.filter((a) => a.preview) ?? []
-  const selected = previewable.find((a) => a.id === selectedId) ?? previewable.find((a) => a.type === 'prd') ?? previewable[0]
-  if (!selected) return <div className="doc-preview empty">Generate PRD to preview concrete PRD/ADR/roadmap content here.</div>
-  return (
-    <div className="doc-preview">
-      <div className="subhead">Plan Preview</div>
-      <div className="preview-tabs">
-        {previewable.map((a) => (
-          <button key={a.id} className={selected.id === a.id ? 'active' : ''} onClick={() => onSelect(a.id)}>
-            {a.title ?? a.type}
-          </button>
-        ))}
-      </div>
-      <pre>{selected.preview}</pre>
-    </div>
-  )
-}
-
-function ExecutionMonitor({ overview, runLog }: { overview: ApiMissionOverview | null; runLog: string }) {
-  return (
-    <div className="execution-monitor">
-      <div className="subhead">Execution Monitor</div>
-      {overview ? (
-        <>
-          <div className="metric-row"><span>Tasks</span><strong>{overview.tasks.map((t) => `${t.title}: ${t.status}`).join(' | ') || 'none'}</strong></div>
-          <div className="metric-row"><span>Runs</span><strong>{overview.runs.map((r) => `${r.runnerMode}: ${r.status}${r.exitCode !== undefined ? ` (${r.exitCode})` : ''}`).join(' | ') || 'none'}</strong></div>
-          <div className="metric-row"><span>Evidence</span><strong>{overview.evidenceDir ?? 'pending'}</strong></div>
-          <pre className="worker-log">{runLog || 'Waiting for worker log.'}</pre>
-        </>
-      ) : <div className="empty">No worker activity yet.</div>}
-    </div>
-  )
-}
-
-function ArtifactList({ overview, selectedId, onSelect }: { overview: ApiMissionOverview | null; selectedId: string | null; onSelect: (id: string) => void }) {
-  return (
-    <div>
-      <div className="subhead">Artifacts</div>
-      {overview?.artifacts.length ? overview.artifacts.map((a) => (
-        <button className={`artifact${selectedId === a.id ? ' active' : ''}`} key={a.id} onClick={() => onSelect(a.id)}>
-          <span>{a.type}</span>
-          <strong>{a.title ?? a.type}</strong>
-          <code>{a.path}</code>
-        </button>
-      )) : <div className="empty">No PRD/ADR/evidence paths yet.</div>}
-    </div>
-  )
-}
-
-function EventLog({ events }: { events: Array<{ id: string; kind: string; payload: unknown }> }) {
-  return (
-    <details className="raw-events">
-      <summary>Raw event stream · 原始事件（开发者）</summary>
-      {events.length === 0 ? <div className="empty">Waiting for events.</div> : events.map((e) => (
-        <div className="event" key={e.id}>
-          <strong>{e.kind}</strong>
-          <code>{JSON.stringify(e.payload).slice(0, 120)}</code>
-        </div>
-      ))}
-    </details>
-  )
-}

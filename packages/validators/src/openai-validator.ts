@@ -19,7 +19,12 @@ export interface OpenAIValidatorOptions {
   timeoutMs?: number
 }
 
-const DEFAULT_MODEL = 'gpt-4o-mini'
+// gpt-4o-mini proved too weak to reliably read a multi-file evidence bundle (it
+// reported present files as "missing" and invented contradictions → a false
+// inconclusive that wrongly blocked a merge). Default to a capable model so the
+// validator actually reads the evidence, matching Gemini's tier. Override with
+// AEDEV_OPENAI_MODEL. (P6 s_0042.)
+const DEFAULT_MODEL = 'gpt-4o'
 const DEFAULT_BASE_URL = 'https://api.openai.com/v1'
 const DEFAULT_TIMEOUT_MS = 60_000
 
