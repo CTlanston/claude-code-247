@@ -1,5 +1,6 @@
 import { spawn, execFile } from 'child_process'
 import { promisify } from 'util'
+import { buildLocalCliEnv } from './local-cli-env.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -73,6 +74,7 @@ export class CodexCliAdapter {
 
       const child = spawn(this.bin, argv, {
         cwd: workdir,
+        env: buildLocalCliEnv(),
         stdio: ['pipe', 'pipe', 'pipe'],
         detached: true,
       })

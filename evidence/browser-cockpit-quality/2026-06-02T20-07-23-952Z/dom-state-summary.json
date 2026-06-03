@@ -1,0 +1,6 @@
+{
+  "stage": "pr_blocked",
+  "planner": "mock",
+  "worker": "mock",
+  "prGateCode": "REMOTE_WRITES_DISABLED"
+}

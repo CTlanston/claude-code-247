@@ -1,11 +1,11 @@
 # CLAUDE.md — repository-level guidance for `claude-code-247`
 
-> **v2.1 banner — TS-only · event-sourced · three-plane.**
-> The v2-foundation branch and beyond run on the architecture in
-> [ADR-0010](docs/adr/0010-three-plane-event-sourced.md): a TypeScript-only
-> daemon, an append-only NDJSON event log as source of truth, and three
-> planes (daemon · workers · operator). Every session must read
-> [EXECUTION_WORKBOOK.md §0](EXECUTION_WORKBOOK.md) before any write.
+> **v3 banner — Simple Cowork · TS-only · event-first.**
+> `WORKBOOK_v3.md` is the current source of truth. The product is a
+> conversational coding cockpit: Claude Code clarifies and plans through the
+> local subscription CLI, Codex implements through the local subscription CLI,
+> and Gemini validates from evidence only. Every session must read
+> [WORKBOOK_v3.md §0](WORKBOOK_v3.md) before any write.
 
 > This file is auto-loaded by Claude Code when it operates inside this repo.
 > It is **not** an instruction from a user; treat it as repository policy.
@@ -13,17 +13,17 @@
 ## What this repo is
 
 `claude-code-247` is a local-first, multi-repo, 24/7 autonomous coding
-coworker. The Mac stays on; one orchestrator process (run under `launchd`)
-dispatches per-repo task workers inside Docker containers, talks to GitHub as
-the source of truth, and exposes a FastAPI + HTMX dashboard plus a mobile-
-friendly `claude247` CLI for remote control.
+coworker. The Mac stays on; a TypeScript daemon coordinates operator
+missions, repo-bound worker runs, evidence capture, validation, and a
+Vite/React dashboard for the conversational cockpit.
 
 ```
-Docker runner          worker execution plane
-Claude Remote/Dispatch human control plane
-GitHub                 source-of-truth collaboration plane
-FastAPI + HTMX UI      observability plane
-SQLite (+ optional Qdrant) memory and state plane
+Claude CLI             clarification and planning plane
+Codex CLI              implementation plane
+Gemini validator       evidence-only review plane
+GitHub                 optional PR collaboration plane
+React dashboard        operator cockpit plane
+SQLite events/state    source-of-truth state plane
 ```
 
 The previous Auto-Evo + AutoDev v3 implementation lives under
@@ -32,34 +32,31 @@ The previous Auto-Evo + AutoDev v3 implementation lives under
 ## Module map
 
 ```
-claude247/         shared utilities (logging, ids, config loader)
-orchestrator/      main loop, scheduler, repo registry, command queue,
-                   task manager, runner manager, merge/risk policy,
-                   memory + notification + replay + log indexer
-runner/            container image, worker.py, prompt_builder,
-                   evidence_collector
-validator/         judge_contract, gemini_judge, openai_judge,
-                   validation_policy
-memory/            schema.sql, vector_store, compiler, repo_memory
-gateway/           cli, commands, remote_bridge
-dashboard/         FastAPI app, routes, templates, static
-config/            default.yaml, policies.yaml
-scripts/           install/uninstall launchd, doctor, smoke
-tests/             unit + integration
+packages/core/          SQLite schema, events, ids, repo registry, state machine
+packages/daemon/        daemon, Fastify routes, mission lifecycle, PR gate,
+                         operator cockpit backend, memory helpers, validators
+packages/runner/        local CLI adapters, Docker runner, repo-bound worktrees,
+                         evidence writer, worker session discovery
+packages/validators/    Gemini/OpenAI evidence-only validators and merge policy
+packages/github/        GitHub client and PR/check helpers
+packages/cli/           `aedev` command surface
+packages/qa/            browser QA utilities
+apps/dashboard/         React/Vite operator cockpit
+scripts/                dev startup, smoke/e2e runners, launchd helpers
+docs/                   architecture, operations, handoff, parked-package notes
+archive/auto-evo/       legacy reference only; do not import from it
 ```
 
-Runtime state lives under `~/.claude-code-247/`:
+Runtime state lives under `~/.aedev/` by default, or under `AEDEV_HOME` when
+that environment variable is set:
 
 ```
-~/.claude-code-247/
-  repos.yaml          repo registry (canonical)
-  config.yaml         system config (cost mode, allow_remote_writes, ...)
-  state/
-    claude247.db      SQLite state machine (tasks, commands, runs, prs, ...)
-    backups/
-  workspaces/<task>/  per-task git clone + evidence + logs
-  logs/               structured logs ingested into log_indexer
-  memory/             vector store + .agent compilations
+~/.aedev/
+  state.db                 SQLite state and event store
+  state/                   cockpit evidence, PRD artifacts, worktrees, holds
+  config.yaml              system config, including allow_remote_writes
+  operator-prefs.md        global operator memory (future Tier 1)
+  logs/                    daemon/operator logs when configured
 ```
 
 ## Non-negotiables
@@ -83,8 +80,9 @@ Runtime state lives under `~/.claude-code-247/`:
 
 ## Cost modes / auth modes
 
-Default: `auth_mode: local_claude_code` — use the user's locally
-authenticated Claude Code CLI / subscription session.
+Default: `auth_mode: local_claude_code` for planning and
+`auth_mode: local_codex` for coding — use the user's locally authenticated
+subscription CLI sessions.
 
 Fallback: `auth_mode: anthropic_api_fallback` — paid API. Only used when
 the config or operator explicitly allows it.
@@ -99,7 +97,7 @@ unknown`.
 ## Hold-on-blocker protocol
 
 When a single task can't make progress: write a `HOLD-<n>` entry in the
-state DB and `~/.claude-code-247/logs/holds.md`, notify (ntfy), and
+state DB and `~/.aedev/logs/holds.md`, notify (ntfy), and
 continue with the next task. Halt the whole loop only for critical
 blockers: repo unreadable, git unusable, no write permission, claude CLI
 dead, missing secrets with no scaffold path, docker daemon down with no
@@ -115,11 +113,11 @@ claude247 tasks             active + recent task list
 claude247 logs tail         live logs
 ```
 
-Files (do not edit directly — use CLI):
+Files (do not edit directly unless a phase explicitly requires it):
 ```
-~/.claude-code-247/state/claude247.db
-~/.claude-code-247/logs/*.jsonl
-~/.claude-code-247/workspaces/<task_id>/.evidence/
+~/.aedev/state.db
+~/.aedev/state/**
+~/.aedev/logs/**
 ```
 
 ## Working with the legacy system

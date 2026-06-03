@@ -12,6 +12,11 @@ export default defineConfig({
     // while still failing fast on real hangs.
     testTimeout: 30_000,
     hookTimeout: 30_000,
+    setupFiles: ['./vitest.setup.ts'],
+    env: {
+      NODE_ENV: 'test',
+      VITEST: '1',
+    },
   },
   // React component tests (apps/dashboard/**/*.test.tsx, jsdom per-file) rely on
   // the automatic JSX runtime so they don't need an explicit `import React`.

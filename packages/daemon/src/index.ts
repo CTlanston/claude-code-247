@@ -80,6 +80,11 @@ export {
   inspectDefaultMissionValidatorSecrets,
 } from './validator-factory.js'
 export {
+  PAID_API_ENV_KEYS,
+  buildPlannerCoderEnv,
+  paidApiKeysPresent,
+} from './no-paid-api-guard.js'
+export {
   ClarificationGate,
   scoreAmbiguity,
   renderClarifiedSpec,

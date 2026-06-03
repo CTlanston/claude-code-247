@@ -171,6 +171,9 @@ importers:
       '@aedev/github':
         specifier: workspace:*
         version: link:../github
+      '@aedev/memory':
+        specifier: workspace:*
+        version: link:../memory
       '@aedev/preview':
         specifier: workspace:*
         version: link:../preview
@@ -213,6 +216,16 @@ importers:
       '@aedev/event-log':
         specifier: workspace:*
         version: link:../event-log
+
+  packages/memory:
+    dependencies:
+      '@aedev/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
 
   packages/moves:
     dependencies:

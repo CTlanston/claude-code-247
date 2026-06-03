@@ -1,0 +1,10 @@
+{
+  "changedPaths": [
+    "README.md",
+    "cockpit-smoke-note.md"
+  ],
+  "forbiddenHits": [],
+  "repoPath": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-real-smoke-repo-P0Vavd",
+  "worktreePath": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-real-smoke-state-nssfsz/operator-workspaces/01KT70E7ZHR8MACYPPA7S8WP3S/repo",
+  "baseSha": "e7a44cf2ad61d7f00f566b78e4e87e22075d2fd3"
+}

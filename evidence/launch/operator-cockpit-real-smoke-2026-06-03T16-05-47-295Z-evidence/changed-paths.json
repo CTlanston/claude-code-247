@@ -1,0 +1,10 @@
+{
+  "changedPaths": [
+    "README.md",
+    "evidence-note.md"
+  ],
+  "forbiddenHits": [],
+  "repoPath": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-real-smoke-repo-iCetGa",
+  "worktreePath": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-real-smoke-state-xbc3Id/operator-workspaces/01KT73SVGYRY1BKHNJ8YCRB673/repo",
+  "baseSha": "d64ad48d8fefbdb560459e8efb86c9fd90e00de0"
+}

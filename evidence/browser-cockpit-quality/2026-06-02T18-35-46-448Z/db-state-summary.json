@@ -1,0 +1,51 @@
+{
+  "mission": {
+    "id": "01KT4SXPEXQ8Y5XM60AN9RG9CJ",
+    "status": "paused",
+    "githubPrUrl": null
+  },
+  "operatorView": {
+    "stage": "pr_blocked",
+    "stageLabel": "PR blocked by policy · PR 被安全门拦截",
+    "progressPercent": 95,
+    "primaryAction": {
+      "id": "check-draft-pr-gate",
+      "label": "Re-check Draft PR Gate · 重新检查 PR 安全门",
+      "kind": "primary"
+    },
+    "secondaryActions": [],
+    "providerSummary": {
+      "planner": {
+        "name": "test-synthetic",
+        "mode": "mock",
+        "status": "Planner finished",
+        "tokens": null
+      },
+      "worker": {
+        "name": "mock",
+        "mode": "mock",
+        "status": "done",
+        "tokens": null
+      },
+      "validators": [
+        {
+          "name": "validators",
+          "mode": "not_configured",
+          "status": "not_configured"
+        }
+      ]
+    },
+    "safetySummary": {
+      "remoteWrites": "disabled",
+      "prGate": {
+        "status": "blocked",
+        "code": "REMOTE_WRITES_DISABLED",
+        "reason": "allow_remote_writes=false blocks branch push and draft PR creation",
+        "remediation": "Remote writes are disabled for safety. Enable repo-scoped allow_remote_writes only when you want the worker to push a branch and open a Draft PR; until then no push, PR, or merge occurs."
+      }
+    },
+    "summary": "Worker done, evidence ready, and the Draft PR gate was blocked by policy. No branch push, PR, or merge occurred.",
+    "nextAction": "Continue reviewing evidence, or explicitly enable repo-scoped remote writes before re-checking the gate.",
+    "testMode": true
+  }
+}

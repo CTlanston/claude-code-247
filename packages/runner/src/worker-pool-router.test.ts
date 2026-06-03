@@ -14,17 +14,17 @@ describe('WorkerPoolRouter', () => {
     expect(decision.sessionId).toBe('codex-1')
   })
 
-  it('routes dual-validator hard-gate coder work to Claude', () => {
+  it('keeps dual-validator hard-gate coder work on Codex', () => {
     const decision = new WorkerPoolRouter(sessions).decide({
       role: 'coder',
       queueDepth: 5,
       requiresIndependentValidators: true,
     })
-    expect(decision.provider).toBe('claude-cli')
-    expect(decision.sessionId).toBe('claude-1')
+    expect(decision.provider).toBe('codex-cli')
+    expect(decision.sessionId).toBe('codex-1')
   })
 
-  it('prefers claude-docker for dual-validator hard-gate coder work when available', () => {
+  it('does not prefer Claude Docker for coder work when Codex is available', () => {
     const decision = new WorkerPoolRouter([
       { id: 'docker-claude-1', provider: 'claude-docker', family: 'anthropic', healthy: true, active: 0 },
       ...sessions,
@@ -34,13 +34,13 @@ describe('WorkerPoolRouter', () => {
       requiresIndependentValidators: true,
     })
 
-    expect(decision.provider).toBe('claude-docker')
-    expect(decision.sessionId).toBe('docker-claude-1')
+    expect(decision.provider).toBe('codex-cli')
+    expect(decision.sessionId).toBe('codex-1')
   })
 
-  it('holds dual-validator hard-gate coder work when Claude is unavailable', () => {
+  it('holds coder work when Codex is unavailable even if Claude is healthy', () => {
     const decision = new WorkerPoolRouter([
-      { id: 'codex-1', provider: 'codex-cli', family: 'openai', healthy: true, active: 0 },
+      { id: 'claude-1', provider: 'claude-cli', family: 'anthropic', healthy: true, active: 0 },
       { id: 'gemini-1', provider: 'gemini-api', family: 'google', healthy: true, active: 0 },
     ]).decide({ role: 'coder', requiresIndependentValidators: true })
 

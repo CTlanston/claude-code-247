@@ -1,0 +1,115 @@
+[
+  {
+    "type": "operator.draft_pr_blocked",
+    "payload": {
+      "code": "REMOTE_WRITES_DISABLED",
+      "reason": "allow_remote_writes=false blocks branch push and draft PR creation"
+    },
+    "createdAt": "2026-06-02T19:51:30.051Z"
+  },
+  {
+    "type": "mission.run_completed",
+    "payload": {
+      "taskId": "01KT4Y86EB1SV2NRNAM5XBYMQ0",
+      "runId": "01KT4Y86EC7XRDHB6XQ0ZQ77QM",
+      "exitCode": 0,
+      "status": "waiting",
+      "decision": "WAITING",
+      "riskScore": 0,
+      "validatorCount": 0,
+      "releaseDeployUrl": null,
+      "releaseReverted": false,
+      "draftPrUrl": null,
+      "draftPrNumber": null
+    },
+    "createdAt": "2026-06-02T19:51:27.951Z"
+  },
+  {
+    "type": "operator.evidence_written",
+    "payload": {
+      "sessionId": "01KT4Y83WD45ZRHMHMDM4T7NMH",
+      "evidenceDir": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-UimAOT/evidence/01KT4Y86989N7YB060NNDN3PVR"
+    },
+    "createdAt": "2026-06-02T19:51:27.951Z"
+  },
+  {
+    "type": "operator.stage_changed",
+    "payload": {
+      "stage": "PR/Waiting/Blocked",
+      "sessionId": "01KT4Y83WD45ZRHMHMDM4T7NMH",
+      "status": "waiting"
+    },
+    "createdAt": "2026-06-02T19:51:27.951Z"
+  },
+  {
+    "type": "operator.worker_log",
+    "payload": {
+      "taskId": "01KT4Y86EB1SV2NRNAM5XBYMQ0",
+      "runId": "01KT4Y86EC7XRDHB6XQ0ZQ77QM",
+      "stream": "stdout",
+      "chunk": "mock worker completed evidence gate"
+    },
+    "createdAt": "2026-06-02T19:51:27.949Z"
+  },
+  {
+    "type": "mission.route_selected",
+    "payload": {
+      "role": "coder",
+      "provider": "mock",
+      "sessionId": null,
+      "concurrency": 1,
+      "holdCode": null,
+      "reason": "worker router not configured"
+    },
+    "createdAt": "2026-06-02T19:51:27.948Z"
+  },
+  {
+    "type": "operator.worker_started",
+    "payload": {
+      "taskId": "01KT4Y86EB1SV2NRNAM5XBYMQ0",
+      "runId": "01KT4Y86EC7XRDHB6XQ0ZQ77QM",
+      "provider": "mock",
+      "evidenceDir": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-UimAOT/operator-evidence/01KT4Y86EB1SV2NRNAM5XBYMQ0"
+    },
+    "createdAt": "2026-06-02T19:51:27.948Z"
+  },
+  {
+    "type": "mission.run_started",
+    "payload": {
+      "evidenceDir": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-UimAOT/evidence/01KT4Y86989N7YB060NNDN3PVR"
+    },
+    "createdAt": "2026-06-02T19:51:27.944Z"
+  },
+  {
+    "type": "operator.validators_not_configured",
+    "payload": {
+      "status": "not_configured",
+      "note": "Gemini/OpenAI validator keys are not configured; merge remains WAITING/BLOCKED."
+    },
+    "createdAt": "2026-06-02T19:51:27.943Z"
+  },
+  {
+    "type": "operator.worker_assigned",
+    "payload": {
+      "sessionId": "01KT4Y83WD45ZRHMHMDM4T7NMH",
+      "mode": "mock",
+      "availableSessions": 0
+    },
+    "createdAt": "2026-06-02T19:51:27.943Z"
+  },
+  {
+    "type": "operator.run_starting",
+    "payload": {
+      "sessionId": "01KT4Y83WD45ZRHMHMDM4T7NMH"
+    },
+    "createdAt": "2026-06-02T19:51:27.942Z"
+  },
+  {
+    "type": "operator.stage_changed",
+    "payload": {
+      "stage": "Worker",
+      "sessionId": "01KT4Y83WD45ZRHMHMDM4T7NMH"
+    },
+    "createdAt": "2026-06-02T19:51:27.942Z"
+  }
+]

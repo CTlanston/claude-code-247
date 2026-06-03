@@ -14,7 +14,15 @@ function MessageFooter({ meta }: { meta: ApiOperatorMessageMeta }) {
       : 'tokens pending',
   )
   if (typeof meta.costUsd === 'number') bits.push(`$${meta.costUsd}`)
-  return <div className="ck-msg-footer">Provider · {bits.join(' · ')}</div>
+  return (
+    <div className="ck-msg-footer" data-testid="cockpit-message-footer">
+      <span>Status: complete · 已完成</span>
+      <span>Changed: conversation updated · 对话已更新</span>
+      <span>Next: use the visible action dock · 使用当前主按钮</span>
+      <span>Provider: {bits.join(' · ')}</span>
+      <span>Safety: no remote write from chat turns · 对话消息不会写远程</span>
+    </div>
+  )
 }
 
 export function ChatThread({ messages, busy, canChoose, onChoice, onAnswer, footer }: {

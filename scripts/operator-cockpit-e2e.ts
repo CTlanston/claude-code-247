@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { spawn, type ChildProcess } from 'child_process'
-import { chromium } from 'playwright'
+import { chromium, type Page } from 'playwright'
 import { AedevDb } from '@aedev/core'
 import { createServer } from '@aedev/daemon'
 
@@ -56,17 +56,19 @@ try {
   browser = await chromium.launch()
   const page = await browser.newPage()
   await page.goto(`http://127.0.0.1:${DASHBOARD_PORT}`, { waitUntil: 'domcontentloaded' })
-  await page.getByRole('button', { name: /Start Brainstorm/ }).first().click()
+  await page.getByTestId('cockpit-start-brainstorm').click()
   await page.getByText('Initial brainstorm:', { exact: false }).waitFor({ timeout: 10_000 })
-  await page.getByRole('button', { name: /Generate PRD/ }).first().click()
-  await page.getByText('Approval Gate').waitFor({ timeout: 10_000 })
-  await page.locator('text=pending').first().waitFor({ timeout: 10_000 })
-  await page.getByRole('button', { name: /Approve/ }).first().click()
-  await page.locator('text=approved').first().waitFor({ timeout: 10_000 })
-  await page.getByRole('button', { name: /Start/ }).first().click()
-  await page.getByText('mock worker', { exact: false }).waitFor({ timeout: 10_000 })
-  await page.getByRole('button', { name: /Draft PR/ }).first().click()
-  await page.getByText('REMOTE_WRITES_DISABLED', { exact: false }).first().waitFor({ timeout: 10_000 })
+  await page.getByRole('button', { name: 'A specific test/command must pass ★' }).click()
+  await page.getByRole('button', { name: 'Answer all & continue · 全部确认并继续' }).click()
+  await page.getByTestId('cockpit-generate-plan-primary').click()
+  await page.getByTestId('mission-stage').waitFor({ timeout: 10_000 })
+  await page.getByTestId('cockpit-approve-roadmap').click()
+  await page.getByTestId('cockpit-start-execution').click()
+  await waitForRootStage(page, ['validators_missing', 'evidence_ready', 'pr_ready'])
+  await page.getByTestId('cockpit-check-draft-pr-gate').click()
+  await page.getByTestId('cockpit-pr-gate-card').waitFor({ timeout: 10_000 })
+  const code = await page.getByTestId('cockpit-pr-gate-card').getAttribute('data-pr-gate-code')
+  if (code !== 'REMOTE_WRITES_DISABLED') throw new Error(`Expected REMOTE_WRITES_DISABLED, got ${code}`)
   await browser.close()
   browser = undefined
 
@@ -74,8 +76,8 @@ try {
   if (!mission) throw new Error('No mission was created')
   if (mission.githubPrUrl) throw new Error(`Unexpected PR URL was created: ${mission.githubPrUrl}`)
   const overviewRes = await fetch(`http://127.0.0.1:${DAEMON_PORT}/missions/${mission.id}/overview`)
-  const overview = await overviewRes.json() as { stage: string; runs: unknown[]; artifacts: unknown[]; validatorStatus?: string }
-  if (overview.stage !== 'PR/Waiting/Blocked') throw new Error(`Expected evidence gate stage, got ${overview.stage}`)
+  const overview = await overviewRes.json() as { stage: string; operatorView?: { stage: string }; runs: unknown[]; artifacts: unknown[]; validatorStatus?: string }
+  if (overview.operatorView?.stage !== 'pr_blocked') throw new Error(`Expected pr_blocked operator stage, got ${overview.operatorView?.stage ?? overview.stage}`)
   if (overview.runs.length !== 1) throw new Error(`Expected 1 mock run, got ${overview.runs.length}`)
   if (overview.artifacts.length === 0) throw new Error('Expected artifacts to be registered')
   console.log('Operator Cockpit deterministic e2e PASS')
@@ -102,4 +104,14 @@ async function waitFor(url: string, timeoutMs = 30_000): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 250))
   }
   throw new Error(`Timed out waiting for ${url}`)
+}
+
+async function waitForRootStage(page: Page, stages: string[], timeoutMs = 10_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const stage = await page.getByTestId('cockpit-root').getAttribute('data-stage')
+    if (stage && stages.includes(stage)) return
+    await page.waitForTimeout(200)
+  }
+  throw new Error(`Timed out waiting for root stage in ${stages.join(', ')}`)
 }

@@ -56,12 +56,17 @@ async function stopPort(port: number, kind: 'daemon' | 'dashboard'): Promise<voi
 function start(name: string, command: string, args: string[]): ChildProcess {
   const nodeBin = dirname(process.execPath)
   const path = [nodeBin, process.env['PATH']].filter(Boolean).join(delimiter)
+  const geminiApiKey =
+    process.env['AEDEV_GEMINI_API_KEY'] ??
+    process.env['GEMINI_API_KEY'] ??
+    process.env['GOOGLE_API_KEY']
   const child = spawn(command, args, {
     cwd: ROOT,
     env: {
       ...process.env,
       PATH: path,
-      AEDEV_COCKPIT_PLANNER_PROVIDER: process.env['AEDEV_COCKPIT_PLANNER_PROVIDER'] ?? 'codex',
+      ...(geminiApiKey ? { AEDEV_GEMINI_API_KEY: geminiApiKey } : {}),
+      AEDEV_COCKPIT_PLANNER_PROVIDER: process.env['AEDEV_COCKPIT_PLANNER_PROVIDER'] ?? 'claude',
       AEDEV_COCKPIT_AI_TIMEOUT_MS: process.env['AEDEV_COCKPIT_AI_TIMEOUT_MS'] ?? '300000',
       AEDEV_COCKPIT_WORKER_TIMEOUT_MS: process.env['AEDEV_COCKPIT_WORKER_TIMEOUT_MS'] ?? '600000',
     },

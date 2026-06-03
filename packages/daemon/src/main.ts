@@ -29,7 +29,7 @@ async function main() {
   // daemon. The dashboard (Vite) hot-reloads the UI separately and needs no restart.
   console.log('[cockpit-config] ' + JSON.stringify({
     db: join(AEDEV_HOME, 'state.db'),
-    plannerProvider: process.env['AEDEV_COCKPIT_PLANNER_PROVIDER'] ?? 'auto',
+    plannerProvider: process.env['AEDEV_COCKPIT_PLANNER_PROVIDER'] ?? 'claude',
     plannerTimeoutMs: Number(process.env['AEDEV_COCKPIT_AI_TIMEOUT_MS'] ?? '300000'),
     workerTimeoutMs: Number(process.env['AEDEV_COCKPIT_WORKER_TIMEOUT_MS'] ?? '600000'),
     stallMs: Number(process.env['AEDEV_COCKPIT_STALL_MS'] ?? '90000'),

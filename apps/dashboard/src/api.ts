@@ -31,7 +31,9 @@ export interface ApiOperatorQuestionOption {
   label: string; labelEn?: string; value?: string; recommended?: boolean
 }
 export interface ApiOperatorQuestion {
-  id: string; field: string; question: string; options: ApiOperatorQuestionOption[]; answer?: string
+  id: string; field: string; question: string
+  why?: string; impact?: string; destination?: string
+  options: ApiOperatorQuestionOption[]; answer?: string
 }
 export interface ApiOperatorMessageMeta {
   provider?: string; authMode?: string; agentMode?: 'single' | 'multi'
@@ -63,10 +65,92 @@ export interface ApiValidatorResult {
 export interface ApiRun {
   id: string; taskId: string; runnerMode: string; status: string; evidenceDir?: string; exitCode?: number
 }
+export type ApiOperatorMissionStage =
+  | 'intake'
+  | 'new'
+  | 'understanding'
+  | 'understanding_ready'
+  | 'brainstorming'
+  | 'clarifying'
+  | 'roadmap_ready'
+  | 'pending_approval'
+  | 'approved'
+  | 'running'
+  | 'evidence_ready'
+  | 'validating'
+  | 'validators_ready'
+  | 'validators_missing'
+  | 'pr_blocked'
+  | 'pr_ready'
+  | 'pr_created'
+  | 'learned'
+  | 'failed'
+  | 'cancelled'
+export interface ApiProviderMode {
+  name: string
+  mode: 'subscription-local' | 'validator-api-only' | 'paid-api-fallback' | 'mock' | 'not_configured' | 'unknown'
+  status?: string
+  tokens?: number | null
+  costUsd?: number | null
+}
+export interface ApiOperatorActionView {
+  id: 'start-brainstorm' | 'generate-plan' | 'approve-roadmap' | 'start-execution' | 'check-draft-pr-gate' | 'resume' | 'pause' | 'start-over'
+  label: string
+  kind: 'primary' | 'secondary'
+  disabled?: boolean
+}
+export interface ApiOperatorMissionView {
+  stage: ApiOperatorMissionStage
+  stageLabel: string
+  confidence: number
+  progressPercent: number
+  primaryAction?: ApiOperatorActionView
+  secondaryActions: ApiOperatorActionView[]
+  providerSummary: {
+    planner?: ApiProviderMode
+    worker?: ApiProviderMode
+    validators: ApiProviderMode[]
+  }
+  safetySummary: {
+    remoteWrites: 'enabled' | 'disabled'
+    prGate?: { status: 'blocked' | 'ready' | 'created'; code?: string; reason?: string; remediation?: string }
+    testMode?: { enabled: boolean; reason: string }
+  }
+  understanding: {
+    roundsCompleted: number
+    questions: ApiOperatorQuestion[]
+    readyReason?: string
+  }
+  projectPulse: {
+    progress: Array<{ id: string; label: string; status: 'done' | 'active' | 'pending' | 'blocked'; detail?: string }>
+    workingFolder?: string
+    touchedFiles: string[]
+    evidence: Array<{ id: string; title: string; path: string; type: string }>
+    validatorReviews: Array<{
+      id: string
+      validator: string
+      verdict: string
+      summary: string
+      checkedEvidence: string[]
+      blockingIssues: string[]
+      evidenceGaps: string[]
+      recommendedNextAction: string
+    }>
+  }
+  memorySummary: {
+    projectFacts: Array<{ id: string; kind: string; text: string; provenance: string; ttlDays: number; superseded: boolean }>
+    userPreferences: Array<{ id: string; kind: string; text: string; provenance: string; ttlDays: number; superseded: boolean }>
+    recentLessons: Array<{ id: string; kind: string; text: string; provenance: string; ttlDays: number; superseded: boolean }>
+  }
+  summary: string
+  nextAction: string
+  testMode: boolean
+}
 export interface ApiMissionOverview {
   mission: ApiMission
   stage: string
   stages: Array<{ stage: string; status: string }>
+  operatorView?: ApiOperatorMissionView
   tasks: ApiTask[]
   runs: ApiRun[]
   validators: ApiValidatorResult[]

@@ -78,7 +78,7 @@ export function registerApprovalRoutes(app: FastifyInstance, db: AedevDb, stateD
         return reply.code(400).send({ error: (e as Error).message })
       }
       const updated = db.listApprovals().find((a) => a.id === req.params.id)
-      const overview = approval.entityType === 'mission' ? buildMissionOverview(db, approval.entityId) : null
+      const overview = approval.entityType === 'mission' ? buildMissionOverview(db, approval.entityId, stateDir) : null
       return { status: 'ok', decision, approval: updated, approvals: buildApprovalsView(db), overview }
     },
   )

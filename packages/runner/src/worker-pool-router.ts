@@ -32,11 +32,11 @@ export interface RouteDecision {
 }
 
 const ROLE_PREFERENCES: Record<AgentRole, ProviderId[]> = {
-  planner: ['claude-cli', 'gemini-api', 'codex-cli'],
+  planner: ['claude-cli'],
   architect: ['claude-cli', 'codex-cli'],
-  coder: ['codex-cli', 'claude-cli'],
+  coder: ['codex-cli'],
   reviewer: ['gemini-api', 'openai-api', 'codex-cli'],
-  validator: ['openai-api', 'codex-cli', 'gemini-api'],
+  validator: ['gemini-api', 'codex-cli', 'openai-api'],
   'doc-writer': ['codex-cli', 'claude-cli'],
   repair: ['claude-cli', 'codex-cli'],
 }
@@ -51,10 +51,7 @@ export class WorkerPoolRouter {
       return { provider: null, concurrency, holdCode: 'HOLD-SESSION-POOL', reason: 'no healthy local or API sessions' }
     }
 
-    const preferences =
-      req.role === 'coder' && req.requiresIndependentValidators
-        ? ['claude-docker' as const, 'claude-cli' as const]
-        : ROLE_PREFERENCES[req.role]
+    const preferences = ROLE_PREFERENCES[req.role]
     for (const provider of preferences) {
       const session = healthy
         .filter((s) => s.provider === provider)

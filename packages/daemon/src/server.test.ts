@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import type { AddressInfo } from 'net'
-import { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { AedevDb } from '@aedev/core'
@@ -12,10 +12,14 @@ let stateDir: string
 beforeEach(() => {
   db = new AedevDb(':memory:')
   stateDir = mkdtempSync(join(tmpdir(), 'aedev-server-test-'))
+  process.env['AEDEV_COCKPIT_FORCE_TEMPLATE'] = '1'
+  process.env['AEDEV_COCKPIT_FORCE_MOCK'] = '1'
 })
 afterEach(() => {
   db.close()
   rmSync(stateDir, { recursive: true, force: true })
+  delete process.env['AEDEV_COCKPIT_FORCE_TEMPLATE']
+  delete process.env['AEDEV_COCKPIT_FORCE_MOCK']
 })
 
 describe('createServer', () => {
@@ -204,10 +208,12 @@ describe('createServer', () => {
   })
 
   it('holds mission runs when runtime worker discovery finds no available sessions', async () => {
+    const oldForceMock = process.env['AEDEV_COCKPIT_FORCE_MOCK']
     const oldDisableClaude = process.env['AEDEV_DISABLE_CLAUDE_CLI']
     const oldDisableCodex = process.env['AEDEV_DISABLE_CODEX_CLI']
     const oldDisableGemini = process.env['AEDEV_DISABLE_GEMINI_API']
     const oldDisableOpenai = process.env['AEDEV_DISABLE_OPENAI_API']
+    delete process.env['AEDEV_COCKPIT_FORCE_MOCK']
     process.env['AEDEV_DISABLE_CLAUDE_CLI'] = '1'
     process.env['AEDEV_DISABLE_CODEX_CLI'] = '1'
     process.env['AEDEV_DISABLE_GEMINI_API'] = '1'
@@ -236,6 +242,7 @@ describe('createServer', () => {
       expect(res.json<{ status: string; mergeDecision: string }>().status).toBe('waiting')
       expect(db.getMission(mission.id)?.status).toBe('paused')
     } finally {
+      restoreEnv('AEDEV_COCKPIT_FORCE_MOCK', oldForceMock)
       restoreEnv('AEDEV_DISABLE_CLAUDE_CLI', oldDisableClaude)
       restoreEnv('AEDEV_DISABLE_CODEX_CLI', oldDisableCodex)
       restoreEnv('AEDEV_DISABLE_GEMINI_API', oldDisableGemini)
@@ -293,10 +300,31 @@ describe('createServer', () => {
 
       const overview = await app.inject({ method: 'GET', url: `/missions/${missionId}/overview` })
       expect(overview.statusCode).toBe(200)
-      const body = overview.json<{ stage: string; progress: number; validatorStatus: string; cost: { costUsd: number | null; inputTokens: number | null }; approvals: unknown[]; artifacts: Array<{ preview?: string | null }>; events: Array<{ type: string }> }>()
+      const body = overview.json<{
+        stage: string
+        progress: number
+        validatorStatus: string
+        cost: { costUsd: number | null; inputTokens: number | null }
+        approvals: unknown[]
+        artifacts: Array<{ preview?: string | null }>
+        events: Array<{ type: string }>
+        operatorView: {
+          stage: string
+          confidence: number
+          projectPulse: { progress: unknown[]; validatorReviews: Array<{ verdict: string; evidenceGaps: string[] }> }
+          memorySummary: { projectFacts: Array<{ provenance: string; ttlDays: number; superseded: boolean }>; userPreferences: unknown[] }
+        }
+      }>()
       expect(body.stage).toBe('PR/Waiting/Blocked')
       expect(body.progress).toBeGreaterThan(0)
       expect(body.validatorStatus).toBe('not_configured')
+      expect(body.operatorView.stage).toBe('validators_missing')
+      expect(body.operatorView.confidence).toBeGreaterThan(0)
+      expect(body.operatorView.projectPulse.progress.length).toBeGreaterThanOrEqual(5)
+      expect(body.operatorView.projectPulse.validatorReviews[0]?.verdict).toBe('not_configured')
+      expect(body.operatorView.projectPulse.validatorReviews[0]?.evidenceGaps.length).toBeGreaterThan(0)
+      expect(body.operatorView.memorySummary.projectFacts[0]).toMatchObject({ provenance: expect.any(String), ttlDays: expect.any(Number), superseded: false })
+      expect(body.operatorView.memorySummary.userPreferences.length).toBeGreaterThan(0)
       expect(body.cost.costUsd).toBeNull()
       expect(body.cost.inputTokens).toBeNull()
       expect(body.approvals.length).toBe(1)
@@ -314,7 +342,7 @@ describe('createServer', () => {
       const blockedPr = await app.inject({ method: 'POST', url: `/operator/sessions/${sessionId}/create-pr` })
       expect(blockedPr.statusCode).toBe(200)
       expect(blockedPr.json<{ status: string; code: string }>().status).toBe('blocked')
-      expect(blockedPr.json<{ code: string }>().code).toBe('REMOTE_WRITES_DISABLED')
+      expect(blockedPr.json<{ code: string }>().code).toBe('GEMINI_NOT_CONFIGURED')
 
       const paused = await app.inject({ method: 'POST', url: `/operator/sessions/${sessionId}/pause` })
       expect(paused.statusCode).toBe(200)
@@ -325,6 +353,102 @@ describe('createServer', () => {
       expect(resumed.json<{ overview: { mission: { status: string } } }>().overview.mission.status).toBe('approved')
     } finally {
       restoreEnv('AEDEV_ALLOW_REMOTE_WRITES', oldAllow)
+    }
+  })
+
+  it('Project Pulse reads touched files from the real changed-paths evidence artifact', async () => {
+    const repo = db.insertRepo({
+      name: 'pulse-repo',
+      path: stateDir,
+      defaultBranch: 'main',
+      enabled: true,
+      testCommands: [],
+      forbiddenPaths: ['.env*'],
+      riskRules: {},
+      mergePolicy: 'WAITING',
+    })
+    const mission = db.insertMission({ repoId: repo.id, title: 'Pulse', description: 'd', status: 'done' })
+    const evidenceDir = join(stateDir, 'pulse-evidence')
+    mkdirSync(evidenceDir, { recursive: true })
+    const changedPath = join(evidenceDir, 'changed-paths.json')
+    writeFileSync(changedPath, JSON.stringify({ changedPaths: ['README.md', 'src/app.ts'] }, null, 2))
+    db.upsertMissionArtifact({ missionId: mission.id, type: 'report', path: changedPath, title: 'Changed paths' })
+    const app = createServer(db, new Date(), stateDir)
+
+    const overview = await app.inject({ method: 'GET', url: `/missions/${mission.id}/overview` })
+    expect(overview.statusCode).toBe(200)
+    const body = overview.json<{ operatorView: { projectPulse: { touchedFiles: string[] } } }>()
+    expect(body.operatorView.projectPulse.touchedFiles).toEqual(['README.md', 'src/app.ts'])
+  })
+
+  it('OperatorMissionView remoteWrites uses the route stateDir config, matching the PR gate', async () => {
+    const oldAllow = process.env['AEDEV_ALLOW_REMOTE_WRITES']
+    delete process.env['AEDEV_ALLOW_REMOTE_WRITES']
+    try {
+      writeFileSync(join(stateDir, 'config.yaml'), 'allow_remote_writes: true\n')
+      const repo = db.insertRepo({
+        name: 'gate-repo',
+        path: stateDir,
+        defaultBranch: 'main',
+        enabled: true,
+        testCommands: [],
+        forbiddenPaths: [],
+        riskRules: {},
+        mergePolicy: 'WAITING',
+      })
+      const mission = db.insertMission({ repoId: repo.id, title: 'Gate', description: 'd', status: 'done' })
+      const app = createServer(db, new Date(), stateDir)
+
+      const overview = await app.inject({ method: 'GET', url: `/missions/${mission.id}/overview` })
+      expect(overview.statusCode).toBe(200)
+      const body = overview.json<{ operatorView: { safetySummary: { remoteWrites: string } } }>()
+      expect(body.operatorView.safetySummary.remoteWrites).toBe('enabled')
+    } finally {
+      restoreEnv('AEDEV_ALLOW_REMOTE_WRITES', oldAllow)
+    }
+  })
+
+  it('mission overview shows Gemini as configured when the validator key is present', async () => {
+    const oldGemini = process.env['AEDEV_GEMINI_API_KEY']
+    const oldGeminiAlias = process.env['GEMINI_API_KEY']
+    const oldGoogleAlias = process.env['GOOGLE_API_KEY']
+    const oldOpenai = process.env['AEDEV_OPENAI_API_KEY']
+    const oldOpenaiAlias = process.env['OPENAI_API_KEY']
+    process.env['AEDEV_GEMINI_API_KEY'] = 'test-gemini-key'
+    delete process.env['GEMINI_API_KEY']
+    delete process.env['GOOGLE_API_KEY']
+    delete process.env['AEDEV_OPENAI_API_KEY']
+    delete process.env['OPENAI_API_KEY']
+    try {
+      const repo = db.insertRepo({
+        name: 'gemini-repo',
+        path: stateDir,
+        defaultBranch: 'main',
+        enabled: true,
+        testCommands: [],
+        forbiddenPaths: [],
+        riskRules: {},
+        mergePolicy: 'WAITING',
+      })
+      const mission = db.insertMission({ repoId: repo.id, title: 'Gemini', description: 'd', status: 'done' })
+      const app = createServer(db, new Date(), stateDir)
+
+      const overview = await app.inject({ method: 'GET', url: `/missions/${mission.id}/overview` })
+      expect(overview.statusCode).toBe(200)
+      const body = overview.json<{
+        validatorStatus: string
+        operatorView: { providerSummary: { validators: Array<{ name: string; mode: string; status?: string }> } }
+      }>()
+      expect(body.validatorStatus).toBe('pending')
+      expect(body.operatorView.providerSummary.validators).toEqual([
+        { name: 'gemini', mode: 'validator-api-only', status: 'pending' },
+      ])
+    } finally {
+      restoreEnv('AEDEV_GEMINI_API_KEY', oldGemini)
+      restoreEnv('GEMINI_API_KEY', oldGeminiAlias)
+      restoreEnv('GOOGLE_API_KEY', oldGoogleAlias)
+      restoreEnv('AEDEV_OPENAI_API_KEY', oldOpenai)
+      restoreEnv('OPENAI_API_KEY', oldOpenaiAlias)
     }
   })
 
@@ -340,10 +464,10 @@ describe('createServer', () => {
     // the operator's request is recorded as a user message
     expect(body.messages.some((m) => m.role === 'user' && m.content.includes('问'))).toBe(true)
     // and the planner actually replied with a follow-up assistant message containing questions + fresh choices
-    const followup = body.messages.find((m) => m.role === 'assistant' && /Operator Questions/.test(m.content) && Array.isArray(m.choices) && m.choices.length === 3)
+    const followup = body.messages.find((m) => m.role === 'assistant' && /Operator Questions/.test(m.content) && Array.isArray(m.choices) && m.choices.length === 2)
     expect(followup).toBeTruthy()
-    expect(followup?.choices?.map((c) => c.action)).toEqual(['generate-roadmap', 'ask-questions', 'add-constraints'])
-    expect(body.session.status).toBe('brainstorm_ready')
+    expect(followup?.choices?.map((c) => c.action)).toEqual(['ask-questions', 'add-constraints'])
+    expect(body.session.status).toBe('clarifying')
   })
 
   it('creates a visible roadmap HOLD when planner JSON is invalid', async () => {
@@ -370,15 +494,136 @@ describe('createServer', () => {
     }
   })
 
+  it('rejects Codex as a planner provider in P1', async () => {
+    const oldProvider = process.env['AEDEV_COCKPIT_PLANNER_PROVIDER']
+    const oldTemplate = process.env['AEDEV_COCKPIT_FORCE_TEMPLATE']
+    try {
+      const app = createServer(db, new Date(), stateDir)
+      const created = await app.inject({
+        method: 'POST',
+        url: '/operator/sessions',
+        payload: { title: 'Planner split', prompt: 'Generate the plan with the configured planner' },
+      })
+      const sessionId = created.json<{ session: { id: string } }>().session.id
+      process.env['AEDEV_COCKPIT_PLANNER_PROVIDER'] = 'codex'
+      process.env['AEDEV_COCKPIT_FORCE_TEMPLATE'] = '0'
+
+      const roadmap = await app.inject({ method: 'POST', url: `/operator/sessions/${sessionId}/generate-roadmap` })
+      expect(roadmap.statusCode).toBe(200)
+      const body = roadmap.json<{ hold: { code: string }; messages: Array<{ content: string }> }>()
+      expect(body.hold.code).toBe('HOLD-ROADMAP-PLANNER')
+      expect(body.messages.at(-1)?.content).toContain("P1 requires claude-cli")
+    } finally {
+      restoreEnv('AEDEV_COCKPIT_PLANNER_PROVIDER', oldProvider)
+      restoreEnv('AEDEV_COCKPIT_FORCE_TEMPLATE', oldTemplate)
+    }
+  })
+
+  it('P2 blocks roadmap/start until clarification confidence is >=95 and no questions are pending', async () => {
+    const oldBrainstorm = process.env['AEDEV_COCKPIT_PLANNER_BRAINSTORM_FIXTURE_TEXT']
+    const oldFollowup = process.env['AEDEV_COCKPIT_PLANNER_FOLLOWUP_FIXTURE_TEXT']
+    try {
+      process.env['AEDEV_COCKPIT_PLANNER_BRAINSTORM_FIXTURE_TEXT'] = plannerTextFixture({
+        confidence: 62,
+        rationale: 'The request is still too broad.',
+        questions: [
+          { field: 'scope', question: 'Which slice should be changed first?', options: [{ label: 'Small docs slice', recommended: true }, { label: 'Whole app' }] },
+        ],
+      })
+      const app = createServer(db, new Date(), stateDir)
+      const created = await app.inject({
+        method: 'POST',
+        url: '/operator/sessions',
+        payload: { title: 'Ambiguous P2', prompt: 'improve everything in the whole app' },
+      })
+      const sessionId = created.json<{ session: { id: string; status: string }; messages: Array<{ questions?: Array<{ id: string; options: Array<{ label: string }> }> }> }>().session.id
+      expect(created.json<{ session: { status: string } }>().session.status).toBe('clarifying')
+      const firstQuestions = created.json<{ messages: Array<{ questions?: Array<{ id: string; options: Array<{ label: string }> }> }> }>()
+        .messages.find((m) => m.questions?.length)?.questions ?? []
+
+      const earlyRoadmap = await app.inject({ method: 'POST', url: `/operator/sessions/${sessionId}/generate-roadmap` })
+      expect(earlyRoadmap.statusCode).toBe(409)
+      expect(earlyRoadmap.json<{ blocked: { code: string; confidence: number; pendingQuestionIds: string[] } }>().blocked).toMatchObject({
+        code: 'CLARIFY_GATE_BLOCKED',
+        confidence: 62,
+      })
+      expect(earlyRoadmap.json<{ blocked: { pendingQuestionIds: string[] } }>().blocked.pendingQuestionIds).toHaveLength(1)
+
+      const earlyStart = await app.inject({ method: 'POST', url: `/operator/sessions/${sessionId}/start` })
+      expect(earlyStart.statusCode).toBe(409)
+      expect(earlyStart.json<{ blocked: { code: string } }>().blocked.code).toBe('CLARIFY_GATE_BLOCKED')
+
+      const answer = await app.inject({
+        method: 'POST',
+        url: `/operator/sessions/${sessionId}/answer-questions`,
+        payload: { answers: [{ questionId: firstQuestions[0]!.id, value: firstQuestions[0]!.options[0]!.label }] },
+      })
+      expect(answer.statusCode).toBe(200)
+      expect(answer.json<{ session: { status: string } }>().session.status).toBe('clarifying')
+
+      const answeredButLow = await app.inject({ method: 'POST', url: `/operator/sessions/${sessionId}/generate-roadmap` })
+      expect(answeredButLow.statusCode).toBe(409)
+      expect(answeredButLow.json<{ blocked: { confidence: number; pendingQuestionIds: string[] } }>().blocked).toMatchObject({
+        confidence: 62,
+        pendingQuestionIds: [],
+      })
+
+      process.env['AEDEV_COCKPIT_PLANNER_FOLLOWUP_FIXTURE_TEXT'] = plannerTextFixture({
+        confidence: 96,
+        rationale: 'The operator answer narrows this enough for a roadmap.',
+        questions: [],
+      })
+      const followup = await app.inject({ method: 'POST', url: `/operator/sessions/${sessionId}/ask`, payload: { prompt: 'Re-check confidence after my answer.' } })
+      expect(followup.statusCode).toBe(200)
+      expect(followup.json<{ session: { status: string } }>().session.status).toBe('brainstorm_ready')
+
+      const roadmap = await app.inject({ method: 'POST', url: `/operator/sessions/${sessionId}/generate-roadmap` })
+      expect(roadmap.statusCode).toBe(200)
+      expect(roadmap.json<{ mission: { status: string } }>().mission.status).toBe('pending_approval')
+      expect(db.queryEvents({ type: 'clarify.round', entityId: sessionId })).toHaveLength(2)
+      expect(db.queryEvents({ type: 'clarify.unlocked', entityId: sessionId })).toHaveLength(1)
+    } finally {
+      restoreEnv('AEDEV_COCKPIT_PLANNER_BRAINSTORM_FIXTURE_TEXT', oldBrainstorm)
+      restoreEnv('AEDEV_COCKPIT_PLANNER_FOLLOWUP_FIXTURE_TEXT', oldFollowup)
+    }
+  })
+
+  it('P2 lets a clear high-confidence planner fixture generate a roadmap immediately', async () => {
+    const oldBrainstorm = process.env['AEDEV_COCKPIT_PLANNER_BRAINSTORM_FIXTURE_TEXT']
+    try {
+      process.env['AEDEV_COCKPIT_PLANNER_BRAINSTORM_FIXTURE_TEXT'] = plannerTextFixture({
+        confidence: 97,
+        rationale: 'The target and acceptance are explicit.',
+        questions: [],
+      })
+      const app = createServer(db, new Date(), stateDir)
+      const created = await app.inject({
+        method: 'POST',
+        url: '/operator/sessions',
+        payload: { title: 'Clear P2', prompt: 'Add README test docs with exact acceptance.' },
+      })
+      const sessionId = created.json<{ session: { id: string; status: string } }>().session.id
+      expect(created.json<{ session: { status: string } }>().session.status).toBe('brainstorm_ready')
+
+      const roadmap = await app.inject({ method: 'POST', url: `/operator/sessions/${sessionId}/generate-roadmap` })
+      expect(roadmap.statusCode).toBe(200)
+      expect(roadmap.json<{ mission: { status: string } }>().mission.status).toBe('pending_approval')
+    } finally {
+      restoreEnv('AEDEV_COCKPIT_PLANNER_BRAINSTORM_FIXTURE_TEXT', oldBrainstorm)
+    }
+  })
+
   it('turns a present but broken local CLI into a visible cockpit HOLD instead of a failed run', async () => {
     const stub = join(stateDir, 'broken-codex')
     writeFileSync(stub, '#!/bin/sh\necho "auth expired" >&2\nexit 2\n')
     chmodSync(stub, 0o755)
+    const oldForceMock = process.env['AEDEV_COCKPIT_FORCE_MOCK']
     const oldForceReal = process.env['AEDEV_COCKPIT_FORCE_REAL']
     const oldCodex = process.env['AEDEV_CODEX_BIN']
     const oldDisableClaude = process.env['AEDEV_DISABLE_CLAUDE_CLI']
     const oldDisableGemini = process.env['AEDEV_DISABLE_GEMINI_API']
     const oldDisableOpenai = process.env['AEDEV_DISABLE_OPENAI_API']
+    delete process.env['AEDEV_COCKPIT_FORCE_MOCK']
     process.env['AEDEV_COCKPIT_FORCE_REAL'] = '1'
     process.env['AEDEV_CODEX_BIN'] = stub
     process.env['AEDEV_DISABLE_CLAUDE_CLI'] = '1'
@@ -399,6 +644,7 @@ describe('createServer', () => {
       expect(body.overview.runs).toHaveLength(0)
       expect(db.getMission(missionId)?.status).toBe('paused')
     } finally {
+      restoreEnv('AEDEV_COCKPIT_FORCE_MOCK', oldForceMock)
       restoreEnv('AEDEV_COCKPIT_FORCE_REAL', oldForceReal)
       restoreEnv('AEDEV_CODEX_BIN', oldCodex)
       restoreEnv('AEDEV_DISABLE_CLAUDE_CLI', oldDisableClaude)
@@ -427,6 +673,36 @@ describe('createServer', () => {
       expect(pr.json<{ code: string }>().code).toBe('REMOTE_WRITES_DISABLED')
       expect(JSON.stringify(pr.json())).not.toContain('example.invalid')
       expect(executorCalls).toBe(0)
+    } finally {
+      restoreEnv('AEDEV_ALLOW_REMOTE_WRITES', oldAllow)
+    }
+  })
+
+  it('P4 blocks create-pr when Gemini does not PASS and writes the verdict into the conversation', async () => {
+    const oldAllow = process.env['AEDEV_ALLOW_REMOTE_WRITES']
+    process.env['AEDEV_ALLOW_REMOTE_WRITES'] = '1'
+    let executorCalls = 0
+    try {
+      const app = createServer(db, new Date(), stateDir, {
+        draftPrExecutor: {
+          async openDraftPr() {
+            executorCalls += 1
+            return { number: 44, url: 'https://github.com/owner/repo/pull/44', state: 'open', draft: true }
+          },
+        },
+      })
+      const { sessionId, missionId } = await prepareCockpitMission(app, { geminiVerdict: 'fail', geminiSummary: 'Missing regression test for the changed behavior.' })
+      const pr = await app.inject({ method: 'POST', url: `/operator/sessions/${sessionId}/create-pr` })
+      expect(pr.statusCode).toBe(200)
+      const body = pr.json<{ status: string; code: string; reason: string; overview: { operatorView?: { safetySummary?: { prGate?: { code?: string } } } } }>()
+      expect(body.status).toBe('blocked')
+      expect(body.code).toBe('GEMINI_NOT_PASS')
+      expect(body.reason).toContain('Missing regression test')
+      expect(body.overview.operatorView?.safetySummary?.prGate?.code).toBe('GEMINI_NOT_PASS')
+      expect(executorCalls).toBe(0)
+      expect(db.getMission(missionId)?.githubPrUrl).toBeNull()
+      expect(db.listOperatorMessages(sessionId).at(-1)?.content).toContain('Gemini hard gate blocked Draft PR')
+      expect(db.queryEvents({ type: 'operator.gemini_pr_blocked', entityId: missionId })).toHaveLength(1)
     } finally {
       restoreEnv('AEDEV_ALLOW_REMOTE_WRITES', oldAllow)
     }
@@ -493,7 +769,24 @@ function restoreEnv(key: string, value: string | undefined): void {
   else process.env[key] = value
 }
 
-async function prepareCockpitMission(app: ReturnType<typeof createServer>): Promise<{ sessionId: string; missionId: string }> {
+function plannerTextFixture(payload: {
+  confidence: number
+  rationale: string
+  questions: Array<{ field: string; question: string; options: Array<{ label: string; recommended?: true }> }>
+}): string {
+  return [
+    'Planner fixture.',
+    '',
+    '```json',
+    JSON.stringify(payload),
+    '```',
+  ].join('\n')
+}
+
+async function prepareCockpitMission(
+  app: ReturnType<typeof createServer>,
+  opts: { geminiVerdict?: 'pass' | 'fail' | 'inconclusive' | null; geminiSummary?: string } = {},
+): Promise<{ sessionId: string; missionId: string }> {
   const created = await app.inject({ method: 'POST', url: '/operator/sessions', payload: { title: 'Draft PR', prompt: 'Reach draft PR gate' } })
   const sessionId = created.json<{ session: { id: string } }>().session.id
   const roadmap = await app.inject({ method: 'POST', url: `/operator/sessions/${sessionId}/generate-roadmap` })
@@ -502,5 +795,19 @@ async function prepareCockpitMission(app: ReturnType<typeof createServer>): Prom
   const started = await app.inject({ method: 'POST', url: `/operator/sessions/${sessionId}/start` })
   expect(started.statusCode).toBe(200)
   expect(started.json<{ result: { status: string } }>().result.status).toBe('waiting')
+  if (opts.geminiVerdict !== null) {
+    const task = db.listTasks(missionId)[0]
+    if (!task) throw new Error('prepareCockpitMission expected a worker task')
+    const run = db.listRuns(task.id)[0]
+    if (!run) throw new Error('prepareCockpitMission expected a worker run')
+    db.insertValidatorResult({
+      taskId: task.id,
+      runId: run.id,
+      validator: 'gemini',
+      verdict: opts.geminiVerdict ?? 'pass',
+      summary: opts.geminiSummary ?? 'Gemini PASS fixture for Draft PR gate tests.',
+      evidenceBundlePath: run.evidenceDir ? join(run.evidenceDir, 'validator-gemini.md') : undefined,
+    })
+  }
   return { sessionId, missionId }
 }

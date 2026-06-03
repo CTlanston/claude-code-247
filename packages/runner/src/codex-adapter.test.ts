@@ -51,4 +51,41 @@ describe('CodexCliAdapter', () => {
     expect(result.exitCode).toBe(124)
     expect(result.error).toMatch(/timed out/)
   })
+
+  it('strips paid API keys from the codex child process env', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'aedev-codex-env-'))
+    const fake = join(dir, 'codex')
+    writeFileSync(fake, [
+      '#!/bin/sh',
+      'cat > /dev/null',
+      'if [ -z "$OPENAI_API_KEY" ] && [ -z "$AEDEV_OPENAI_API_KEY" ] && [ -z "$ANTHROPIC_API_KEY" ]; then',
+      '  printf "%s\\n" \'{"message":"no-paid-keys","usage":{"input_tokens":0,"output_tokens":0}}\'',
+      'else',
+      '  printf "%s\\n" \'{"message":"paid-key-present","usage":{"input_tokens":0,"output_tokens":0}}\'',
+      'fi',
+    ].join('\n'))
+    chmodSync(fake, 0o755)
+
+    const originals = {
+      openai: process.env['OPENAI_API_KEY'],
+      aedevOpenai: process.env['AEDEV_OPENAI_API_KEY'],
+      anthropic: process.env['ANTHROPIC_API_KEY'],
+    }
+    process.env['OPENAI_API_KEY'] = 'openai-paid'
+    process.env['AEDEV_OPENAI_API_KEY'] = 'aedev-openai-paid'
+    process.env['ANTHROPIC_API_KEY'] = 'anthropic-paid'
+    try {
+      const result = await new CodexCliAdapter({ codexBin: fake }).run('check env', dir, { timeoutMs: 5000 })
+      expect(result.transcript).toBe('no-paid-keys')
+    } finally {
+      restoreEnv('OPENAI_API_KEY', originals.openai)
+      restoreEnv('AEDEV_OPENAI_API_KEY', originals.aedevOpenai)
+      restoreEnv('ANTHROPIC_API_KEY', originals.anthropic)
+    }
+  })
 })
+
+function restoreEnv(key: string, value: string | undefined): void {
+  if (value === undefined) delete process.env[key]
+  else process.env[key] = value
+}

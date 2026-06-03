@@ -12,8 +12,8 @@ see `docs/aedev-prototype-status.md` for the parity history.)
 | Node 20+ | yes | the daemon + scripts run on Node ≥ 20 |
 | pnpm 10+ | yes | `npm install -g pnpm` |
 | Git | yes | |
-| Claude Code CLI (`claude`) | yes for the worker path | `npm install -g @anthropic-ai/claude-code`; then log in |
-| Codex CLI (`codex`) | optional | worker fallback / planner |
+| Claude Code CLI (`claude`) | yes for planning | `npm install -g @anthropic-ai/claude-code`; then log in |
+| Codex CLI (`codex`) | yes for coding | local subscription worker path |
 | Docker Desktop | optional | only for the Docker worker sandbox (not the default path) |
 | `gh` CLI | optional | needed later for the remote-write/draft-PR path (P3) |
 | Gemini / OpenAI API keys | optional | enable the dual external validators; absent ⇒ `not_configured` (never treated as pass) |

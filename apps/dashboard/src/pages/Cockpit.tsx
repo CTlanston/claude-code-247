@@ -1,39 +1,28 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import {
   api,
   type ApiMissionOverview,
   type ApiOperatorChoice,
+  type ApiOperatorMissionView,
   type ApiOperatorMessage,
   type ApiOperatorSession,
   type ApiRepo,
 } from '../api.js'
 import { useSSE } from '../hooks/useSSE.js'
-import { Sidebar } from './cockpit/Sidebar.js'
 import { ChatThread } from './cockpit/ChatThread.js'
 import { Composer } from './cockpit/Composer.js'
-import { Observation } from './cockpit/Observation.js'
 import { ClarificationPopup } from './cockpit/ClarificationPopup.js'
-import { CommandPalette, type Command } from './cockpit/CommandPalette.js'
 import './cockpit/cockpit.css'
 
 const DEFAULT_PROMPT = 'Brainstorm a low-risk improvement, produce PRD/ADR/roadmap, then execute to the draft PR/evidence gate.'
 const SESSION_STORAGE_KEY = 'operatorCockpitSessionId'
-const PANELS_STORAGE_KEY = 'operatorCockpitPanels'
-
-function loadPanelState(): { sidebar: boolean; inspector: boolean } {
-  try {
-    const raw = localStorage.getItem(PANELS_STORAGE_KEY)
-    if (raw) return { sidebar: true, inspector: true, ...JSON.parse(raw) }
-  } catch { /* ignore */ }
-  return { sidebar: true, inspector: true }
-}
 
 function fmtElapsed(ms: number | null | undefined): string {
   if (ms == null) return '—'
   const s = Math.round(ms / 1000)
   return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`
 }
-type GuidanceAction = { label: string; onClick: () => void; disabled: boolean }
+type GuidanceAction = { label: string; onClick: () => void; disabled: boolean; testId?: string }
 type DraftPrResult = { status: string; code?: string; reason?: string; url?: string; number?: number }
 interface Guidance {
   kicker: string
@@ -41,6 +30,17 @@ interface Guidance {
   body: string
   primary?: GuidanceAction
   secondary?: GuidanceAction
+}
+
+const ACTION_TEST_IDS: Record<string, string> = {
+  'start-brainstorm': 'cockpit-start-brainstorm',
+  'generate-plan': 'cockpit-generate-plan-primary',
+  'approve-roadmap': 'cockpit-approve-roadmap',
+  'start-execution': 'cockpit-start-execution',
+  'check-draft-pr-gate': 'cockpit-check-draft-pr-gate',
+  resume: 'cockpit-resume-execution',
+  pause: 'cockpit-pause-execution',
+  'start-over': 'cockpit-start-over',
 }
 
 export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void } = {}) {
@@ -57,28 +57,13 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
-  const [sessions, setSessions] = useState<ApiOperatorSession[]>([])
   const [note, setNote] = useState('')
-  const [panels, setPanels] = useState(loadPanelState)
-  const [paletteOpen, setPaletteOpen] = useState(false)
   const [skippedClarify, setSkippedClarify] = useState<Set<string>>(() => new Set())
-  const togglePanel = (key: 'sidebar' | 'inspector') => setPanels((p) => {
-    const next = { ...p, [key]: !p[key] }
-    try { localStorage.setItem(PANELS_STORAGE_KEY, JSON.stringify(next)) } catch { /* ignore */ }
-    return next
-  })
   useEffect(() => {
     api.getRepos().then((r) => {
       setRepos(r)
       setRepoId((current) => current || r[0]?.id || 'unknown')
     }).catch((e: Error) => setErr(e.message))
-  }, [])
-
-  useEffect(() => {
-    const load = () => api.listOperatorSessions().then(setSessions).catch(() => undefined)
-    void load()
-    const timer = setInterval(load, 4_000)
-    return () => clearInterval(timer)
   }, [])
 
   // Authoritative pending-approval count from the same /approvals source the
@@ -133,17 +118,6 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
     return () => clearInterval(timer)
   }, [session?.id, session?.status])
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
-        e.preventDefault()
-        setPaletteOpen((o) => !o)
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [])
-
   const latestHold = useMemo(() => latestHoldMessage(messages), [messages])
   // The latest planner clarification that's neither answered nor skipped — drives
   // the bottom blocking popup (redesign v2, P3/#6).
@@ -177,20 +151,6 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
     } finally {
       setBusy(null)
     }
-  }
-
-  function loadSession(id: string) {
-    if (id === session?.id) return
-    setOverview(null); setDraftPrStatus(null); setErr(null); setNote('')
-    api.getOperatorSession(id).then((x) => {
-      setSession(x.session)
-      setMessages(x.messages)
-      setTitle(x.session.title)
-      setPrompt(x.session.prompt)
-      if (x.session.repoId) setRepoId(x.session.repoId)
-      localStorage.setItem(SESSION_STORAGE_KEY, x.session.id)
-      if (x.session.missionId) void api.getMissionOverview(x.session.missionId).then(setOverview)
-    }).catch((e: Error) => setErr(e.message))
   }
 
   function resetMission() {
@@ -227,6 +187,7 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
     messages,
     latestHold,
     sseConnected: sse.connected,
+    operatorView: overview?.operatorView,
     onBrainstorm: () => action('create', () => api.createOperatorSession({ repoId, title, prompt }), (x) => { setSession(x.session); setMessages(x.messages); setOverview(null); setDraftPrStatus(null) }),
     onRoadmap: () => session && action('roadmap', () => api.generateRoadmap(session.id), (x) => { setSession(x.session); setMessages(x.messages); if (x.mission) void api.getMissionOverview(x.mission.id).then(setOverview) }),
     onApprove: () => session && action('approve', () => api.approveRoadmap(session.id), (x) => { setSession(x.session); setOverview(x.overview) }),
@@ -239,67 +200,52 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
   })
 
   const hasSession = Boolean(session)
-  const canGenerate = Boolean(session) && !session?.missionId
   const pendingCount = Math.max(pendingApprovals, sse.pendingApprovals)
-  const selectedRepoName = repos.find((r) => r.id === repoId)?.name ?? (repoId || '—')
-  const selectedRepo = repos.find((r) => r.id === repoId) ?? null
-
-  const commands: Command[] = []
-  commands.push({ id: 'new', title: 'New mission · 新任务', hint: 'reset', run: resetMission })
-  commands.push({ id: 'toggle-sidebar', title: panels.sidebar ? 'Collapse history sidebar' : 'Expand history sidebar', hint: 'layout', run: () => togglePanel('sidebar') })
-  commands.push({ id: 'toggle-inspector', title: panels.inspector ? 'Hide inspector' : 'Show inspector', hint: 'layout', run: () => togglePanel('inspector') })
-  const missionStatusForCmd = overview?.mission.status
-  if (session?.missionId && missionStatusForCmd !== 'approved') {
-    commands.push({ id: 'approve', title: 'Approve roadmap · 批准', hint: 'action', run: () => action('approve', () => api.approveRoadmap(session.id), (x) => { setSession(x.session); setOverview(x.overview) }) })
-  }
-  if (session?.missionId && missionStatusForCmd === 'approved') {
-    commands.push({ id: 'start', title: 'Start execution · 启动', hint: 'action', run: () => action('start', () => api.startOperatorSession(session.id), (x) => { setSession(x.session); setOverview(x.overview) }) })
-  }
-  if (session?.missionId) {
-    commands.push({ id: 'pause', title: 'Pause mission · 暂停', hint: 'action', run: () => action('pause', () => api.pauseOperatorSession(session.id), (x) => { setSession(x.session); setOverview(x.overview) }) })
-    commands.push({ id: 'resume', title: 'Resume mission · 恢复', hint: 'action', run: () => action('resume', () => api.resumeOperatorSession(session.id), (x) => { setSession(x.session); setOverview(x.overview) }) })
-    commands.push({ id: 'draft-pr', title: 'Draft PR · 创建草稿', hint: 'action', run: () => action('draft-pr', () => api.createDraftPr(session.id), (x) => { setOverview(x.overview); setDraftPrStatus({ status: x.status, code: x.code, reason: x.reason, url: x.pr?.url, number: x.pr?.number }) }) })
-  }
-  commands.push({ id: 'open-approvals', title: 'Open approvals page · 审批', hint: 'navigate', run: () => onNavigate?.('approvals') })
+  const operatorView = overview?.operatorView
+  const plannerProvider = operatorView?.providerSummary.planner
+  const workerProvider = operatorView?.providerSummary.worker
+  const stageForDom = operatorView?.stage ?? (session?.status === 'brainstorming' ? 'brainstorming' : session?.missionId ? 'roadmap_ready' : 'new')
+  const progressPercent = operatorView?.progressPercent ?? Math.round((overview?.progress ?? 0) * 100)
+  const nowRunning = busy ? actionName(busy) : operatorView?.nextAction ?? guidance.title
 
   return (
-    <div className="cockpit">
-      <header className="ck-topstrip">
-        <span className="ck-brand"><span className={`dot${sse.connected ? '' : ' off'}`} />aedev · cockpit</span>
-        <span className="ck-stat"><span className="k">provider</span><span className="v">{overview?.cliProvider ?? '—'}</span></span>
-        <span className="ck-stat"><span className="k">runs</span><span className="v">{overview?.cost.runCount ?? 0}</span></span>
-        <span className="ck-stat"><span className="k">tokens</span><span className="v">{overview?.cost.totalTokens ?? '—'}</span></span>
-        <span className="ck-stat"><span className="k">cost</span><span className="v">{overview?.cost.costUsd ?? 'unknown'}</span></span>
+    <div
+      className="cockpit"
+      data-testid="cockpit-root"
+      data-stage={stageForDom}
+      data-provider-planner={plannerProvider?.mode ?? plannerProvider?.name ?? 'unknown'}
+      data-provider-worker={workerProvider?.mode ?? workerProvider?.name ?? 'unknown'}
+      data-pr-gate-code={operatorView?.safetySummary.prGate?.code ?? ''}
+    >
+      <header className="ck-topstrip" data-testid="cockpit-status-strip">
+        <span className="ck-stat ck-stage" data-testid="mission-stage" data-stage={stageForDom}>
+          <span className={`dot${sse.connected ? '' : ' off'}`} />
+          <span className="k">Stage</span>
+          <span className="v">{operatorView?.stageLabel ?? guidance.kicker}</span>
+        </span>
+        <span className="ck-stat ck-now" data-testid="cockpit-now-running">
+          <span className="k">Now</span>
+          <span className="v">{nowRunning}</span>
+        </span>
+        <span className="ck-stat ck-progress" data-testid="cockpit-progress">
+          <span className="k">Progress</span>
+          <span className="v">{progressPercent}%</span>
+          <span className="ck-progress-dot" style={{ '--p': `${Math.max(0, Math.min(100, progressPercent))}%` } as CSSProperties} />
+        </span>
         <span className="ck-strip-spacer" />
-        <span className="ck-stat"><span className="k">repo</span><span className="v">{selectedRepoName}</span></span>
+        <span className="ck-stat provider-shadow" data-testid="provider-planner" aria-label="planner provider">{plannerProvider ? `${plannerProvider.name} · ${plannerProvider.mode}` : '—'}</span>
+        <span className="ck-stat provider-shadow" data-testid="provider-worker" aria-label="worker provider">{workerProvider ? `${workerProvider.name} · ${workerProvider.mode}` : '—'}</span>
         <button className="ck-stat approvals" onClick={() => onNavigate?.('approvals')} title="Open approvals · 打开审批">
           <span className="k">approvals</span><span className="v">{pendingCount}</span>
         </button>
-        <button className="ck-kbd" title="Command palette (⌘K)" onClick={() => setPaletteOpen(true)}>⌘K</button>
       </header>
 
-      <div className={`cockpit-shell${panels.sidebar ? '' : ' rail'}${panels.inspector ? '' : ' no-inspector'}`}>
-        <Sidebar
-          sessions={sessions}
-          repos={repos}
-          activeId={session?.id ?? null}
-          collapsed={!panels.sidebar}
-          onSelect={loadSession}
-          onNew={resetMission}
-          onToggle={() => togglePanel('sidebar')}
-        />
-
+      <div className="cockpit-shell conversation-only">
         <div className="ck-main">
           <div className="ck-topbar">
-            <button className={`ck-toggle${panels.sidebar ? ' on' : ''}`} onClick={() => togglePanel('sidebar')} title="Toggle history · 历史">☰</button>
             <div className="ck-coach">
-              <div className="ck-coach-kicker">{guidance.kicker}</div>
               <div className="ck-coach-title">{guidance.title}</div>
               <div className="ck-coach-body">{guidance.body}</div>
-            </div>
-            <div className="ck-toggles">
-              <button className={`ck-toggle${panels.inspector ? ' on' : ''}`} onClick={() => togglePanel('inspector')} title="Toggle inspector · 检查器">Inspector</button>
-              <button className="ck-toggle" onClick={() => setPaletteOpen(true)} title="Command palette (⌘K)">⌘K</button>
             </div>
           </div>
 
@@ -313,32 +259,38 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
           )}
           {!err && !(overview?.activeHolds?.length) && latestHold && session?.status === 'hold' && <div className="ck-banner error">Active HOLD · {latestHold}</div>}
           {(guidance.primary || guidance.secondary) && (
-            <div className="ck-composer-actions" style={{ marginBottom: 8 }}>
-              {guidance.primary && <button className="ck-btn primary" disabled={guidance.primary.disabled || Boolean(busy)} onClick={guidance.primary.onClick}>{guidance.primary.label}</button>}
-              {guidance.secondary && <button className="ck-btn" disabled={guidance.secondary.disabled || Boolean(busy)} onClick={guidance.secondary.onClick}>{guidance.secondary.label}</button>}
+            <div className="ck-composer-actions" data-testid="cockpit-primary-actions" style={{ marginBottom: 8 }}>
+              {guidance.primary && <button data-testid={guidance.primary.testId} className="ck-btn primary" disabled={guidance.primary.disabled || Boolean(busy)} onClick={guidance.primary.onClick}>{guidance.primary.label}</button>}
+              {guidance.secondary && <button data-testid={guidance.secondary.testId} className="ck-btn" disabled={guidance.secondary.disabled || Boolean(busy)} onClick={guidance.secondary.onClick}>{guidance.secondary.label}</button>}
             </div>
           )}
           {draftPrStatus && (draftPrStatus.status === 'created' && draftPrStatus.url ? (
-            <div className="ck-pr-outcome created">
+            <div className="ck-pr-outcome created" data-testid="cockpit-pr-gate-card" data-pr-gate-status="created">
               <strong>✓ Draft PR created · 草稿 PR 已创建</strong>
               <a href={draftPrStatus.url} target="_blank" rel="noreferrer">{draftPrStatus.url}</a>
             </div>
           ) : (
-            <div className="ck-pr-outcome blocked">
+            <div className="ck-pr-outcome blocked" data-testid="cockpit-pr-gate-card" data-pr-gate-status="blocked" data-pr-gate-code={draftPrStatus.code ?? ''}>
               <strong>Draft PR blocked · 被安全门拦截{draftPrStatus.code ? ` · ${draftPrStatus.code}` : ''}</strong>
               {draftPrStatus.reason && <span>{draftPrStatus.reason}</span>}
               <span className="ck-pr-remedy">{draftPrRemediation(draftPrStatus.code)}</span>
+              <span className="ck-pr-remedy">Safety check: no branch push, no PR creation, no merge · 安全确认：没有 push、没有创建 PR、没有合并。</span>
             </div>
           ))}
+          {operatorView?.testMode && (
+            <div className="ck-banner testmode" data-testid="cockpit-test-mode">
+              Test mode: mock planner/worker, no external model, no remote writes · 测试模式：mock planner/worker，不调用外部模型，不写远程。
+            </div>
+          )}
           {notice && <div className="ck-banner notice">{notice}</div>}
 
           <ChatThread
             messages={messages}
             busy={busy}
-            canChoose={canGenerate}
+            canChoose={false}
             onChoice={handleChoice}
             onAnswer={(answers) => session && action('answer', () => api.answerQuestions(session.id, answers), (x) => { setSession(x.session); setMessages(x.messages) })}
-            footer={<ProcessBlock overview={overview} busy={busy} />}
+            footer={<><IndependentReviewBlock overview={overview} /><ProcessBlock overview={overview} busy={busy} /></>}
           />
 
           {pendingClarify && pendingClarify.questions && pendingClarify.questions.length > 0 && (
@@ -363,25 +315,21 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
             onBrainstorm={() => action('create', () => api.createOperatorSession({ repoId, title, prompt }), (x) => { setSession(x.session); setMessages(x.messages); setOverview(null); setDraftPrStatus(null) })}
             onAddNote={() => session && note.trim() && action('message', () => api.addOperatorMessage(session.id, note), (x) => { setMessages(x.messages); setNote('') })}
             onAsk={() => session && action('ask', () => api.askQuestions(session.id), (x) => { setSession(x.session); setMessages(x.messages) })}
-            onGenerate={() => session && action('roadmap', () => api.generateRoadmap(session.id), (x) => { setSession(x.session); setMessages(x.messages); if (x.mission) void api.getMissionOverview(x.mission.id).then(setOverview) })}
-            canGenerate={canGenerate}
           />
         </div>
-
-        {panels.inspector && (
-          <div className="ck-inspector">
-            <Observation overview={overview} repo={selectedRepo} session={session} />
-          </div>
-        )}
       </div>
-
-      <CommandPalette open={paletteOpen} commands={commands} onClose={() => setPaletteOpen(false)} />
     </div>
   )
 }
 
 /** Honest, actionable remediation for a blocked Draft PR (redesign v2, P4 / #4). */
 function draftPrRemediation(code?: string): string {
+  if (code === 'GEMINI_NOT_CONFIGURED') {
+    return 'Gemini hard gate 尚未运行 · Configure/run Gemini validation first; missing validation is never counted as pass.'
+  }
+  if (code === 'GEMINI_NOT_PASS') {
+    return 'Gemini hard gate 没有通过 · Fix the verdict, rerun the worker/validator, then check Draft PR again.'
+  }
   if (code === 'DRAFT_PR_EXECUTOR_UNAVAILABLE') {
     return '没有配置 remote-write executor · No remote-write executor configured. Real Draft PRs need the worker-side executor + an authed GitHub token (P5).'
   }
@@ -438,11 +386,11 @@ function actionStartMessage(label: string): string {
 function actionDoneMessage(label: string): string {
   return ({
     create: '已创建对话。AI 正在后台 brainstorm；你可以继续补充约束。',
-    ask: 'AI 正在准备需要你确认的问题，稍后自动出现在左侧对话。',
-    roadmap: 'PRD/ADR/Roadmap 已生成。请预览方案，然后批准或补充说明。',
+    ask: 'AI 正在准备需要你确认的问题，稍后自动出现在对话里。',
+    roadmap: 'Plan 已生成：PRD/ADR/Roadmap 已写入。请预览方案，然后批准或补充说明。',
     approve: '路线图已批准。下一步可以启动执行。',
-    start: '执行已启动。右侧会显示 agent、run、log 和 evidence。',
-    'draft-pr': 'Draft PR gate 已检查。默认 remote writes 关闭，所以 blocked 是安全预期。',
+    start: '执行已启动。进度、验证和 PR 安全门会持续回到这条对话里。',
+    'draft-pr': 'Draft PR gate 已检查。remote writes 关闭时，blocked 是安全预期；不会 push、创建 PR 或合并。',
   } as Record<string, string>)[label] ?? '操作完成。'
 }
 
@@ -453,6 +401,7 @@ export function buildGuidance(opts: {
   messages: ApiOperatorMessage[]
   latestHold: string | null
   sseConnected: boolean
+  operatorView?: ApiOperatorMissionView
   onBrainstorm: () => void
   onRoadmap: () => void
   onApprove: () => void
@@ -499,7 +448,7 @@ export function buildGuidance(opts: {
     return {
       kicker: 'Brainstorm · 共创中',
       title: 'Planner is thinking · Planner 正在分析',
-      body: '你会先看到占位消息；真实 brainstorm 完成后会自动出现在左侧对话里。',
+      body: '你会先看到占位消息；真实 brainstorm 完成后会自动出现在对话里。',
     }
   }
   if (!opts.session.missionId) {
@@ -507,7 +456,36 @@ export function buildGuidance(opts: {
       kicker: 'Decision · 做选择',
       title: 'Review the questions, then generate the plan · 先确认问题，再生成方案',
       body: '如果方向 OK，生成 PRD/ADR/Roadmap；如果不 OK，继续补充约束。',
-      primary: { label: 'Generate PRD · 生成方案', onClick: opts.onRoadmap, disabled: false },
+      primary: { label: 'Generate Plan · 生成方案', onClick: opts.onRoadmap, disabled: false, testId: ACTION_TEST_IDS['generate-plan'] },
+    }
+  }
+  if (opts.operatorView?.primaryAction) {
+    const action = opts.operatorView.primaryAction
+    const click = ({
+      'generate-plan': opts.onRoadmap,
+      'approve-roadmap': opts.onApprove,
+      'start-execution': opts.onStart,
+      'check-draft-pr-gate': opts.onDraftPr,
+      resume: opts.onResume,
+      pause: opts.onPause,
+      'start-over': opts.onReset,
+      'start-brainstorm': opts.onBrainstorm,
+    } as Record<string, () => void>)[action.id]
+    return {
+      kicker: opts.operatorView.stageLabel,
+      title: opts.operatorView.summary,
+      body: `Next · 下一步: ${opts.operatorView.nextAction}`,
+      primary: click ? { label: action.label, onClick: click, disabled: Boolean(action.disabled), testId: ACTION_TEST_IDS[action.id] } : undefined,
+      secondary: opts.operatorView.secondaryActions[0] ? {
+        label: opts.operatorView.secondaryActions[0].label,
+        onClick: ({
+          pause: opts.onPause,
+          resume: opts.onResume,
+          'start-over': opts.onStop,
+        } as Record<string, () => void>)[opts.operatorView.secondaryActions[0].id] ?? opts.onReset,
+        disabled: Boolean(opts.operatorView.secondaryActions[0].disabled),
+        testId: ACTION_TEST_IDS[opts.operatorView.secondaryActions[0].id],
+      } : undefined,
     }
   }
   // Drive the decision off the always-present session.status (roadmap_ready after
@@ -519,15 +497,15 @@ export function buildGuidance(opts: {
       kicker: 'Approval · 批准关口',
       title: 'Roadmap is waiting for you · 路线图等待确认',
       body: '预览 PRD/ADR/Roadmap 后，批准才会允许 worker 执行。批准本身不启动执行。',
-      primary: { label: 'Approve · 批准路线', onClick: opts.onApprove, disabled: false },
+      primary: { label: 'Approve Roadmap · 批准路线', onClick: opts.onApprove, disabled: false, testId: ACTION_TEST_IDS['approve-roadmap'] },
     }
   }
   if (opts.session.status === 'approved' || opts.overview?.mission.status === 'approved') {
     return {
       kicker: 'Ready · 可以执行',
       title: 'Agents are ready to run · Agents 已待命',
-      body: '点击启动后会分配 coder worker，右侧显示 run、日志、tokens、evidence 和 validators。',
-      primary: { label: 'Start Execution · 启动执行', onClick: opts.onStart, disabled: false },
+      body: '点击启动后会分配 coder worker，进度、证据和 validator 判词都会以内联卡片出现。',
+      primary: { label: 'Start Execution · 启动执行', onClick: opts.onStart, disabled: false, testId: ACTION_TEST_IDS['start-execution'] },
     }
   }
   const missionStatus = opts.overview?.mission.status
@@ -536,9 +514,9 @@ export function buildGuidance(opts: {
     return {
       kicker: 'Running · 执行中',
       title: 'Worker is running · Worker 正在执行',
-      body: 'coder worker 正在运行。模型“思考”时可能一段时间没有新日志，这是正常的，不代表卡住；右侧 Observability 的 run、日志、tokens 会自动刷新。需要的话可以暂停。',
-      primary: { label: 'Pause · 暂停', onClick: opts.onPause, disabled: false },
-      secondary: { label: 'Stop · 停止', onClick: opts.onStop, disabled: false },
+      body: 'coder worker 正在运行。模型“思考”时可能一段时间没有新日志，这是正常的，不代表卡住；这条对话会持续刷新进度。',
+      primary: { label: 'Pause · 暂停', onClick: opts.onPause, disabled: false, testId: ACTION_TEST_IDS.pause },
+      secondary: { label: 'Stop · 停止', onClick: opts.onStop, disabled: false, testId: ACTION_TEST_IDS['start-over'] },
     }
   }
   if (missionStatus === 'cancelled') {
@@ -546,7 +524,7 @@ export function buildGuidance(opts: {
       kicker: 'Cancelled · 已取消',
       title: 'Cancelled — background worker result ignored · 已取消',
       body: '已请求停止：mission 已标记 cancelled。正在运行的 worker 即使完成，其结果也会被丢弃，不会覆盖此状态。注意：当前层无法强杀子进程，detached worker 可能在后台继续运行到超时为止（hard-kill 属于 engine follow-up）。',
-      primary: { label: 'Start Over · 重新开始', onClick: opts.onReset, disabled: false },
+      primary: { label: 'Start Over · 重新开始', onClick: opts.onReset, disabled: false, testId: ACTION_TEST_IDS['start-over'] },
     }
   }
   if (missionStatus === 'failed') {
@@ -555,10 +533,10 @@ export function buildGuidance(opts: {
       kicker: 'Failed · 执行失败',
       title: timedOut ? 'Worker timed out · Worker 超时' : 'Worker failed · Worker 执行失败',
       body: timedOut
-        ? '本次 worker 超出时间预算被中止（exit 124）。任务越大越容易超时——可以把目标拆小后重试，或调大 AEDEV_COCKPIT_WORKER_TIMEOUT_MS。右侧 Observability 有运行日志和已产出的证据。'
-        : `本次 worker 失败${latestRun?.exitCode != null ? `（exit ${latestRun.exitCode}）` : ''}。右侧 Observability 的运行日志和证据可用于判断原因，修复后可重新开始。`,
-      primary: { label: 'Start Over · 重新开始', onClick: opts.onReset, disabled: false },
-      secondary: { label: 'Draft PR · 创建草稿', onClick: opts.onDraftPr, disabled: false },
+        ? '本次 worker 超出时间预算被中止（exit 124）。任务越大越容易超时，可以把目标拆小后重试，或调大 AEDEV_COCKPIT_WORKER_TIMEOUT_MS。'
+        : `本次 worker 失败${latestRun?.exitCode != null ? `（exit ${latestRun.exitCode}）` : ''}。对话里的过程和证据可用于判断原因，修复后可重新开始。`,
+      primary: { label: 'Start Over · 重新开始', onClick: opts.onReset, disabled: false, testId: ACTION_TEST_IDS['start-over'] },
+      secondary: { label: 'Check Draft PR Gate · 检查 PR 安全门', onClick: opts.onDraftPr, disabled: false, testId: ACTION_TEST_IDS['check-draft-pr-gate'] },
     }
   }
   // Reaching the evidence gate leaves the mission db-status 'paused' (enum limit)
@@ -569,8 +547,8 @@ export function buildGuidance(opts: {
       kicker: 'Paused · 已暂停',
       title: 'Mission paused · 执行已暂停',
       body: '可以恢复执行，或基于当前证据创建草稿 PR（remote writes 关闭时会被安全拦截，这是预期行为）。',
-      primary: { label: 'Resume · 恢复执行', onClick: opts.onResume, disabled: false },
-      secondary: { label: 'Draft PR · 创建草稿', onClick: opts.onDraftPr, disabled: false },
+      primary: { label: 'Resume · 恢复执行', onClick: opts.onResume, disabled: false, testId: ACTION_TEST_IDS.resume },
+      secondary: { label: 'Check Draft PR Gate · 检查 PR 安全门', onClick: opts.onDraftPr, disabled: false, testId: ACTION_TEST_IDS['check-draft-pr-gate'] },
     }
   }
   if (missionStatus === 'done' || missionStatus === 'waiting' || atEvidenceGate) {
@@ -579,16 +557,41 @@ export function buildGuidance(opts: {
       kicker: 'Done · 执行完成',
       title: 'Reached the evidence gate · 已到达证据闸',
       body: validatorsOff
-        ? '执行完成，证据已写入（右侧 Observability）。Validator 未配置（缺少 Gemini/OpenAI key）所以未运行；可直接创建草稿 PR。'
-        : '执行完成，validator 结果和证据见右侧 Observability；确认无误后可创建草稿 PR。',
-      primary: { label: 'Draft PR · 创建草稿', onClick: opts.onDraftPr, disabled: false },
+        ? '执行完成，证据已写入。Gemini 未配置所以未运行；可以检查 Draft PR gate，当前 remote writes 关闭时会被安全门阻断。'
+        : '执行完成，validator 结果和证据已回到对话里；确认无误后可以检查 Draft PR gate。',
+      primary: { label: 'Check Draft PR Gate · 检查 PR 安全门', onClick: opts.onDraftPr, disabled: false, testId: ACTION_TEST_IDS['check-draft-pr-gate'] },
     }
   }
   return {
     kicker: 'Monitor · 监控',
     title: 'Watch the mission move · 查看执行进展',
-    body: '右侧是运行状态，中央是方案与审批，左侧可以继续补充上下文。',
+    body: '继续在这条对话里观察进度、补充约束或推进下一步。',
   }
+}
+
+function IndependentReviewBlock({ overview }: { overview: ApiMissionOverview | null }) {
+  const reviews = overview?.operatorView?.projectPulse.validatorReviews ?? []
+  if (!reviews.length || !overview?.runs.length) return null
+  return (
+    <div className="ck-review-block" data-testid="cockpit-independent-review">
+      <div className="ck-review-head">
+        <strong>Independent Review · 独立验证</strong>
+        <span>evidence-only</span>
+      </div>
+      {reviews.map((r) => (
+        <div key={r.id} className={`ck-review ${r.verdict}`}>
+          <div className="ck-review-verdict"><strong>{r.validator}</strong><span>{r.verdict}</span></div>
+          <p>{r.summary}</p>
+          <dl>
+            <div><dt>Checked</dt><dd>{r.checkedEvidence.length ? r.checkedEvidence.join(', ') : 'No evidence files recorded yet'}</dd></div>
+            <div><dt>Blocking</dt><dd>{r.blockingIssues.length ? r.blockingIssues.join('; ') : 'None reported'}</dd></div>
+            <div><dt>Gaps</dt><dd>{r.evidenceGaps.length ? r.evidenceGaps.join('; ') : 'None reported'}</dd></div>
+            <div><dt>Next</dt><dd>{r.recommendedNextAction}</dd></div>
+          </dl>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 /** Codex-style collapsed "Worked for…" process block (redesign §4). */
@@ -666,4 +669,3 @@ function eventDetail(type: string, p: Record<string, unknown>): string {
     default: return ''
   }
 }
-

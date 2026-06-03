@@ -1,0 +1,117 @@
+[
+  {
+    "type": "operator.draft_pr_blocked",
+    "payload": {
+      "code": "GEMINI_NOT_CONFIGURED",
+      "reason": "Gemini hard gate has no evidence-only PASS verdict for this mission.",
+      "validator": "gemini"
+    },
+    "createdAt": "2026-06-03T17:05:45.371Z"
+  },
+  {
+    "type": "operator.gemini_pr_blocked",
+    "payload": {
+      "code": "GEMINI_NOT_CONFIGURED",
+      "reason": "Gemini hard gate has no evidence-only PASS verdict for this mission.",
+      "verdict": "not_configured",
+      "summary": null
+    },
+    "createdAt": "2026-06-03T17:05:45.371Z"
+  },
+  {
+    "type": "mission.run_completed",
+    "payload": {
+      "taskId": "01KT775DTGWWDDNTCX0BSTTSBM",
+      "runId": "01KT775DTGWWDDNTCX0BSTTSBP",
+      "exitCode": 0,
+      "status": "waiting",
+      "decision": "WAITING",
+      "riskScore": 0,
+      "validatorCount": 0,
+      "releaseDeployUrl": null,
+      "releaseReverted": false,
+      "draftPrUrl": null,
+      "draftPrNumber": null
+    },
+    "createdAt": "2026-06-03T17:05:43.254Z"
+  },
+  {
+    "type": "operator.evidence_written",
+    "payload": {
+      "sessionId": "01KT775BAMG853B8SPXM67PT7D",
+      "evidenceDir": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-JXyInF/evidence/01KT775DN6PYFQMEYSA8GZ05NM"
+    },
+    "createdAt": "2026-06-03T17:05:43.254Z"
+  },
+  {
+    "type": "operator.stage_changed",
+    "payload": {
+      "stage": "PR/Waiting/Blocked",
+      "sessionId": "01KT775BAMG853B8SPXM67PT7D",
+      "status": "waiting"
+    },
+    "createdAt": "2026-06-03T17:05:43.254Z"
+  },
+  {
+    "type": "mission.route_selected",
+    "payload": {
+      "role": "coder",
+      "provider": "mock",
+      "sessionId": null,
+      "concurrency": 1,
+      "holdCode": null,
+      "reason": "worker router not configured"
+    },
+    "createdAt": "2026-06-03T17:05:43.248Z"
+  },
+  {
+    "type": "operator.worker_started",
+    "payload": {
+      "taskId": "01KT775DTGWWDDNTCX0BSTTSBM",
+      "runId": "01KT775DTGWWDDNTCX0BSTTSBP",
+      "provider": "mock",
+      "evidenceDir": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-JXyInF/operator-evidence/01KT775DTGWWDDNTCX0BSTTSBM"
+    },
+    "createdAt": "2026-06-03T17:05:43.248Z"
+  },
+  {
+    "type": "operator.worker_log",
+    "payload": {
+      "taskId": "01KT775DTGWWDDNTCX0BSTTSBM",
+      "runId": "01KT775DTGWWDDNTCX0BSTTSBP",
+      "stream": "stdout",
+      "chunk": "mock worker completed evidence gate"
+    },
+    "createdAt": "2026-06-03T17:05:43.248Z"
+  },
+  {
+    "type": "mission.run_started",
+    "payload": {
+      "evidenceDir": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-JXyInF/evidence/01KT775DN6PYFQMEYSA8GZ05NM"
+    },
+    "createdAt": "2026-06-03T17:05:43.245Z"
+  },
+  {
+    "type": "operator.run_starting",
+    "payload": {
+      "sessionId": "01KT775BAMG853B8SPXM67PT7D"
+    },
+    "createdAt": "2026-06-03T17:05:43.244Z"
+  },
+  {
+    "type": "operator.stage_changed",
+    "payload": {
+      "stage": "Worker",
+      "sessionId": "01KT775BAMG853B8SPXM67PT7D"
+    },
+    "createdAt": "2026-06-03T17:05:43.244Z"
+  },
+  {
+    "type": "operator.validators_not_configured",
+    "payload": {
+      "status": "not_configured",
+      "note": "Gemini validator key is not configured; Draft PR remains blocked until Gemini returns PASS."
+    },
+    "createdAt": "2026-06-03T17:05:43.244Z"
+  }
+]

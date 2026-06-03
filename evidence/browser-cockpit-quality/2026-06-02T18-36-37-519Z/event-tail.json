@@ -1,0 +1,115 @@
+[
+  {
+    "type": "operator.draft_pr_blocked",
+    "payload": {
+      "code": "REMOTE_WRITES_DISABLED",
+      "reason": "allow_remote_writes=false blocks branch push and draft PR creation"
+    },
+    "createdAt": "2026-06-02T18:36:42.956Z"
+  },
+  {
+    "type": "operator.evidence_written",
+    "payload": {
+      "sessionId": "01KT4SZ5YQPAXCV03520ST0GEA",
+      "evidenceDir": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-4X5Fwr/evidence/01KT4SZ8B8P24JYXBYK19X9P4Y"
+    },
+    "createdAt": "2026-06-02T18:36:40.836Z"
+  },
+  {
+    "type": "operator.stage_changed",
+    "payload": {
+      "stage": "PR/Waiting/Blocked",
+      "sessionId": "01KT4SZ5YQPAXCV03520ST0GEA",
+      "status": "waiting"
+    },
+    "createdAt": "2026-06-02T18:36:40.836Z"
+  },
+  {
+    "type": "mission.run_completed",
+    "payload": {
+      "taskId": "01KT4SZ8FZVMN1MS9GR978VV3J",
+      "runId": "01KT4SZ8G0WJ0GZGCZMRESN9EM",
+      "exitCode": 0,
+      "status": "waiting",
+      "decision": "WAITING",
+      "riskScore": 0,
+      "validatorCount": 0,
+      "releaseDeployUrl": null,
+      "releaseReverted": false,
+      "draftPrUrl": null,
+      "draftPrNumber": null
+    },
+    "createdAt": "2026-06-02T18:36:40.835Z"
+  },
+  {
+    "type": "mission.route_selected",
+    "payload": {
+      "role": "coder",
+      "provider": "mock",
+      "sessionId": null,
+      "concurrency": 1,
+      "holdCode": null,
+      "reason": "worker router not configured"
+    },
+    "createdAt": "2026-06-02T18:36:40.832Z"
+  },
+  {
+    "type": "operator.worker_started",
+    "payload": {
+      "taskId": "01KT4SZ8FZVMN1MS9GR978VV3J",
+      "runId": "01KT4SZ8G0WJ0GZGCZMRESN9EM",
+      "provider": "mock",
+      "evidenceDir": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-4X5Fwr/operator-evidence/01KT4SZ8FZVMN1MS9GR978VV3J"
+    },
+    "createdAt": "2026-06-02T18:36:40.832Z"
+  },
+  {
+    "type": "operator.worker_log",
+    "payload": {
+      "taskId": "01KT4SZ8FZVMN1MS9GR978VV3J",
+      "runId": "01KT4SZ8G0WJ0GZGCZMRESN9EM",
+      "stream": "stdout",
+      "chunk": "mock worker completed evidence gate"
+    },
+    "createdAt": "2026-06-02T18:36:40.832Z"
+  },
+  {
+    "type": "mission.run_started",
+    "payload": {
+      "evidenceDir": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-4X5Fwr/evidence/01KT4SZ8B8P24JYXBYK19X9P4Y"
+    },
+    "createdAt": "2026-06-02T18:36:40.830Z"
+  },
+  {
+    "type": "operator.run_starting",
+    "payload": {
+      "sessionId": "01KT4SZ5YQPAXCV03520ST0GEA"
+    },
+    "createdAt": "2026-06-02T18:36:40.829Z"
+  },
+  {
+    "type": "operator.stage_changed",
+    "payload": {
+      "stage": "Worker",
+      "sessionId": "01KT4SZ5YQPAXCV03520ST0GEA"
+    },
+    "createdAt": "2026-06-02T18:36:40.829Z"
+  },
+  {
+    "type": "operator.validators_not_configured",
+    "payload": {
+      "status": "not_configured",
+      "note": "Gemini/OpenAI validator keys are not configured; merge remains WAITING/BLOCKED."
+    },
+    "createdAt": "2026-06-02T18:36:40.829Z"
+  },
+  {
+    "type": "operator.worker_assigned",
+    "payload": {
+      "sessionId": "01KT4SZ5YQPAXCV03520ST0GEA",
+      "mode": "mock",
+      "availableSessions": 0
+    },
+    "createdAt": "2026-06-02T18:36:40.829Z"
+  }
+]

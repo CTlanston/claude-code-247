@@ -179,6 +179,12 @@ export interface OperatorQuestion {
   id: string
   field: string
   question: string
+  /** Why the planner needs this answer before planning. */
+  why?: string
+  /** Which design/execution decision this answer affects. */
+  impact?: string
+  /** Where the answer will be folded into the PRD/Roadmap. */
+  destination?: string
   options: OperatorQuestionOption[]
   /** Populated once the operator answers. */
   answer?: string

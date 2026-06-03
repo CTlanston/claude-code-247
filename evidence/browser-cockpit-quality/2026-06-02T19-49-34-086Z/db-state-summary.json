@@ -1,0 +1,284 @@
+{
+  "mission": {
+    "id": "01KT4Y4TMA5EF0DAKS47EHFT57",
+    "status": "paused",
+    "githubPrUrl": null
+  },
+  "operatorView": {
+    "stage": "pr_blocked",
+    "stageLabel": "PR blocked by policy · PR 被安全门拦截",
+    "confidence": 92,
+    "progressPercent": 95,
+    "primaryAction": {
+      "id": "check-draft-pr-gate",
+      "label": "Re-check Draft PR Gate · 重新检查 PR 安全门",
+      "kind": "primary"
+    },
+    "secondaryActions": [],
+    "providerSummary": {
+      "planner": {
+        "name": "test-synthetic",
+        "mode": "mock",
+        "status": "Planner finished",
+        "tokens": null
+      },
+      "worker": {
+        "name": "mock",
+        "mode": "mock",
+        "status": "done",
+        "tokens": null
+      },
+      "validators": [
+        {
+          "name": "validators",
+          "mode": "not_configured",
+          "status": "not_configured"
+        }
+      ]
+    },
+    "safetySummary": {
+      "remoteWrites": "disabled",
+      "prGate": {
+        "status": "blocked",
+        "code": "REMOTE_WRITES_DISABLED",
+        "reason": "allow_remote_writes=false blocks branch push and draft PR creation",
+        "remediation": "Remote writes are disabled for safety. Enable repo-scoped allow_remote_writes only when you want the worker to push a branch and open a Draft PR; until then no push, PR, or merge occurs."
+      },
+      "testMode": {
+        "enabled": true,
+        "reason": "mock/template mode is active; no external model or remote write is implied."
+      }
+    },
+    "understanding": {
+      "roundsCompleted": 1,
+      "questions": [
+        {
+          "id": "clq-acceptance-criteria-KKYRC2",
+          "field": "acceptance-criteria",
+          "question": "What is the single most important, observable acceptance criterion for this mission?",
+          "why": "This resolves the acceptance criteria before any worker runs.",
+          "impact": "It changes the plan shape, acceptance checks, and what the worker is allowed to touch.",
+          "destination": "PRD acceptance criteria + validator contract",
+          "options": [
+            {
+              "label": "A specific test/command must pass",
+              "recommended": true
+            },
+            {
+              "label": "A named file/section must exist with specific content"
+            },
+            {
+              "label": "An observable behavior in the app/UI must change"
+            }
+          ]
+        },
+        {
+          "id": "clq-target-KKYRC2",
+          "field": "target",
+          "question": "Which concrete file, component, or command should this change touch?",
+          "why": "This resolves the target before any worker runs.",
+          "impact": "It changes the plan shape, acceptance checks, and what the worker is allowed to touch.",
+          "destination": "Roadmap scope + worker prompt target surface",
+          "options": [
+            {
+              "label": "A specific source file/module"
+            },
+            {
+              "label": "Docs (README/PROGRESS/docs/**)",
+              "recommended": true
+            },
+            {
+              "label": "Tests (tests/**)"
+            }
+          ]
+        }
+      ],
+      "readyReason": "Planner has structured operator answers and can draft a roadmap."
+    },
+    "projectPulse": {
+      "progress": [
+        {
+          "id": "understand",
+          "label": "Understand · 理解需求",
+          "status": "active"
+        },
+        {
+          "id": "roadmap",
+          "label": "Roadmap · 路线图",
+          "status": "pending"
+        },
+        {
+          "id": "execute",
+          "label": "Execute · 本地执行",
+          "status": "pending"
+        },
+        {
+          "id": "validate",
+          "label": "Validate · 独立验证",
+          "status": "pending",
+          "detail": "Gemini/OpenAI keys are not configured; this is visible and not counted as pass."
+        },
+        {
+          "id": "pr-gate",
+          "label": "PR Gate · PR 安全门",
+          "status": "pending"
+        },
+        {
+          "id": "learn",
+          "label": "Learn · 沉淀记忆",
+          "status": "pending"
+        }
+      ],
+      "workingFolder": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-PXkyH1/operator-evidence/01KT4Y4TSB1PQ12V92XD39MNS5",
+      "touchedFiles": [],
+      "evidence": [
+        {
+          "id": "01KT4Y4TSFE6M91PMFYJR4XY7F",
+          "title": "ADR draft",
+          "path": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-PXkyH1/evidence/01KT4Y4TMA5EF0DAKS47EHFT57/adr-mission.md",
+          "type": "adr"
+        },
+        {
+          "id": "01KT4Y4TSFE6M91PMFYJR4XY7D",
+          "title": "Evidence directory",
+          "path": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-PXkyH1/evidence/01KT4Y4TMA5EF0DAKS47EHFT57",
+          "type": "evidence"
+        },
+        {
+          "id": "01KT4Y4TSFE6M91PMFYJR4XY7E",
+          "title": "PRD",
+          "path": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-PXkyH1/evidence/01KT4Y4TMA5EF0DAKS47EHFT57/prd.md",
+          "type": "prd"
+        },
+        {
+          "id": "01KT4Y4TSFE6M91PMFYJR4XY7H",
+          "title": "Workbook summary",
+          "path": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-PXkyH1/evidence/01KT4Y4TMA5EF0DAKS47EHFT57/workbook-summary.md",
+          "type": "report"
+        },
+        {
+          "id": "01KT4Y4TSFE6M91PMFYJR4XY7J",
+          "title": "Test summary",
+          "path": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-PXkyH1/evidence/01KT4Y4TMA5EF0DAKS47EHFT57/test-summary.md",
+          "type": "report"
+        },
+        {
+          "id": "01KT4Y4TSFE6M91PMFYJR4XY7K",
+          "title": "Risk report",
+          "path": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-PXkyH1/evidence/01KT4Y4TMA5EF0DAKS47EHFT57/risk-report.md",
+          "type": "report"
+        },
+        {
+          "id": "01KT4Y4TSFE6M91PMFYJR4XY7M",
+          "title": "Worker diff",
+          "path": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-PXkyH1/evidence/01KT4Y4TMA5EF0DAKS47EHFT57/diff-summary.md",
+          "type": "report"
+        },
+        {
+          "id": "01KT4Y4TSFE6M91PMFYJR4XY7N",
+          "title": "Done report",
+          "path": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-PXkyH1/evidence/01KT4Y4TMA5EF0DAKS47EHFT57/done-report.md",
+          "type": "report"
+        },
+        {
+          "id": "01KT4Y4TSFE6M91PMFYJR4XY7G",
+          "title": "Roadmap",
+          "path": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-PXkyH1/evidence/01KT4Y4TMA5EF0DAKS47EHFT57/roadmap.md",
+          "type": "roadmap"
+        },
+        {
+          "id": "01KT4Y4TMCSY3CYQVJGZK1PMVJ",
+          "title": "ADR draft in mission design",
+          "path": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-PXkyH1/prd/01KT4Y4TMA5EF0DAKS47EHFT57.design.json",
+          "type": "adr"
+        },
+        {
+          "id": "01KT4Y4TMCSY3CYQVJGZK1PMVG",
+          "title": "PRD",
+          "path": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-PXkyH1/prd/01KT4Y4TMA5EF0DAKS47EHFT57.md",
+          "type": "prd"
+        },
+        {
+          "id": "01KT4Y4TMCSY3CYQVJGZK1PMVH",
+          "title": "Mission design JSON",
+          "path": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-PXkyH1/prd/01KT4Y4TMA5EF0DAKS47EHFT57.design.json",
+          "type": "roadmap"
+        }
+      ],
+      "validatorReviews": [
+        {
+          "id": "validators-not-configured",
+          "validator": "validators",
+          "verdict": "not_configured",
+          "summary": "Independent validation did not run because Gemini/OpenAI keys are not configured.",
+          "checkedEvidence": [
+            "ADR draft",
+            "Evidence directory",
+            "PRD",
+            "Workbook summary",
+            "Test summary",
+            "Risk report",
+            "Worker diff",
+            "Done report"
+          ],
+          "blockingIssues": [],
+          "evidenceGaps": [
+            "No Gemini/OpenAI validator verdict exists for this mission."
+          ],
+          "recommendedNextAction": "Configure validator keys for live verification, or continue reviewing evidence manually."
+        }
+      ]
+    },
+    "memorySummary": {
+      "projectFacts": [
+        {
+          "id": "repo-01KT4Y4Q9Y34P79EQFKH0Z5SAS",
+          "kind": "project",
+          "text": "Target repo is cockpit-quality at /var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-PXkyH1.",
+          "provenance": "repo registry",
+          "ttlDays": 90,
+          "superseded": false
+        },
+        {
+          "id": "repo-forbidden-01KT4Y4Q9Y34P79EQFKH0Z5SAS",
+          "kind": "safety",
+          "text": "Forbidden paths stay protected: .env*, secrets/**, .github/**, AGENTS.md",
+          "provenance": "repo policy",
+          "ttlDays": 365,
+          "superseded": false
+        }
+      ],
+      "userPreferences": [
+        {
+          "id": "pref-understand-first",
+          "kind": "user_preference",
+          "text": "Ask goal-specific questions and confirm understanding before starting worker execution.",
+          "provenance": "operator product directive",
+          "ttlDays": 365,
+          "superseded": false
+        },
+        {
+          "id": "prompt-01KT4Y4R7FJP5QA5F3EHY68HFR",
+          "kind": "mission_intent",
+          "text": "Current mission intent: Brainstorm a low-risk improvement, produce PRD/ADR/roadmap, then execute to the draft PR/evidence gate.",
+          "provenance": "operator prompt",
+          "ttlDays": 30,
+          "superseded": false
+        }
+      ],
+      "recentLessons": [
+        {
+          "id": "lesson-0",
+          "kind": "run_lesson",
+          "text": "Draft PR blocked: REMOTE_WRITES_DISABLED",
+          "provenance": "event:operator.draft_pr_blocked",
+          "ttlDays": 30,
+          "superseded": false
+        }
+      ]
+    },
+    "summary": "Worker done, evidence ready, and the Draft PR gate was blocked by policy. No branch push, PR, or merge occurred.",
+    "nextAction": "Continue reviewing evidence, or explicitly enable repo-scoped remote writes before re-checking the gate.",
+    "testMode": true
+  }
+}

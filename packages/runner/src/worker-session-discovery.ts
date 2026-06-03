@@ -1,6 +1,7 @@
 import { execFile, spawn } from 'child_process'
 import { promisify } from 'util'
 import type { ModelFamily, ProviderId, WorkerSession } from './worker-pool-router.js'
+import { buildLocalCliEnv } from './local-cli-env.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -56,16 +57,12 @@ export async function probeWorkerSession(
       command,
       args: ['exec', '--sandbox', 'read-only', '-c', 'approval_policy="never"', '--json', '--ephemeral', '--skip-git-repo-check', '-'],
       stdin: 'Reply with OK only.',
-      env,
+      env: buildLocalCliEnv(env),
       timeoutMs,
     })
   }
   if (provider === 'claude-cli') {
-    const localEnv = { ...env }
-    delete localEnv['ANTHROPIC_API_KEY']
-    delete localEnv['ANTHROPIC_BASE_URL']
-    delete localEnv['ANTHROPIC_AUTH_TOKEN']
-    delete localEnv['ANTHROPIC_API_URL']
+    const localEnv = buildLocalCliEnv(env)
     return spawnProbe({
       command,
       args: ['--print', '--output-format', 'json', '--append-system-prompt', '', '--permission-mode', 'bypassPermissions'],

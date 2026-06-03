@@ -1,0 +1,117 @@
+[
+  {
+    "type": "operator.draft_pr_blocked",
+    "payload": {
+      "code": "GEMINI_NOT_CONFIGURED",
+      "reason": "Gemini hard gate has no evidence-only PASS verdict for this mission.",
+      "validator": "gemini"
+    },
+    "createdAt": "2026-06-03T15:30:36.074Z"
+  },
+  {
+    "type": "operator.gemini_pr_blocked",
+    "payload": {
+      "code": "GEMINI_NOT_CONFIGURED",
+      "reason": "Gemini hard gate has no evidence-only PASS verdict for this mission.",
+      "verdict": "not_configured",
+      "summary": null
+    },
+    "createdAt": "2026-06-03T15:30:36.074Z"
+  },
+  {
+    "type": "mission.run_completed",
+    "payload": {
+      "taskId": "01KT71Q6APSDKM6Q6RDBMWJ12X",
+      "runId": "01KT71Q6APSDKM6Q6RDBMWJ12Z",
+      "exitCode": 0,
+      "status": "waiting",
+      "decision": "WAITING",
+      "riskScore": 0,
+      "validatorCount": 0,
+      "releaseDeployUrl": null,
+      "releaseReverted": false,
+      "draftPrUrl": null,
+      "draftPrNumber": null
+    },
+    "createdAt": "2026-06-03T15:30:33.946Z"
+  },
+  {
+    "type": "operator.evidence_written",
+    "payload": {
+      "sessionId": "01KT71Q3T9VZVRVAPN8BWYW240",
+      "evidenceDir": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-RS35z2/evidence/01KT71Q65P5S3FWNKEVHXJ0K6V"
+    },
+    "createdAt": "2026-06-03T15:30:33.946Z"
+  },
+  {
+    "type": "operator.stage_changed",
+    "payload": {
+      "stage": "PR/Waiting/Blocked",
+      "sessionId": "01KT71Q3T9VZVRVAPN8BWYW240",
+      "status": "waiting"
+    },
+    "createdAt": "2026-06-03T15:30:33.946Z"
+  },
+  {
+    "type": "mission.route_selected",
+    "payload": {
+      "role": "coder",
+      "provider": "mock",
+      "sessionId": null,
+      "concurrency": 1,
+      "holdCode": null,
+      "reason": "worker router not configured"
+    },
+    "createdAt": "2026-06-03T15:30:33.942Z"
+  },
+  {
+    "type": "operator.worker_started",
+    "payload": {
+      "taskId": "01KT71Q6APSDKM6Q6RDBMWJ12X",
+      "runId": "01KT71Q6APSDKM6Q6RDBMWJ12Z",
+      "provider": "mock",
+      "evidenceDir": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-RS35z2/operator-evidence/01KT71Q6APSDKM6Q6RDBMWJ12X"
+    },
+    "createdAt": "2026-06-03T15:30:33.942Z"
+  },
+  {
+    "type": "operator.worker_log",
+    "payload": {
+      "taskId": "01KT71Q6APSDKM6Q6RDBMWJ12X",
+      "runId": "01KT71Q6APSDKM6Q6RDBMWJ12Z",
+      "stream": "stdout",
+      "chunk": "mock worker completed evidence gate"
+    },
+    "createdAt": "2026-06-03T15:30:33.942Z"
+  },
+  {
+    "type": "mission.run_started",
+    "payload": {
+      "evidenceDir": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-RS35z2/evidence/01KT71Q65P5S3FWNKEVHXJ0K6V"
+    },
+    "createdAt": "2026-06-03T15:30:33.940Z"
+  },
+  {
+    "type": "operator.run_starting",
+    "payload": {
+      "sessionId": "01KT71Q3T9VZVRVAPN8BWYW240"
+    },
+    "createdAt": "2026-06-03T15:30:33.939Z"
+  },
+  {
+    "type": "operator.stage_changed",
+    "payload": {
+      "stage": "Worker",
+      "sessionId": "01KT71Q3T9VZVRVAPN8BWYW240"
+    },
+    "createdAt": "2026-06-03T15:30:33.939Z"
+  },
+  {
+    "type": "operator.validators_not_configured",
+    "payload": {
+      "status": "not_configured",
+      "note": "Gemini validator key is not configured; Draft PR remains blocked until Gemini returns PASS."
+    },
+    "createdAt": "2026-06-03T15:30:33.939Z"
+  }
+]

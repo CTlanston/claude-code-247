@@ -27,6 +27,29 @@ describe('parseClarifyQuestions (P3 — planner-generated clarifications)', () =
     expect(cleaned).toContain('analysis of your goal')
   })
 
+  it('parses the P2 clarification object with confidence and rationale', () => {
+    const content = [
+      'Planner view.',
+      '',
+      '```json',
+      JSON.stringify({
+        questions: [
+          { field: 'scope', question: 'How broad?', options: [{ label: 'Small', recommended: true }, { label: 'Broad' }] },
+        ],
+        confidence: 62,
+        rationale: 'The target is still broad.',
+      }),
+      '```',
+    ].join('\n')
+
+    const parsed = parseClarifyQuestions(content)
+
+    expect(parsed.questions).toHaveLength(1)
+    expect(parsed.confidence).toBe(62)
+    expect(parsed.rationale).toBe('The target is still broad.')
+    expect(parsed.cleaned).not.toContain('```json')
+  })
+
   it('returns no questions and unchanged content when there is no json block', () => {
     const content = 'Just prose, no structured questions here.'
     const { questions, cleaned } = parseClarifyQuestions(content)

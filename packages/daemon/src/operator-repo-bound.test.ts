@@ -55,6 +55,20 @@ afterEach(() => {
   for (const f of PROBE_FLAGS) { if (savedFlags[f] === undefined) delete process.env[f]; else process.env[f] = savedFlags[f] }
 })
 
+function markClarifyUnlocked(sessionId: string): void {
+  db.insertEvent('clarify.confidence', 'operator_session', sessionId, {
+    role: 'planner',
+    confidence: 96,
+    threshold: 95,
+    rationale: 'Test fixture is pre-clarified.',
+  })
+  db.insertEvent('clarify.unlocked', 'operator_session', sessionId, {
+    confidence: 96,
+    threshold: 95,
+    roundsCompleted: 0,
+  })
+}
+
 describe('operator repo-bound worker · /start preflight', () => {
   it('HOLDs (not done) when the target repo is not a git repository', async () => {
     const prev = process.env['AEDEV_COCKPIT_FORCE_REAL']
@@ -67,6 +81,7 @@ describe('operator repo-bound worker · /start preflight', () => {
       })
       const mission = db.insertMission({ repoId: repo.id, title: 'M', description: 'd', status: 'approved' })
       const session = db.insertOperatorSession({ repoId: repo.id, missionId: mission.id, title: 'M', prompt: 'p', status: 'approved' })
+      markClarifyUnlocked(session.id)
 
       const res = await app.inject({ method: 'POST', url: `/operator/sessions/${session.id}/start` })
       expect(res.statusCode).toBe(200)
@@ -96,6 +111,7 @@ describe('operator repo-bound worker · /start preflight', () => {
     })
     const mission = db.insertMission({ repoId: repo.id, title: 'M', description: 'd', status: 'approved' })
     const session = db.insertOperatorSession({ repoId: repo.id, missionId: mission.id, title: 'M', prompt: 'p', status: 'approved' })
+    markClarifyUnlocked(session.id)
 
     const res = await app.inject({ method: 'POST', url: `/operator/sessions/${session.id}/start` })
     expect(res.statusCode).toBe(200)
@@ -107,6 +123,7 @@ describe('operator repo-bound worker · /start preflight', () => {
 
 describe('operator repo-bound worker · runTask', () => {
   const fakeSession = { id: 's1', provider: 'codex-cli' as const, family: 'openai' as const, healthy: true, active: 0 }
+  const fakeClaudeSession = { id: 'claude-1', provider: 'claude-cli' as const, family: 'anthropic' as const, healthy: true, active: 0 }
 
   function fakeCodex(writes: (workdir: string) => void) {
     return async (_prompt: string, workdir: string) => {
@@ -125,7 +142,7 @@ describe('operator repo-bound worker · runTask', () => {
       const mission = db.insertMission({ repoId: repo.id, title: 'M', description: 'd', status: 'running' })
       const task = db.insertTask({ missionId: mission.id, repoId: repo.id, title: 't', prompt: 'add a line to README', status: 'pending', attemptNumber: 1 })
 
-      const runner = operatorLocalCliRunner(db, stateDir, [fakeSession], false, {
+      const runner = operatorLocalCliRunner(db, stateDir, [fakeSession], {
         runCodex: fakeCodex((workdir) => {
           // The worker edits a REAL repo file in its worktree.
           writeFileSync(join(workdir, 'README.md'), '# Fixture\n\nbaseline\nadded by worker\n')
@@ -152,6 +169,19 @@ describe('operator repo-bound worker · runTask', () => {
     }
   })
 
+  it('HOLDs when only Claude is available for local coder work', async () => {
+    const repo = db.insertRepo({
+      name: 'fixture', path: stateDir, defaultBranch: 'main', enabled: true,
+      testCommands: [], forbiddenPaths: [], riskRules: {}, mergePolicy: 'WAITING',
+    })
+    const mission = db.insertMission({ repoId: repo.id, title: 'M', description: 'd', status: 'running' })
+    const task = db.insertTask({ missionId: mission.id, repoId: repo.id, title: 't', prompt: 'p', status: 'pending', attemptNumber: 1 })
+    const runner = operatorLocalCliRunner(db, stateDir, [fakeClaudeSession], { runCodex: fakeCodex(() => undefined) })
+
+    await expect(runner.runTask(task)).rejects.toThrow(/no healthy Codex CLI/)
+    expect(db.listRuns(task.id)).toHaveLength(0)
+  })
+
   it('HOLDs (throws) without marking done when the repo is not a git repository', async () => {
     const repo = db.insertRepo({
       name: 'not-git', path: stateDir, defaultBranch: 'main', enabled: true,
@@ -159,7 +189,7 @@ describe('operator repo-bound worker · runTask', () => {
     })
     const mission = db.insertMission({ repoId: repo.id, title: 'M', description: 'd', status: 'running' })
     const task = db.insertTask({ missionId: mission.id, repoId: repo.id, title: 't', prompt: 'p', status: 'pending', attemptNumber: 1 })
-    const runner = operatorLocalCliRunner(db, stateDir, [fakeSession], false, { runCodex: fakeCodex(() => undefined) })
+    const runner = operatorLocalCliRunner(db, stateDir, [fakeSession], { runCodex: fakeCodex(() => undefined) })
 
     await expect(runner.runTask(task)).rejects.toThrow(/HOLD-TARGET-REPO-UNAVAILABLE|git repository|worktree/)
     expect(db.listActiveHolds(mission.id).some((h) => h.code === 'HOLD-TARGET-REPO-UNAVAILABLE')).toBe(true)

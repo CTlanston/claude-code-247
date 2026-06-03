@@ -1,5 +1,5 @@
 import type { SecretGrant } from '@aedev/core'
-import { GeminiValidator, OpenAIValidator, type GeminiValidatorOptions, type OpenAIValidatorOptions } from '@aedev/validators'
+import { GeminiValidator, type GeminiValidatorOptions } from '@aedev/validators'
 import type { MissionValidator, MissionValidatorFactory } from './mission-runner.js'
 
 export const GEMINI_SECRET_NAMES = ['AEDEV_GEMINI_API_KEY', 'GEMINI_API_KEY', 'GOOGLE_API_KEY'] as const
@@ -15,7 +15,7 @@ export interface ValidatorFactoryContext {
 }
 
 export interface ValidatorSecretResolverContext extends ValidatorFactoryContext {
-  provider: 'gemini' | 'openai'
+  provider: 'gemini'
   names: readonly ValidatorSecretName[]
 }
 
@@ -35,14 +35,13 @@ export interface DefaultMissionValidatorFactoryOptions {
   now?: Date
   fetchFn?: typeof fetch
   geminiOptions?: Omit<GeminiValidatorOptions, 'apiKey' | 'fetchFn'>
-  openaiOptions?: Omit<OpenAIValidatorOptions, 'apiKey' | 'fetchFn'>
 }
 
 export interface DefaultValidatorSecretStatus {
   geminiConfigured: boolean
   openaiConfigured: boolean
   configuredCount: number
-  missingProviders: Array<'gemini' | 'openai'>
+  missingProviders: Array<'gemini'>
 }
 
 export function createDefaultMissionValidatorFactory(
@@ -56,20 +55,12 @@ export function buildDefaultMissionValidators(
   opts: DefaultMissionValidatorFactoryOptions = {},
 ): MissionValidator[] {
   const geminiKey = resolveValidatorSecret('gemini', GEMINI_SECRET_NAMES, ctx, opts)
-  const openaiKey = resolveValidatorSecret('openai', OPENAI_SECRET_NAMES, ctx, opts)
   const validators: MissionValidator[] = []
 
   if (geminiKey) {
     validators.push(new GeminiValidator({
       ...opts.geminiOptions,
       apiKey: geminiKey,
-      ...(opts.fetchFn ? { fetchFn: opts.fetchFn } : {}),
-    }))
-  }
-  if (openaiKey) {
-    validators.push(new OpenAIValidator({
-      ...opts.openaiOptions,
-      apiKey: openaiKey,
       ...(opts.fetchFn ? { fetchFn: opts.fetchFn } : {}),
     }))
   }
@@ -82,20 +73,16 @@ export function inspectDefaultMissionValidatorSecrets(
   opts: DefaultMissionValidatorFactoryOptions = {},
 ): DefaultValidatorSecretStatus {
   const geminiConfigured = Boolean(resolveValidatorSecret('gemini', GEMINI_SECRET_NAMES, ctx, opts))
-  const openaiConfigured = Boolean(resolveValidatorSecret('openai', OPENAI_SECRET_NAMES, ctx, opts))
   return {
     geminiConfigured,
-    openaiConfigured,
-    configuredCount: Number(geminiConfigured) + Number(openaiConfigured),
-    missingProviders: [
-      ...(!geminiConfigured ? ['gemini' as const] : []),
-      ...(!openaiConfigured ? ['openai' as const] : []),
-    ],
+    openaiConfigured: false,
+    configuredCount: Number(geminiConfigured),
+    missingProviders: !geminiConfigured ? ['gemini'] : [],
   }
 }
 
 function resolveValidatorSecret(
-  provider: 'gemini' | 'openai',
+  provider: 'gemini',
   names: readonly ValidatorSecretName[],
   ctx: ValidatorFactoryContext,
   opts: DefaultMissionValidatorFactoryOptions,

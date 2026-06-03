@@ -7,8 +7,24 @@ afterEach(cleanup)
 import type { ApiOperatorQuestion } from '../../api.js'
 
 const questions: ApiOperatorQuestion[] = [
-  { id: 'q1', field: 'scope', question: 'Scope?', options: [{ label: 'Small', recommended: true }, { label: 'Big' }] },
-  { id: 'q2', field: 'target', question: 'Target?', options: [{ label: 'Docs', value: 'docs' }, { label: 'Code', value: 'code', recommended: true }] },
+  {
+    id: 'q1',
+    field: 'scope',
+    question: 'Scope?',
+    why: 'Avoid overshooting the mission.',
+    impact: 'Changes the task DAG.',
+    destination: 'Roadmap scope',
+    options: [{ label: 'Small', recommended: true }, { label: 'Big' }],
+  },
+  {
+    id: 'q2',
+    field: 'target',
+    question: 'Target?',
+    why: 'Pick the concrete surface.',
+    impact: 'Changes worker prompt target.',
+    destination: 'PRD target surface',
+    options: [{ label: 'Docs', value: 'docs' }, { label: 'Code', value: 'code', recommended: true }],
+  },
 ]
 
 describe('ClarificationCard', () => {
@@ -17,6 +33,8 @@ describe('ClarificationCard', () => {
     render(<ClarificationCard questions={questions} answered={false} busy={null} onSubmit={onSubmit} />)
     expect(screen.getByText('Scope?')).toBeTruthy()
     expect(screen.getByText('Target?')).toBeTruthy()
+    expect(screen.getByText(/Avoid overshooting/)).toBeTruthy()
+    expect(screen.getByText(/Roadmap scope/)).toBeTruthy()
     expect(screen.getAllByText(/★/)).toHaveLength(2)
     fireEvent.click(screen.getByText(/Answer all/))
     expect(onSubmit).toHaveBeenCalledTimes(1)

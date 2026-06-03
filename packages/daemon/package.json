@@ -15,6 +15,7 @@
     "@aedev/cost-meter": "workspace:*",
     "@aedev/event-log": "workspace:*",
     "@aedev/github": "workspace:*",
+    "@aedev/memory": "workspace:*",
     "@aedev/preview": "workspace:*",
     "@aedev/qa": "workspace:*",
     "@aedev/runner": "workspace:*",

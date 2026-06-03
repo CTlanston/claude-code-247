@@ -9,6 +9,7 @@ import { RunnerManager, WorkerPoolRouter, type ModelFamily, type RouteDecision, 
 import { MergePolicy, RiskScorer, type MergePolicyEvidence } from '@aedev/validators'
 import { BrowserQA, MockBrowserDriver, type BrowserQAResult } from '@aedev/qa'
 import type { PreviewAdapter, PreviewResult } from '@aedev/preview'
+import { buildMemoryContext } from '@aedev/memory'
 import { RolePipeline } from './roles/role-pipeline.js'
 import { skipFinalWriteIfCancelled } from './cancellation.js'
 import { ReleasePipeline, type GitClient, type DeployFn, type DeployRequest, type ReleaseResult } from './release-pipeline.js'
@@ -102,6 +103,14 @@ export interface MissionRunResult {
   draftPr?: DraftPrInfo
 }
 
+interface TaskDagNode {
+  id: string
+  title: string
+  role?: string
+  parentIds?: string[]
+  expectedEvidence?: string[]
+}
+
 export class MissionRunner {
   constructor(
     private readonly db: AedevDb,
@@ -137,41 +146,69 @@ export class MissionRunner {
       await pipeline.run(mission, evidenceDir, { requiresUi })
 
       // 2. Builder task → worker run
-      task = this.db.insertTask({
-        missionId: mission.id,
-        repoId: mission.repoId,
-        title: `Implement mission: ${mission.title}`,
-        prompt: buildTaskPrompt(mission, evidenceDir),
-        status: 'pending',
-        attemptNumber: 1,
-      })
-
-      routeDecision = this.routeRole('coder')
-      writeRouteDecision(evidenceDir, routeDecision)
-      this.db.insertEvent('mission.route_selected', 'mission', mission.id, {
-        role: 'coder',
-        provider: routeDecision.provider,
-        sessionId: routeDecision.sessionId ?? null,
-        concurrency: routeDecision.concurrency,
-        holdCode: routeDecision.holdCode ?? null,
-        reason: routeDecision.reason,
-      })
-      if (!routeDecision.provider) {
-        return this.createHeldResult({
-          mission,
-          task,
-          evidenceDir,
-          routeDecision,
-          reason: routeDecision.reason,
-          holdCode: routeDecision.holdCode ?? 'HOLD-SESSION-POOL',
+      const repoMemory = this.db.getRepo(mission.repoId)
+      const memoryContext = repoMemory ? buildMemoryContext(repoMemory) : ''
+      const dag = readLargeTaskDag(this.opts.stateDir, mission.id)
+      if (dag) {
+        const dagResult = await this.runDagNodes(mission, evidenceDir, dag, memoryContext)
+        task = dagResult.task
+        run = dagResult.run
+        routeDecision = dagResult.routeDecision
+        if (dagResult.failed) {
+          writeFileSync(join(evidenceDir, 'dag-summary.md'), renderDagSummary(dag, 'failed'))
+          this.db.updateMissionStatus(mission.id, 'failed')
+          this.db.insertEvent('mission.dag_failed', 'mission', mission.id, { taskId: task.id, runId: run.runId, nodeCount: dag.length })
+          return {
+            missionId: mission.id,
+            taskId: task.id,
+            status: 'failed',
+            evidenceDir,
+            run,
+            validatorResults: [],
+            riskScore: 0,
+            riskLevel: 'low',
+            mergeDecision: 'BLOCKED',
+            routeDecision,
+          }
+        }
+        writeFileSync(join(evidenceDir, 'dag-summary.md'), renderDagSummary(dag, 'done'))
+      } else {
+        task = this.db.insertTask({
+          missionId: mission.id,
+          repoId: mission.repoId,
+          title: `Implement mission: ${mission.title}`,
+          prompt: buildTaskPrompt(mission, evidenceDir, memoryContext),
+          status: 'pending',
+          attemptNumber: 1,
         })
-      }
 
-      const runner = this.opts.runner ?? new RunnerManager(this.db, buildRunnerConfig(this.opts, routeDecision))
-      run = await runner.runTask(task)
-      importTaskEvidence(run.evidenceDir, evidenceDir)
-      ensureRequiredEvidence(evidenceDir)
-      this.persistModelUsage(mission.id, task.id, run, routeDecision.provider)
+        routeDecision = this.routeRole('coder')
+        writeRouteDecision(evidenceDir, routeDecision)
+        this.db.insertEvent('mission.route_selected', 'mission', mission.id, {
+          role: 'coder',
+          provider: routeDecision.provider,
+          sessionId: routeDecision.sessionId ?? null,
+          concurrency: routeDecision.concurrency,
+          holdCode: routeDecision.holdCode ?? null,
+          reason: routeDecision.reason,
+        })
+        if (!routeDecision.provider) {
+          return this.createHeldResult({
+            mission,
+            task,
+            evidenceDir,
+            routeDecision,
+            reason: routeDecision.reason,
+            holdCode: routeDecision.holdCode ?? 'HOLD-SESSION-POOL',
+          })
+        }
+
+        const runner = this.opts.runner ?? new RunnerManager(this.db, buildRunnerConfig(this.opts, routeDecision))
+        run = await runner.runTask(task)
+        importTaskEvidence(run.evidenceDir, evidenceDir)
+        ensureRequiredEvidence(evidenceDir)
+        this.persistModelUsage(mission.id, task.id, run, routeDecision.provider)
+      }
 
       // 3. Bundle the evidence dir for downstream gates
       const bundle = readEvidenceBundle(evidenceDir)
@@ -223,11 +260,13 @@ export class MissionRunner {
       writeFileSync(join(evidenceDir, 'risk-report.md'), renderRiskReport(risk))
       Object.assign(bundle, readEvidenceBundle(evidenceDir))
 
-      // 6. Validators (Gemini + OpenAI by default; injectable for tests)
+      // 6. Configured validators. Cockpit uses a Gemini-only hard gate by default.
       const validators = this.opts.validators ??
         await Promise.resolve(this.opts.validatorFactory?.({ missionId: mission.id, taskId: task.id }) ?? [])
       const validatorResults: ValidatorResult[] = []
-      const validatorRouteDecision = validators.length > 0 ? this.routeRole('validator', routeDecision.provider) : undefined
+      const validatorRouteDecision = validators.length > 0 && this.requiresDualValidatorGate()
+        ? this.routeRole('validator', routeDecision.provider)
+        : undefined
       if (validatorRouteDecision) {
         writeRouteDecision(evidenceDir, validatorRouteDecision, 'validator-route.json')
         this.db.insertEvent('mission.route_selected', 'mission', mission.id, {
@@ -388,11 +427,69 @@ export class MissionRunner {
     }
   }
 
+  private async runDagNodes(
+    mission: Mission,
+    evidenceDir: string,
+    dag: TaskDagNode[],
+    memoryContext: string,
+  ): Promise<{ task: Task; run: RunResult; routeDecision: RouteDecision; failed: boolean }> {
+    let lastTask: Task | undefined
+    let lastRun: RunResult | undefined
+    let lastRoute: RouteDecision | undefined
+    const runnerByProvider = new Map<string, { runTask(task: Task): Promise<RunResult> }>()
+    this.db.insertEvent('mission.dag_started', 'mission', mission.id, { nodeCount: dag.length })
+    for (let i = 0; i < dag.length; i += 1) {
+      const node = dag[i]!
+      const nodeDir = join(evidenceDir, 'nodes', sanitizePathPart(node.id))
+      mkdirSync(nodeDir, { recursive: true })
+      const task = this.db.insertTask({
+        missionId: mission.id,
+        repoId: mission.repoId,
+        title: `${i + 1}/${dag.length} ${node.title}`,
+        prompt: buildDagNodePrompt(mission, evidenceDir, node, dag, memoryContext),
+        status: 'pending',
+        attemptNumber: 1,
+      })
+      const routeDecision = this.routeRole('coder')
+      lastTask = task
+      lastRoute = routeDecision
+      writeRouteDecision(nodeDir, routeDecision)
+      this.db.insertEvent('mission.dag_node_started', 'mission', mission.id, {
+        nodeId: node.id,
+        taskId: task.id,
+        role: node.role ?? 'coder',
+        provider: routeDecision.provider,
+        holdCode: routeDecision.holdCode ?? null,
+      })
+      if (!routeDecision.provider) {
+        this.db.updateTaskStatus(task.id, 'hold')
+        const run = { runId: `held-${task.id}`, taskId: task.id, exitCode: 1, evidenceDir: nodeDir, durationMs: 0 }
+        writeFileSync(join(nodeDir, 'node-hold.json'), JSON.stringify({ holdCode: routeDecision.holdCode ?? 'HOLD-SESSION-POOL', reason: routeDecision.reason }, null, 2))
+        return { task, run, routeDecision, failed: true }
+      }
+      const runnerKey = routeDecision.provider
+      const runner = this.opts.runner ?? runnerByProvider.get(runnerKey) ?? new RunnerManager(this.db, buildRunnerConfig(this.opts, routeDecision))
+      if (!this.opts.runner) runnerByProvider.set(runnerKey, runner)
+      const run = await runner.runTask(task)
+      lastRun = run
+      importTaskEvidence(run.evidenceDir, nodeDir)
+      this.persistModelUsage(mission.id, task.id, run, routeDecision.provider)
+      writeFileSync(join(nodeDir, 'node-meta.json'), JSON.stringify({ node, taskId: task.id, runId: run.runId, exitCode: run.exitCode }, null, 2))
+      this.db.insertEvent('mission.dag_node_completed', 'mission', mission.id, { nodeId: node.id, taskId: task.id, runId: run.runId, exitCode: run.exitCode })
+      if (run.exitCode !== 0) return { task, run, routeDecision, failed: true }
+      importTaskEvidence(run.evidenceDir, evidenceDir)
+    }
+    if (!lastTask || !lastRun || !lastRoute) throw new Error('large DAG runner had no nodes to execute')
+    ensureRequiredEvidence(evidenceDir)
+    this.db.insertEvent('mission.dag_completed', 'mission', mission.id, { nodeCount: dag.length, taskId: lastTask.id, runId: lastRun.runId })
+    return { task: lastTask, run: lastRun, routeDecision: lastRoute, failed: false }
+  }
+
   private routeRole(role: 'coder' | 'validator', reviewerProvider?: RouteDecision['provider']): RouteDecision {
     const router = this.opts.workerRouter ?? (this.opts.workerSessions ? new WorkerPoolRouter(this.opts.workerSessions) : null)
     if (!router) {
       return {
-        provider: role === 'coder' ? resolveProviderFromMode(this.opts.runnerConfig?.mode ?? 'mock') : 'openai-api',
+        provider: role === 'coder' ? resolveProviderFromMode(this.opts.runnerConfig?.mode ?? 'mock') : 'gemini-api',
         concurrency: 1,
         reason: 'worker router not configured',
       }
@@ -522,13 +619,75 @@ export class MissionRunner {
 
 // ---------- helpers ----------
 
-function buildTaskPrompt(mission: Mission, evidenceDir: string): string {
+function buildTaskPrompt(mission: Mission, evidenceDir: string, memoryContext = ''): string {
   return [
     `Mission: ${mission.title}`,
     mission.description ? `Description: ${mission.description}` : '',
     `Evidence directory: ${evidenceDir}`,
+    memoryContext,
     'Implement the smallest real change needed for this mission and produce plan, diff summary, tests, and done report.',
   ].filter(Boolean).join('\n\n')
+}
+
+function buildDagNodePrompt(mission: Mission, evidenceDir: string, node: TaskDagNode, dag: TaskDagNode[], memoryContext: string): string {
+  return [
+    `Mission: ${mission.title}`,
+    mission.description ? `Description: ${mission.description}` : '',
+    `DAG node: ${node.id} — ${node.title}`,
+    `Role: ${node.role ?? 'coder'}`,
+    node.parentIds?.length ? `Depends on: ${node.parentIds.join(', ')}` : '',
+    node.expectedEvidence?.length ? `Expected evidence: ${node.expectedEvidence.join(', ')}` : '',
+    `Evidence directory: ${evidenceDir}`,
+    memoryContext,
+    'Execute only this DAG node. Keep the change small, preserve prior node work, and write plan, diff summary, tests, and done report.',
+    'Full DAG:',
+    ...dag.map((n) => `- ${n.id}: ${n.title}`),
+  ].filter(Boolean).join('\n\n')
+}
+
+function readLargeTaskDag(stateDir: string, missionId: string): TaskDagNode[] | null {
+  const candidates = [
+    join(stateDir, 'prd', missionId, 'task-dag.json'),
+    join(stateDir, 'prd', `${missionId}.task-dag.json`),
+  ]
+  for (const path of candidates) {
+    if (!existsSync(path)) continue
+    try {
+      const parsed = JSON.parse(readFileSync(path, 'utf8')) as unknown
+      if (!Array.isArray(parsed) || parsed.length <= 6) return null
+      const nodes = parsed.flatMap((item): TaskDagNode[] => {
+        if (!item || typeof item !== 'object') return []
+        const raw = item as Record<string, unknown>
+        if (typeof raw['id'] !== 'string' || typeof raw['title'] !== 'string') return []
+        return [{
+          id: raw['id'],
+          title: raw['title'],
+          ...(typeof raw['role'] === 'string' ? { role: raw['role'] } : {}),
+          ...(Array.isArray(raw['parentIds']) ? { parentIds: raw['parentIds'].filter((x): x is string => typeof x === 'string') } : {}),
+          ...(Array.isArray(raw['expectedEvidence']) ? { expectedEvidence: raw['expectedEvidence'].filter((x): x is string => typeof x === 'string') } : {}),
+        }]
+      })
+      return nodes.length > 6 ? nodes : null
+    } catch {
+      return null
+    }
+  }
+  return null
+}
+
+function renderDagSummary(dag: TaskDagNode[], status: 'done' | 'failed'): string {
+  return [
+    '# DAG Execution Summary',
+    '',
+    `Status: ${status}`,
+    `Nodes: ${dag.length}`,
+    '',
+    ...dag.map((node) => `- ${node.id}: ${node.title}`),
+  ].join('\n')
+}
+
+function sanitizePathPart(value: string): string {
+  return value.replace(/[^a-z0-9._-]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'node'
 }
 
 function buildRunnerConfig(opts: MissionRunOptions, decision: RouteDecision): RunnerConfig {
@@ -582,7 +741,7 @@ function coderProviderToAuthMode(provider: RouteDecision['provider'] | undefined
   switch (provider) {
     case 'claude-docker':
     case 'claude-cli': return 'local_claude_code'
-    case 'codex-cli':
+    case 'codex-cli': return 'local_codex'
     case 'openai-api':
     case 'gemini-api': return 'api'
     case 'mock': return 'mock'

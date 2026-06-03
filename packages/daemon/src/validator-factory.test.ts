@@ -15,11 +15,11 @@ describe('default mission validator factory', () => {
       geminiConfigured: false,
       openaiConfigured: false,
       configuredCount: 0,
-      missingProviders: ['gemini', 'openai'],
+      missingProviders: ['gemini'],
     })
   })
 
-  it('builds Gemini + OpenAI validators from approved runtime secret env without live calls', async () => {
+  it('builds only the Gemini hard gate from approved runtime secret env without live calls', async () => {
     const requests: string[] = []
     const fetchFn = (async (input: Parameters<typeof fetch>[0]) => {
       const url = String(input)
@@ -29,9 +29,7 @@ describe('default mission validator factory', () => {
           candidates: [{ content: { parts: [{ text: JSON.stringify({ verdict: 'pass', summary: 'gemini ok' }) }] } }],
         }), { status: 200 })
       }
-      return new Response(JSON.stringify({
-        choices: [{ message: { content: JSON.stringify({ verdict: 'pass', summary: 'openai ok' }) } }],
-      }), { status: 200 })
+      throw new Error(`unexpected validator request: ${url}`)
     }) as typeof fetch
 
     const validators = buildDefaultMissionValidators(ctx, {
@@ -41,19 +39,14 @@ describe('default mission validator factory', () => {
       },
       fetchFn,
       geminiOptions: { model: 'gemini-test' },
-      openaiOptions: { model: 'openai-test' },
     })
 
-    expect(validators).toHaveLength(2)
+    expect(validators).toHaveLength(1)
     await expect(validators[0]!.validate(ctx.taskId, { 'done-report.md': 'done' })).resolves.toMatchObject({
       validator: 'gemini',
       verdict: 'pass',
     })
-    await expect(validators[1]!.validate(ctx.taskId, { 'done-report.md': 'done' })).resolves.toMatchObject({
-      validator: 'openai',
-      verdict: 'pass',
-    })
-    expect(requests).toHaveLength(2)
+    expect(requests).toHaveLength(1)
   })
 
   it('requires active task-scoped grants when grant metadata is supplied', () => {
@@ -87,17 +80,17 @@ describe('default mission validator factory', () => {
       geminiConfigured: true,
       openaiConfigured: false,
       configuredCount: 1,
-      missingProviders: ['openai'],
+      missingProviders: [],
     })
   })
 
-  it('allows a secrets-mcp resolver to supply both keys at task runtime', () => {
+  it('allows a secrets-mcp resolver to supply the Gemini key at task runtime', () => {
     const factory = createDefaultMissionValidatorFactory({
       env: {},
       secretResolver: ({ provider }) => `${provider}-resolved-by-wrapper`,
     })
 
-    expect(factory(ctx)).toHaveLength(2)
+    expect(factory(ctx)).toHaveLength(1)
   })
 })
 

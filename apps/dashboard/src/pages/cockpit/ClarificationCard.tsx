@@ -30,6 +30,11 @@ export function ClarificationCard({ questions, answered, busy, onSubmit }: {
       {questions.map((q) => (
         <div key={q.id} className="ck-clar-q">
           <div className="ck-clar-question">{q.question}</div>
+          <div className="ck-clar-meta">
+            {q.why ? <span>Why: {q.why}</span> : null}
+            {q.impact ? <span>Impact: {q.impact}</span> : null}
+            {q.destination ? <span>Goes into: {q.destination}</span> : null}
+          </div>
           <div className="ck-clar-options">
             {q.options.map((o) => {
               const val = o.value ?? o.label

@@ -96,6 +96,90 @@ function makeTaskEvidence(diffSummary = '# Diff Summary\n\nChanged app code.\n')
   return dir
 }
 
+describe('MissionRunner — P6 hybrid DAG execution', () => {
+  function writeTaskDag(missionId: string, count: number): void {
+    const dir = join(stateDir, 'prd', missionId)
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'task-dag.json'), JSON.stringify(Array.from({ length: count }, (_, i) => ({
+      id: `n${i + 1}`,
+      title: `Node ${i + 1}`,
+      role: 'coder',
+      parentIds: i === 0 ? [] : [`n${i}`],
+      expectedEvidence: ['done-report.md'],
+      checkpointGate: null,
+    })), null, 2))
+  }
+
+  it('keeps small missions on the existing single-run path', async () => {
+    const mission = approveMission('Small single-run change')
+    writeTaskDag(mission.id, 6)
+    const taskEvidence = makeTaskEvidence()
+    const runner = new MissionRunner(db, {
+      stateDir,
+      rolePipeline: fakeRolePipeline(),
+      runner: fakeRunner({ taskEvidenceDir: taskEvidence }),
+      requiresUi: false,
+    })
+
+    const result = await runner.runMission(mission.id)
+
+    expect(result.status).toBe('waiting')
+    expect(db.listTasks(mission.id)).toHaveLength(1)
+    expect(db.queryEvents({ type: 'mission.dag_started', entityId: mission.id })).toHaveLength(0)
+  })
+
+  it('runs large roadmaps per DAG node and fails the mission on a node failure', async () => {
+    const mission = approveMission('Large DAG change')
+    writeTaskDag(mission.id, 7)
+    let calls = 0
+    const runner = new MissionRunner(db, {
+      stateDir,
+      rolePipeline: fakeRolePipeline(),
+      runner: {
+        async runTask(task: Task): Promise<RunResult> {
+          calls += 1
+          const dir = join(stateDir, `node-evidence-${calls}`)
+          mkdirSync(dir, { recursive: true })
+          writeFileSync(join(dir, 'diff-summary.md'), `# Diff Summary\n\nNode ${calls} changed files.\n`)
+          writeFileSync(join(dir, 'test-summary.md'), calls === 3 ? '# Test Summary\n\nTests failed.\n' : '# Test Summary\n\nTests passed.\n')
+          writeFileSync(join(dir, 'done-report.md'), `# Done\n\nNode ${calls} done.\n`)
+          return { runId: `run-${task.id}`, taskId: task.id, exitCode: calls === 3 ? 1 : 0, evidenceDir: dir, durationMs: 10 }
+        },
+      },
+      requiresUi: false,
+    })
+
+    const result = await runner.runMission(mission.id)
+
+    expect(result.status).toBe('failed')
+    expect(result.mergeDecision).toBe('BLOCKED')
+    expect(calls).toBe(3)
+    expect(db.listTasks(mission.id)).toHaveLength(3)
+    expect(existsSync(join(result.evidenceDir, 'nodes', 'n3', 'node-meta.json'))).toBe(true)
+    expect(db.getMission(mission.id)?.status).toBe('failed')
+  })
+
+  it('runs a Gemini API validator directly when the cockpit does not require dual-validator routing', async () => {
+    const mission = approveMission('Single Gemini hard gate')
+    const runner = new MissionRunner(db, {
+      stateDir,
+      rolePipeline: fakeRolePipeline(),
+      runner: fakeRunner({ taskEvidenceDir: makeTaskEvidence() }),
+      workerSessions: [
+        { id: 'codex-1', provider: 'codex-cli', family: 'openai', healthy: true, active: 0 },
+      ],
+      validatorFactory: () => [fakeValidator('gemini', 'pass')],
+      requiresDualValidatorGate: false,
+      requiresUi: false,
+    })
+
+    const result = await runner.runMission(mission.id)
+
+    expect(result.validatorResults.map((v) => `${v.validator}:${v.verdict}`)).toEqual(['gemini:pass'])
+    expect(result.validatorRouteDecision).toBeUndefined()
+  })
+})
+
 describe('MissionRunner — real-diff forbidden-path gate (changed-paths.json)', () => {
   function taskEvidenceWithChangedPaths(changedPaths: string[]): string {
     const dir = join(stateDir, `coder-evidence-${Math.random().toString(16).slice(2)}`)
@@ -338,7 +422,7 @@ describe('MissionRunner — workbook end-to-end glue', () => {
     expect(result.status).toBe('blocked')
   })
 
-  it('routes dual-validator hard-gate coder work to Claude', async () => {
+  it('keeps dual-validator hard-gate coder work on Codex', async () => {
     const mission = approveMission('Implement a low-risk dual-validator change')
     const runner = new MissionRunner(db, {
       stateDir,
@@ -351,8 +435,8 @@ describe('MissionRunner — workbook end-to-end glue', () => {
 
     const result = await runner.runMission(mission.id)
 
-    expect(result.routeDecision?.provider).toBe('claude-cli')
-    expect(result.mergeDecision).toBe('AUTO_MERGE')
+    expect(result.routeDecision?.provider).toBe('codex-cli')
+    expect(result.mergeDecision).toBe('WAITING')
   })
 
   it('does not treat OpenAI validator as independent when Codex authored the work', async () => {
@@ -511,7 +595,7 @@ describe('MissionRunner — workbook end-to-end glue', () => {
     expect(summary).toMatch(/Decision:[*\s]*AUTO_MERGE/)
   })
 
-  it('routes dual-validator coder work through WorkerPoolRouter and records the Claude route decision', async () => {
+  it('routes dual-validator coder work through WorkerPoolRouter and records the Codex route decision', async () => {
     const mission = approveMission('Implement the routing glue')
     const runner = new MissionRunner(db, {
       stateDir,
@@ -523,8 +607,8 @@ describe('MissionRunner — workbook end-to-end glue', () => {
 
     const result = await runner.runMission(mission.id)
 
-    expect(result.routeDecision?.provider).toBe('claude-cli')
-    expect(readFileSync(join(result.evidenceDir, 'worker-route.json'), 'utf8')).toContain('"provider": "claude-cli"')
+    expect(result.routeDecision?.provider).toBe('codex-cli')
+    expect(readFileSync(join(result.evidenceDir, 'worker-route.json'), 'utf8')).toContain('"provider": "codex-cli"')
   })
 
   it('uses a runtime validatorFactory after task creation and hard-gates coder routing', async () => {
@@ -544,10 +628,10 @@ describe('MissionRunner — workbook end-to-end glue', () => {
 
     const result = await runner.runMission(mission.id)
 
-    expect(result.routeDecision?.provider).toBe('claude-cli')
+    expect(result.routeDecision?.provider).toBe('codex-cli')
     expect(result.validatorResults.map((v) => v.validator)).toEqual(['gemini', 'openai'])
     expect(seenTaskIds).toEqual([result.taskId])
-    expect(result.mergeDecision).toBe('AUTO_MERGE')
+    expect(result.mergeDecision).toBe('WAITING')
   })
 
   it('holds the mission when the worker router has no healthy coder session', async () => {
@@ -576,6 +660,7 @@ describe('MissionRunner — workbook end-to-end glue', () => {
         { id: 'codex-1', provider: 'codex-cli', family: 'openai', healthy: true, active: 0 },
       ],
       validators: [fakeValidator('openai', 'pass')],
+      requiresDualValidatorGate: true,
     })
 
     const result = await runner.runMission(mission.id)

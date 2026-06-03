@@ -1,0 +1,30 @@
+# Cowork Memory: local-workspace
+
+## Architecture
+- No durable repo-specific architecture lessons recorded yet.
+
+## Commands
+- No durable repo-specific command lessons recorded yet.
+
+## Hazards
+- No durable repo-specific hazards recorded yet.
+
+## Gemini Rejection Lessons
+<!-- lesson:01KT71P8Z5CZ6431Y6BSMHP893-gemini -->
+- Gemini hard gate returned fail: Missing regression test for the changed behavior. (Missing regression test for the changed behavior.)
+<!-- lesson:01KT71PX1ZEEMWYS85NJKVF9FP-gemini -->
+- Gemini hard gate returned fail: Missing regression test for the changed behavior. (Missing regression test for the changed behavior.)
+<!-- lesson:01KT72HWHFMTFPP7KP159KP75W-gemini -->
+- Gemini hard gate returned fail: Missing regression test for the changed behavior. (Missing regression test for the changed behavior.)
+<!-- lesson:01KT73QGHFY0623CNYZC2RVSYT-gemini -->
+- Gemini hard gate returned fail: Missing regression test for the changed behavior. (Missing regression test for the changed behavior.)
+<!-- lesson:01KT76KXQGJEAC1ZE4VZN82PH6-gemini -->
+- Gemini hard gate returned fail: Missing regression test for the changed behavior. (Missing regression test for the changed behavior.)
+<!-- lesson:01KT76MMW9F811XBW3J90F807B-gemini -->
+- Gemini hard gate returned fail: Missing regression test for the changed behavior. (Missing regression test for the changed behavior.)
+<!-- lesson:01KT76SQSEH55HAMNBZZZYBRR2-gemini -->
+- Gemini hard gate returned fail: Missing regression test for the changed behavior. (Missing regression test for the changed behavior.)
+<!-- lesson:01KT77AEWG3RJXDZ83X4W11W8M-gemini -->
+- Gemini hard gate returned fail: Missing regression test for the changed behavior. (Missing regression test for the changed behavior.)
+<!-- lesson:01KT77CWN54747H4GRE4EAR3JT-gemini -->
+- Gemini hard gate returned fail: Missing regression test for the changed behavior. (Missing regression test for the changed behavior.)

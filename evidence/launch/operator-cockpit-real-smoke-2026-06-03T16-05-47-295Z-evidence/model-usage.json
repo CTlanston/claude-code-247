@@ -1,0 +1,8 @@
+{
+  "provider": "codex-cli",
+  "authMode": "local_codex",
+  "inputTokens": 190030,
+  "outputTokens": 2063,
+  "costUsd": null,
+  "durationMs": 51701
+}

@@ -12,9 +12,16 @@
 > [ADR-0013 Path A](docs/adr/0013-rc-grade-is-prod-grade.md), no `v2.2.0`
 > GA tag is created under the current release policy.
 >
-> **Latest:** `v2.4.0-patch1` — the core value loop has now run **end-to-end on
-> real LLM work** for the first time (see the **🆕 v2.4.0-patch1** section just
-> below). The architecture has converged to a **TypeScript-only, event-sourced,
+> **Latest:** `conversational-cockpit-v1` — the P0-P7 workbook is complete:
+> a chat-first Operator Cockpit now uses local Claude Code for clarification and
+> planning, local Codex for implementation, and an isolated Gemini validator as
+> the evidence-only PR hard gate. The strict real smoke, browser quality smoke,
+> in-app browser validation, full test gate, and external Gemini evidence-only
+> validator all passed on 2026-06-03. See
+> [WORKBOOK_v3.md](WORKBOOK_v3.md) and
+> [docs/SESSION_LOG_v3.md](docs/SESSION_LOG_v3.md).
+>
+> The architecture has converged to a **TypeScript-only, event-sourced,
 > three-plane** design per
 > [ADR-0010](docs/adr/0010-three-plane-event-sourced.md); the dual-kernel
 > section further down is retained as v1.0.0 history.
@@ -37,18 +44,54 @@ open http://127.0.0.1:7248
 
 Then run the core operator flow:
 
-1. Click `Start Brainstorm` to start a planner conversation.
-2. Answer any clarification cards or add context in the composer.
-3. Click `Generate PRD` to create PRD / ADR / Roadmap artifacts.
-4. Review the plan in the side panel.
-5. Click `Approve` only when the plan is acceptable.
-6. Click `Start` to launch worker execution and watch the execution timeline.
-7. Use the bottom panel for logs, events, validators, token usage, and PR-gate status.
+1. Describe the mission in the chat composer.
+2. Let Claude ask as many clarification questions as needed; the server will not
+   unlock roadmap or coding until confidence is at least 95%.
+3. Generate PRD / ADR / Roadmap once the clarification gate unlocks.
+4. Approve the roadmap only when it matches the intended outcome.
+5. Start execution; Codex performs the implementation in the repo-bound worker.
+6. Read progress, evidence, Gemini verdicts, and PR-gate status inline in the
+   same conversation thread.
+7. Re-check the Draft PR gate only after Gemini PASS and repo policy allow it.
 
-The cockpit defaults to local CLI / subscription-style usage (`claude-cli` or
-`codex-cli`) and must not silently fall back to a paid API. If the planner or
-worker cannot run, the UI should show a current HOLD with a recovery action
-rather than fake success.
+The cockpit defaults to local CLI / subscription-style usage: `claude-cli` for
+planner/clarifier and `codex-cli` for coding. It must not silently fall back to a
+paid API. If either local engine cannot run, the UI shows a current HOLD with a
+recovery action rather than fake success. Gemini is the only default external
+validator, and it sees evidence only.
+
+## 🆕 conversational-cockpit-v1 — P0-P7 complete
+
+The new cockpit is intentionally simple: one conversation stream plus a thin
+status strip. Clarification, roadmap generation, worker progress, evidence,
+Gemini decisions, and PR-gate results all appear inline as chat bubbles or
+cards. The old multi-panel cockpit surface is no longer the product default.
+
+The P0-P7 workbook closed with these verified properties:
+
+- **Local engine split** — Claude Code is the clarifier/planner; Codex is the
+  coder. Evidence records `planner=claude-cli` / `coder=codex-cli` and local
+  subscription auth modes.
+- **95% understanding gate** — roadmap and coding are server-blocked until the
+  planner reaches at least 95% confidence and there are no pending questions.
+  Claude may ask zero, one, or many follow-up questions; the contract is
+  confidence, not a fixed question count.
+- **Conversation UI** — the cockpit renders as a single chat thread and thin
+  status strip. Legacy sidebar, inspector, tabs, and Project Pulse panels are no
+  longer part of the default flow.
+- **Gemini hard gate** — Gemini is the default evidence-only validator. Draft PR
+  creation is blocked unless the latest Gemini verdict is PASS, and remote
+  writes are still blocked unless repo policy explicitly enables them.
+- **Team memory** — repo/operator Tier 1 memory and event-derived Tier 2 memory
+  are injected into worker context; repeated Gemini rejection lessons can be
+  compiled back into repo memory.
+- **Hybrid execution** — small missions use a single worker run; large
+  roadmaps can execute through a per-node DAG with node evidence and honest
+  failure handling.
+- **Real end-to-end validation** — strict real smoke, browser quality smoke,
+  full tests, in-app browser checks, and an independent Gemini evidence-only
+  validator all passed. Latest strict report:
+  [`evidence/launch/operator-cockpit-real-smoke-2026-06-03T17-03-35-037Z.md`](evidence/launch/operator-cockpit-real-smoke-2026-06-03T17-03-35-037Z.md).
 
 ## 🆕 v2.4.0-patch1 — real end-to-end loop proven (E2E-Harvest)
 
@@ -59,8 +102,8 @@ judge it on evidence only → a real **draft PR** is opened on GitHub →
 token/cost usage is persisted. Architecture decision:
 [ADR-0019](docs/adr/0019-real-e2e-loop-docker-claude-dual-family.md).
 
-> Current stage: `ProductionHardened_v2.4_Ready` (see
-> [EXECUTION_WORKBOOK.md §0](EXECUTION_WORKBOOK.md)). This is a single-operator
+> Historical stage: `ProductionHardened_v2.4_Ready` (superseded by
+> [WORKBOOK_v3.md](WORKBOOK_v3.md)). This is a single-operator
 > system; `system.allow_remote_writes` defaults to `false` and gates **every**
 > outward write — `git push`, PR creation, and merge alike.
 
@@ -136,23 +179,24 @@ It is intended to feel more like Claude Code Desktop than a passive dashboard:
 chat first, explicit clarification, visible execution progress, and safety gates
 that stay obvious.
 
-The current UX v2 surface includes:
+The current conversational surface includes:
 
-- **Chat-first workspace** — a left session/history sidebar, main conversation,
-  right mission/artifact panel, and bottom execution/log panel.
-- **Structured clarification cards** — brainstorm follow-up questions should be
-  answerable through choices and free-form replies, not buried inside markdown.
+- **Single chat workspace** — one conversation thread for clarification,
+  planning, execution, evidence, Gemini verdicts, and PR-gate outcomes.
+- **Thin status strip** — the only persistent chrome is stage, current action,
+  progress, and pending approval count.
+- **Structured clarification cards** — Claude's follow-up questions are
+  answerable through choices and free-form replies, with the original question
+  and answer transcript sent back to Claude on follow-up.
 - **Provider and token transparency** — major planner/worker/validator actions
-  expose whether they used `claude-cli`, `codex-cli`, mock/test mode, or API-backed
-  validators, plus token/cost data when available.
+  expose whether they used `claude-cli`, `codex-cli`, mock/test mode, or Gemini,
+  plus token/cost data when available.
 - **Current-only HOLDs** — active blockers are shown prominently, while
   superseded historical HOLDs remain in logs/events instead of stale top banners.
-- **Live execution timeline** — after `Start`, the UI tracks queued, assigned,
-  worker, tests, evidence, validators, PR gate, and blocked/done states in
-  operator-readable language.
-- **Safety-preserving PR gate** — draft PR creation remains blocked unless
-  `system.allow_remote_writes` and repo policy explicitly permit outward writes.
-- **Repo-bound worker (trust model)** — when you pick a repo and press `Start`,
+- **Safety-preserving PR gate** — draft PR creation remains blocked unless the
+  latest Gemini verdict is PASS, `system.allow_remote_writes` is true, and repo
+  policy explicitly permits outward writes.
+- **Repo-bound worker (trust model)** — when you select a repo and press `Start`,
   the worker executes inside an **isolated `git worktree` of that repo** (checked
   out at the committed `HEAD`, so your working tree and branches are untouched),
   never an empty scratch directory. If the selected repo is missing, disabled, or

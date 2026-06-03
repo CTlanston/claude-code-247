@@ -15,11 +15,12 @@
   },
   "scripts": {
     "build": "pnpm -r build",
-    "test": "vitest run",
+    "test": "NODE_ENV=test VITEST=1 AEDEV_COCKPIT_FORCE_TEMPLATE=1 AEDEV_COCKPIT_FORCE_MOCK=1 vitest run",
     "test:smoke": "sh -c 'AEDEV_GEMINI_API_KEY=\"${AEDEV_GEMINI_API_KEY:-$GEMINI_API_KEY}\" AEDEV_OPENAI_API_KEY=\"${AEDEV_OPENAI_API_KEY:-$OPENAI_API_KEY}\" AEDEV_SMOKE_CLAUDE=1 AEDEV_SMOKE_DOCKER=1 AEDEV_SMOKE_GEMINI=1 AEDEV_SMOKE_OPENAI=1 vitest run packages/runner/src/claude-adapter.test.ts packages/runner/src/docker-runner.test.ts packages/validators/src/gemini-validator.test.ts packages/validators/src/openai-validator.test.ts --testTimeout 180000'",
     "test:smoke:legacy-claude247": "AEDEV_SMOKE_CLAUDE247=1 vitest run packages/claude247-bridge/src/bridge.test.ts --testTimeout 180000",
     "cockpit:dev": "tsx scripts/dev-operator-cockpit.ts --replace",
     "test:cockpit:e2e": "tsx scripts/operator-cockpit-e2e.ts",
+    "test:cockpit:quality-smoke": "tsx scripts/operator-cockpit-webui-quality-smoke.ts",
     "test:cockpit:screens": "tsx scripts/operator-cockpit-screens.ts",
     "test:cockpit:real-smoke": "tsx scripts/operator-cockpit-real-smoke.ts",
     "test:cockpit:p3-remote-smoke": "tsx scripts/operator-cockpit-p3-remote-smoke.ts",

@@ -32,7 +32,7 @@ async function startSession(app: ReturnType<typeof createServer>, prompt: string
   const repo = makeRepo()
   const res = await app.inject({ method: 'POST', url: '/operator/sessions', payload: { repoId: repo.id, title: 'UX', prompt } })
   expect(res.statusCode).toBe(200)
-  return { repo, body: res.json() as { session: { id: string }; messages: Array<{ role: string; content: string; questions?: unknown[]; meta?: Record<string, unknown> }> } }
+  return { repo, body: res.json() as { session: { id: string }; messages: Array<{ role: string; content: string; questions?: Array<{ why?: string; impact?: string; destination?: string }>; meta?: Record<string, unknown> }> } }
 }
 
 describe('operator cockpit UX v2 — backend foundations', () => {
@@ -43,20 +43,25 @@ describe('operator cockpit UX v2 — backend foundations', () => {
     expect(assistant).toBeTruthy()
     expect(Array.isArray(assistant!.questions)).toBe(true)
     expect(assistant!.questions!.length).toBeGreaterThan(0)
+    expect(assistant!.questions![0]).toMatchObject({
+      why: expect.any(String),
+      impact: expect.any(String),
+      destination: expect.any(String),
+    })
     expect(assistant!.meta?.['agentMode']).toBe('single')
     expect(assistant!.meta?.['provider']).toBeTruthy()
   })
 
-  it('"ask 3 questions" returns exactly three structured questions', async () => {
+  it('ask returns structured follow-up questions without fixing the count in the product contract', async () => {
     const app = createServer(db, new Date(), stateDir)
     const { body } = await startSession(app, 'do the thing')
     const ask = await app.inject({ method: 'POST', url: `/operator/sessions/${body.session.id}/ask`, payload: {} })
     const msgs = (ask.json() as { messages: Array<{ role: string; questions?: { id: string; options: { label: string }[] }[] }> }).messages
     const assistant = msgs.filter((m) => m.role === 'assistant' && m.questions?.length).pop()
-    expect(assistant?.questions?.length).toBe(3)
+    expect(assistant?.questions?.length).toBeGreaterThan(0)
   })
 
-  it('answering questions records a user turn + event and reopens brainstorm_ready', async () => {
+  it('answering questions records a user turn + event while the confidence gate stays locked', async () => {
     const app = createServer(db, new Date(), stateDir)
     const { body } = await startSession(app, 'do the thing')
     const ask = await app.inject({ method: 'POST', url: `/operator/sessions/${body.session.id}/ask`, payload: {} })
@@ -66,9 +71,11 @@ describe('operator cockpit UX v2 — backend foundations', () => {
     const ans = await app.inject({ method: 'POST', url: `/operator/sessions/${body.session.id}/answer-questions`, payload: { answers } })
     expect(ans.statusCode).toBe(200)
     const out = ans.json() as { session: { status: string }; messages: Array<{ role: string; content: string }> }
-    expect(out.session.status).toBe('brainstorm_ready')
+    expect(out.session.status).toBe('clarifying')
     expect(out.messages.some((m) => m.role === 'user' && /Clarifications/.test(m.content))).toBe(true)
-    expect(db.queryEvents({ type: 'operator.questions_answered', entityId: body.session.id })).toHaveLength(1)
+    const [event] = db.queryEvents({ type: 'operator.questions_answered', entityId: body.session.id })
+    expect(event).toBeTruthy()
+    expect((event!.payload['answers'] as Array<{ question?: string }>)[0]?.question).toBeTruthy()
   })
 
   it('answer-questions rejects an empty answer set', async () => {

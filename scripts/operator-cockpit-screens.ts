@@ -70,27 +70,26 @@ async function main(): Promise<void> {
     await page.goto(`http://127.0.0.1:${DASHBOARD_PORT}`, { waitUntil: 'domcontentloaded' })
     await shot(page, '01-desktop-initial')
 
-    await page.getByRole('button', { name: /Start Brainstorm/ }).first().click()
+    await page.getByTestId('cockpit-start-brainstorm').click()
     await page.getByText('Initial brainstorm:', { exact: false }).waitFor({ timeout: 10_000 })
-    await page.getByText('方向 OK，生成 PRD', { exact: false }).first().waitFor({ timeout: 10_000 })
+    await page.getByTestId('cockpit-generate-plan-primary').waitFor({ timeout: 10_000 })
     await shot(page, '02-desktop-brainstorm-choices')
 
     // Real planner follow-up: clicking "ask 3 questions" yields an assistant reply with questions.
-    await page.getByRole('button', { name: /先问我 3 个问题/ }).first().click()
+    await page.getByRole('button', { name: /Ask 3 Questions/ }).click()
     await page.getByText('Operator Questions', { exact: false }).first().waitFor({ timeout: 10_000 })
     await shot(page, '03-desktop-ask-questions')
 
-    await page.getByRole('button', { name: /Generate PRD/ }).first().click()
-    await page.getByText('Approval Gate').waitFor({ timeout: 10_000 })
-    await page.locator('text=pending').first().waitFor({ timeout: 10_000 })
+    await page.getByTestId('cockpit-generate-plan-primary').click()
+    await page.getByTestId('cockpit-approve-roadmap').waitFor({ timeout: 10_000 })
     await shot(page, '04-desktop-roadmap')
 
-    await page.getByRole('button', { name: /Approve/ }).first().click()
-    await page.locator('text=approved').first().waitFor({ timeout: 10_000 })
+    await page.getByTestId('cockpit-approve-roadmap').click()
+    await page.getByTestId('cockpit-start-execution').waitFor({ timeout: 10_000 })
     await shot(page, '05-desktop-approved')
 
     // Start execution; the mock worker is held in `running` so this is a GENUINE in-progress shot.
-    await page.getByRole('button', { name: /Start/ }).first().click()
+    await page.getByTestId('cockpit-start-execution').click()
     await page.getByText('mock: running', { exact: false }).first().waitFor({ timeout: 15_000 })
     await shot(page, '06-desktop-running-worker')
 
@@ -98,12 +97,12 @@ async function main(): Promise<void> {
     await page.getByText('mock: done', { exact: false }).first().waitFor({ timeout: 15_000 })
     await shot(page, '07-desktop-evidence-complete')
 
-    await page.getByRole('button', { name: /Draft PR/ }).first().click()
+    await page.getByTestId('cockpit-check-draft-pr-gate').click()
     await page.getByText('REMOTE_WRITES_DISABLED', { exact: false }).first().waitFor({ timeout: 10_000 })
     await shot(page, '08-desktop-draft-pr-blocked')
 
     // Long Chinese prompt (also exercises the sidebar New reset button).
-    await page.getByRole('button', { name: '+ New' }).first().click()
+    await page.getByTestId('cockpit-new-mission').click()
     await page.locator('textarea').first().fill(LONG_CHINESE_PROMPT)
     await shot(page, '09-desktop-long-chinese-prompt')
     await page.close()
@@ -112,8 +111,8 @@ async function main(): Promise<void> {
     const mobile = await browser.newPage({ viewport: { width: 390, height: 844 } })
     await mobile.goto(`http://127.0.0.1:${DASHBOARD_PORT}`, { waitUntil: 'domcontentloaded' })
     await shot(mobile, '10-mobile-initial')
-    await mobile.getByRole('button', { name: '+ New' }).first().click() // reset to the new-mission composer (daemon already has the desktop session)
-    await mobile.getByRole('button', { name: /Start Brainstorm/ }).first().click()
+    await mobile.getByTestId('cockpit-new-mission').click() // reset to the new-mission composer (daemon already has the desktop session)
+    await mobile.getByTestId('cockpit-start-brainstorm').click()
     await mobile.getByText('Initial brainstorm:', { exact: false }).waitFor({ timeout: 10_000 })
     await shot(mobile, '11-mobile-brainstorm')
     await mobile.close()

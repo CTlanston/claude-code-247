@@ -15,15 +15,125 @@ schema_version: 1
 version_target: production-usable-24x7
 current_part: III          # III = v2.4 real vertical slice -> production hardening
 current_stage: ProductionHardened_v2.4_Ready
-current_substage: operator-cockpit-hermus-p5-real-draft-pr
-last_updated_utc: 2026-06-01T05:48:36Z
-last_session_id: s_0042
-total_sessions: 43
+current_substage: operator-cockpit-v3-p1-p2-real-fix-s0047
+last_updated_utc: 2026-06-02T20:07:51Z
+last_session_id: s_0047
+total_sessions: 48
 weeks_elapsed: 0
 weeks_remaining: 0
 open_holds: 0
 blocked_on: none
 next_action: |
+  OPERATOR COCKPIT V3 P1/P2 FIX s_0047 (DONE — real touched files + PR gate stateDir consistency):
+  Addressed the review findings that were still real product trust bugs after s_0046.
+  Project Pulse now reads touched files from the authoritative `changed-paths.json`
+  evidence artifact (with event payload arrays only as supplemental input), so real
+  Docker/local worker diffs show actual filenames instead of silently disappearing
+  when events only carry a numeric changed-path count. Operator overview remote-write
+  status now uses the same route `stateDir` passed to create-pr / DraftPrGate, and
+  the Approvals decision endpoint also passes that stateDir into returned overview;
+  this prevents UI safety copy from drifting from the actual PR gate config in
+  non-default test/dev deployments. Added regression tests for both: Project Pulse
+  touched files from `changed-paths.json`, and `operatorView.safetySummary.remoteWrites`
+  reading `stateDir/config.yaml`. Validation: daemon typecheck PASS, server.test PASS
+  (18/18), lint PASS, `pnpm test:cockpit:quality-smoke` PASS with latest evidence
+  `evidence/browser-cockpit-quality/2026-06-02T20-07-23-952Z/`. Restarted
+  `pnpm cockpit:dev` in real planner mode with `AEDEV_ALLOW_REMOTE_WRITES=0`.
+  NEXT: operator can retest at http://127.0.0.1:7248/. Remaining known P0 from review:
+  enforce the multi-round Understanding Loop server-side before roadmap generation.
+
+  OPERATOR COCKPIT V3 s_0046 (DONE — Local AI Dev Team Workbench contract + Project Pulse + visible validator/memory):
+  Implemented the operator-requested v3 product slice: the Cockpit now treats the
+  product model as `Understand → Roadmap → Execute → Validate → PR Gate → Learn`
+  instead of a generic engineering dashboard. The shared OperatorMissionView/API
+  contract now includes confidence, understanding rounds/questions, Project Pulse
+  progress/evidence/touched files/validator reviews, safety test-mode details, and
+  memorySummary with provenance/TTL/superseded facts. Clarification questions now
+  carry `why`, `impact`, and `destination` fields so the UI can explain why each
+  question matters and where the answer enters PRD/Roadmap. The right panel is now
+  a collapsible/resizable `Project Pulse · 项目脉搏` read-only observation pane with
+  Project Brain, Progress, Working folder, Independent Review, and Context; primary
+  actions remain in the main thread/action dock. Validator results are also surfaced
+  as a main-thread `Independent Review · 独立验证` card and explicitly state
+  evidence-only isolation; missing validators show `not_configured`, never pass/done.
+  Fixed a quality-smoke-discovered provider bug where mock planner mode could be
+  mislabeled as subscription-local by preferring `role_done` over `role_started`.
+  Fixed a browser-discovered Project Pulse bug where `pr_blocked` marked Understand
+  active instead of PR Gate active by switching to an explicit stage→step mapping.
+  Validation: daemon/dashboard typecheck PASS, lint PASS, targeted server/operator/
+  Cockpit tests PASS (31/31), `pnpm test:cockpit:quality-smoke` PASS with evidence
+  `evidence/browser-cockpit-quality/2026-06-02T19-51-23-784Z/`, and in-app browser
+  screenshot check saved to
+  `evidence/browser-cockpit-quality/cockpit-v3-project-pulse-final.png`. Restarted
+  `pnpm cockpit:dev` in real planner mode (`AEDEV_COCKPIT_PLANNER_PROVIDER=codex`,
+  `AEDEV_ALLOW_REMOTE_WRITES=0`). NEXT: operator can test at http://127.0.0.1:7248/;
+  click `+ New` to avoid resuming old mock sessions. Future slice: enforce multi-round
+  understanding confidence before roadmap in real mode, then run a live gated Gemini
+  validator smoke.
+
+  REAL-MODE CLARIFY FIX s_0045 (DONE — operator caught mock-mode contamination + preset clarification fallback):
+  Operator live-tested the Cockpit and correctly identified two serious issues:
+  the visible WebUI was still running with prior test-mode env
+  (`AEDEV_COCKPIT_FORCE_MOCK=1`, `AEDEV_COCKPIT_FORCE_TEMPLATE=1`, external CLIs/API
+  validators disabled), so Start Execution was a mock worker and did not call a real
+  AI worker; and real-mode clarification still had a silent template fallback path
+  (`QUESTION_BANK`) that could present preset questions as if they were planner-
+  generated. Fixed the code so template clarification cards are allowed only in
+  explicit test/template mode; in real mode, if Claude/Codex returns prose but no
+  fenced JSON structured questions, the session now HOLDs with
+  `HOLD-CLARIFY-STRUCTURE` instead of substituting presets. Updated the popup comment
+  to state this honestly. Validation: daemon/dashboard typecheck PASS, lint PASS,
+  `operator-clarify-parse`, Cockpit tests, and `server.test` PASS (24/24 targeted).
+  Restarted `pnpm cockpit:dev` in real planner mode with only
+  `AEDEV_COCKPIT_PLANNER_PROVIDER=codex` and `AEDEV_ALLOW_REMOTE_WRITES=0`; verified
+  no `AEDEV_COCKPIT_FORCE_*` or `AEDEV_DISABLE_*` env remains, and refreshed the
+  in-app browser at http://127.0.0.1:7248/. NEXT: operator should retest from `+ New`;
+  expected behavior: clarification cards come from real Codex planner JSON, or the
+  UI shows `HOLD-CLARIFY-STRUCTURE` rather than preset cards. Execution is no longer
+  mock unless an explicit test-mode env is set; remote writes remain safely disabled.
+
+  COCKPIT 9.5 HARDENING s_0044 (DONE — authoritative OperatorMissionView + no-duplicate primary actions + provider/testability surface):
+  Implemented the requested Operator Cockpit 9.5/10 hardening slice. The daemon now
+  returns an `operatorView` contract with a canonical stage (`new` through
+  `pr_blocked`/`pr_created`), percent progress, one primary action, phase-specific
+  provider summary (planner/worker/validators), test-mode marker, and PR-gate safety
+  summary/remediation. The Cockpit UI now renders the coach card, stage DOM markers,
+  header provider badges, right observation progress/context, PR blocked card, and
+  primary action dock from that contract. Removed the duplicate Generate PRD primary
+  action; renamed it to Generate Plan; changed Draft PR wording to Check Draft PR
+  Gate when remote writes are off; added stable testids for New Mission, Start
+  Brainstorm, Generate Plan, Approve Roadmap, Start Execution, and Check Draft PR
+  Gate. History now defaults to Current / Needs attention / Recent. Added
+  `scripts/operator-cockpit-webui-quality-smoke.ts` and `pnpm test:cockpit:quality-smoke`,
+  writing screenshots + DOM/DB/event/console summaries under
+  `evidence/browser-cockpit-quality/<timestamp>/`. Validation: `pnpm typecheck` PASS,
+  `pnpm lint` PASS, targeted Cockpit/server tests PASS (23/23), `pnpm test:cockpit:e2e`
+  PASS, `pnpm test:cockpit:quality-smoke` PASS (latest evidence
+  `evidence/browser-cockpit-quality/2026-06-02T18-36-37-519Z/`). No push/PR/merge;
+  remote writes stayed disabled. NEXT: optional live-team readiness slice: expose real
+  Docker worker and Gemini/OpenAI validator states in a non-mock gated smoke against
+  `hermus-agent`, then only with explicit operator approval enable repo-scoped remote
+  writes for a real Draft PR.
+
+  WEBUI SMOKE s_0043 (DONE — browser-driven deterministic Operator Cockpit small E2E on hermus-agent):
+  Started `pnpm cockpit:dev` with explicit test-mode env (`AEDEV_COCKPIT_FORCE_MOCK=1`,
+  `AEDEV_COCKPIT_FORCE_TEMPLATE=1`, `AEDEV_ALLOW_REMOTE_WRITES=0`, external CLIs/API
+  validators disabled) and used the Codex in-app browser, visibly, to drive the real
+  Cockpit UI on http://127.0.0.1:7248. Created session
+  `01KT4R48AKWRX33QQKKDWRN0MG` for repo `hermus-agent`, mission
+  `01KT4R57WRFJ8K1YQR4RPMZA0Q`, answered the clarification card, generated PRD/ADR/
+  Roadmap, approved, started execution, reached evidence gate, and clicked Draft PR.
+  Expected safety result observed in browser + DB: `operator.draft_pr_blocked` with
+  `REMOTE_WRITES_DISABLED`; mission PR URL stayed empty; no remote write/push/merge.
+  Evidence: task evidence `/Users/lanston/.aedev/state/operator-evidence/01KT4R5Y05H42N306X706REY9B`
+  contains plan/test/diff/done/operator log; browser screenshots saved under
+  `evidence/browser-cockpit-e2e-2026-06-02/`. Browser console error/warning log was
+  empty. NOTE: this was deterministic mock/template WebUI coverage, NOT a live Docker/
+  validator/outward PR run. NEXT (optional): for a true live E2E, run non-mock with
+  Docker worker + validator keys + explicit remote-write approval; otherwise continue
+  the prior optional P6 follow-up (wire hermus testCommands, cockpit e2e skeleton,
+  fresh live dual-PASS e2e).
+
   P6 EVIDENCE HARDENING s_0042 (DONE — dual validators move INCONCLUSIVE to PASS: evidence root-fixed + runner-verified tests + capable OpenAI model):
   Enriched the claude-docker worker's test-summary/done-report, registered diff/done
   as artifacts, and built a Gemini+OpenAI evidence re-check harness. The re-check
@@ -769,6 +879,140 @@ ApprovalGateway: ntfy → 操作员手机
 - next_action: <见 §0>
 - notes: <一两句>
 ```
+
+### s_0047 — 2026-06-02T20:07:51Z — Operator Cockpit v3 P1/P2 real fixes
+
+- stage_in: s_0046 v3 workbench shipped, review found P1/P2 trust gaps → stage_out: Project Pulse touched files and remote-write UI safety source fixed
+- actor: codex (no remote writes, no push, no PR, no merge)
+- shipped:
+    - Project Pulse now parses authoritative `changed-paths.json` evidence artifacts for `touchedFiles`
+    - event payload `changedPaths` arrays remain a supplemental source, but numeric changed-path counts no longer cause missing filenames
+    - `buildMissionOverview(db, missionId, stateDir)` now uses the route stateDir for `operatorView.safetySummary.remoteWrites`
+    - all Operator route overview returns pass the same `stateDir` used by create-pr / DraftPrGate
+    - Approvals decision endpoint also passes stateDir when returning mission overview
+    - added regressions for Project Pulse touched files from `changed-paths.json` and remoteWrites from `stateDir/config.yaml`
+- validation:
+    - `pnpm --filter @aedev/daemon typecheck` PASS
+    - `pnpm vitest run packages/daemon/src/server.test.ts --testTimeout 120000` PASS (18/18)
+    - `pnpm lint` PASS
+    - `pnpm test:cockpit:quality-smoke` PASS, latest evidence `evidence/browser-cockpit-quality/2026-06-02T20-07-23-952Z/`
+- notes:
+    - restarted `pnpm cockpit:dev` with `AEDEV_ALLOW_REMOTE_WRITES=0`; daemon reports plannerProvider `codex`
+    - remaining review finding intentionally not addressed in this slice: P0 server-side mandatory multi-round Understanding Loop before roadmap
+- safety:
+    - remote writes stayed disabled
+    - no `.env`, secrets, `.github`, `AGENTS.md`, push, PR creation, or merge
+- holds_opened: 0 · holds_resolved: 0
+- next_action: see §0 next_action
+
+### s_0046 — 2026-06-02T19:53:25Z — Operator Cockpit v3 Local AI Dev Team Workbench
+
+- stage_in: s_0045 real-mode clarify safety fixed; operator requested v3 product essence implementation → stage_out: v3 OperatorMissionView/API and Workbench UI slice shipped
+- actor: codex (no remote writes, no push, no PR, no merge)
+- shipped:
+    - upgraded `OperatorMissionView` with `confidence`, `understanding`, `projectPulse`, `memorySummary`, and `safetySummary.testMode`
+    - expanded stage vocabulary toward `Understand → Roadmap → Execute → Validate → PR Gate → Learn`, including `understanding`, `understanding_ready`, `validating`, and `learned`
+    - added `why`, `impact`, and `destination` metadata to structured clarification questions and tightened planner JSON prompts to request those fields
+    - converted the right panel into a collapsible/resizable read-only `Project Pulse · 项目脉搏` with Project Brain, progress, working folder, validator review, and context sections
+    - surfaced Independent Review in the main conversation thread and in Project Pulse; missing validators now show `not_configured` with evidence gaps instead of pass/done
+    - implemented an event-sourced Project Brain projection with repo facts, user preference memory, recent run lessons, provenance, TTL, and superseded flags
+    - fixed provider labeling so test/mock planner mode cannot be mislabeled as subscription-local
+    - fixed Project Pulse stage mapping so `pr_blocked` marks PR Gate active, not Understand active
+- validation:
+    - `pnpm --filter @aedev/daemon typecheck` PASS
+    - `pnpm --dir apps/dashboard typecheck` PASS
+    - `pnpm lint` PASS
+    - `pnpm vitest run packages/daemon/src/operator-ux.test.ts packages/daemon/src/server.test.ts apps/dashboard/src/pages/cockpit/ClarificationCard.test.tsx apps/dashboard/src/pages/Cockpit.test.tsx --testTimeout 120000` PASS (31/31)
+    - `pnpm test:cockpit:quality-smoke` PASS, latest evidence `evidence/browser-cockpit-quality/2026-06-02T19-51-23-784Z/`
+    - in-app browser check PASS; final screenshot `evidence/browser-cockpit-quality/cockpit-v3-project-pulse-final.png`
+- notes:
+    - current browser may resume old mock sessions from localStorage; operator should click `+ New` to test the restarted real planner process
+    - restarted `pnpm cockpit:dev` with `AEDEV_ALLOW_REMOTE_WRITES=0`; daemon reports plannerProvider `codex`
+- safety:
+    - remote writes stayed disabled
+    - no `.env`, secrets, `.github`, `AGENTS.md`, push, PR creation, or merge
+- holds_opened: 0 · holds_resolved: 0
+- next_action: see §0 next_action
+
+### s_0045 — 2026-06-02T19:09:04Z — Real-mode clarify fallback fix + mock-mode contamination reset
+
+- stage_in: s_0044 hardening shipped, but operator live-tested and found preset clarification cards plus Start Execution apparently doing no real AI work → stage_out: root cause confirmed, real-mode clarification fail-closes, and Cockpit restarted without mock/template env
+- actor: codex (operator QA feedback; no remote writes, no push, no PR, no merge)
+- findings:
+    - current running daemon was still the prior test-mode process: `AEDEV_COCKPIT_FORCE_MOCK=1`, `AEDEV_COCKPIT_FORCE_TEMPLATE=1`, `AEDEV_DISABLE_CLAUDE_CLI=1`, `AEDEV_DISABLE_CODEX_CLI=1`, `AEDEV_DISABLE_GEMINI_API=1`, `AEDEV_DISABLE_OPENAI_API=1`
+    - therefore the operator's observed Start Execution path used `operatorDraftRunner` / mock worker and did not call a real AI worker
+    - clarification cards were preset because test/template mode produced synthetic planner content with no JSON questions, then fell back to `QUESTION_BANK`
+    - real-mode code also had an unsafe silent fallback: if Claude/Codex returned prose but no structured JSON questions, it would still show deterministic preset questions
+- shipped:
+    - added `allowTemplateClarifications()` and restricted `operatorQuestionsFor(...)` fallback to explicit test/template mode only
+    - real planner mode now HOLDs with `HOLD-CLARIFY-STRUCTURE` when no fenced JSON structured questions are returned, instead of substituting presets
+    - Ask 3 Questions follows the same rule: real planner JSON or HOLD, no fake preset
+    - updated `ClarificationPopup` comment to state template questions are allowed only in explicit test/template mode
+    - restarted `pnpm cockpit:dev` without mock/template/disable env; verified process env now only has `AEDEV_COCKPIT_PLANNER_PROVIDER=codex` and `AEDEV_ALLOW_REMOTE_WRITES=0`
+    - refreshed in-app browser to `http://127.0.0.1:7248/`
+- validation:
+    - `pnpm --filter @aedev/daemon typecheck` PASS
+    - `pnpm --dir apps/dashboard typecheck` PASS
+    - `pnpm lint` PASS
+    - `pnpm vitest run packages/daemon/src/operator-clarify-parse.test.ts packages/daemon/src/server.test.ts apps/dashboard/src/pages/Cockpit.test.tsx --testTimeout 120000` PASS (24/24 targeted)
+- safety:
+    - remote writes stayed disabled
+    - no `.env`, secrets, `.github`, `AGENTS.md`, push, PR creation, or merge
+- holds_opened: 0 · holds_resolved: 0
+- next_action: see §0 next_action
+
+### s_0044 — 2026-06-02T18:38:01Z — Operator Cockpit 9.5/10 hardening implementation
+
+- stage_in: WebUI smoke s_0043 proved the deterministic flow but exposed UX/testability gaps → stage_out: authoritative cockpit state contract + clearer provider/safety language + stable browser automation surface implemented
+- actor: codex (operator said "PLEASE IMPLEMENT THIS PLAN"; no remote writes, no push, no PR, no merge)
+- shipped:
+    - daemon `operatorView` contract on mission overview: canonical stage, stage label, percent progress, one primary action, planner/worker/validator provider summary, test-mode flag, and PR-gate safety summary/remediation
+    - Cockpit coach card / stage marker / provider header / right observation panel now consume `operatorView`
+    - duplicate Generate PRD primary action removed from the composer; primary action renamed to `Generate Plan · 生成方案`
+    - remote-write-off completion copy now says to check the Draft PR gate and expect a safety block, rather than saying a PR can be directly created
+    - PR blocked card now states no branch push, no PR creation, and no merge occurred
+    - stable `data-testid` surface added for New Mission, Start Brainstorm, Generate Plan, Approve Roadmap, Start Execution, Check Draft PR Gate, mission stage, provider badges, and PR gate card
+    - history sidebar defaults to Current / Needs attention / Recent
+    - message footer standardized with Status / Changed / Next / Provider / Safety
+    - deterministic cockpit E2E and screenshot scripts moved to testid-based core actions
+    - added `scripts/operator-cockpit-webui-quality-smoke.ts` + `pnpm test:cockpit:quality-smoke`; it writes screenshots, DOM state, DB state, event tail, and console summaries under `evidence/browser-cockpit-quality/<timestamp>/`
+- validation:
+    - `pnpm typecheck` PASS
+    - `pnpm lint` PASS
+    - `pnpm vitest run apps/dashboard/src/pages/Cockpit.test.tsx apps/dashboard/src/pages/cockpit/ExecutionTimeline.test.tsx packages/daemon/src/server.test.ts --testTimeout 120000` PASS (23/23)
+    - `pnpm test:cockpit:e2e` PASS
+    - `pnpm test:cockpit:quality-smoke` PASS; latest evidence: `evidence/browser-cockpit-quality/2026-06-02T18-36-37-519Z/`
+- safety:
+    - no `.env`, secrets, `.github`, `AGENTS.md`, push, PR creation, or merge
+    - remote writes stayed disabled; quality smoke verified `REMOTE_WRITES_DISABLED` with empty PR URL
+- holds_opened: 0 · holds_resolved: 0
+- next_action: see §0 next_action
+
+### s_0043 — 2026-06-02T18:06:18Z — Operator Cockpit WebUI small E2E smoke
+
+- stage_in: P6 evidence hardening complete; operator asked to use Claude Code 247 WebUI and directly control the browser for a small E2E project → stage_out: deterministic WebUI flow verified on `hermus-agent`, stopped safely at remote-write gate
+- actor: codex (browser-driven UI test; `AEDEV_COCKPIT_FORCE_MOCK=1`, `AEDEV_COCKPIT_FORCE_TEMPLATE=1`, `AEDEV_ALLOW_REMOTE_WRITES=0`, external local CLIs/API validators disabled for this smoke)
+- webui path exercised:
+    - started local Operator Cockpit: daemon `127.0.0.1:7247`, dashboard `127.0.0.1:7248`
+    - opened Cockpit in the Codex in-app browser visibly
+    - selected repo `hermus-agent` (`/Users/lanston/projects/hermus-agent`)
+    - created session `01KT4R48AKWRX33QQKKDWRN0MG` with title `WebUI small E2E smoke - hermus-agent`
+    - answered the clarification card with "A specific test/command must pass"
+    - generated PRD/ADR/Roadmap, approved the route, started execution, and reached the evidence gate
+    - clicked Draft PR and observed `Draft PR blocked · REMOTE_WRITES_DISABLED`
+- proof:
+    - mission `01KT4R57WRFJ8K1YQR4RPMZA0Q` status `paused`, `github_pr_url` empty
+    - task `01KT4R5Y05H42N306X706REY9B`; run event exitCode 0, decision `WAITING`, provider `mock`
+    - DB event `operator.draft_pr_blocked` payload: `{"code":"REMOTE_WRITES_DISABLED","reason":"allow_remote_writes=false blocks branch push and draft PR creation"}`
+    - task evidence directory `/Users/lanston/.aedev/state/operator-evidence/01KT4R5Y05H42N306X706REY9B` contains `plan.md`, `test-summary.md`, `diff-summary.md`, `done-report.md`, `operator-run.log`
+    - browser screenshots saved under `evidence/browser-cockpit-e2e-2026-06-02/`
+    - browser console errors/warnings: none
+- safety:
+    - no code change to product logic; no push, no PR creation, no merge
+    - `.env`, secrets, `.github`, `AGENTS.md` untouched
+    - this was deterministic mock/template coverage, not a live Docker/validator/outward PR run
+- holds_opened: 0 · holds_resolved: 0
+- next_action: see §0 next_action
 
 ### s_0042 — 2026-06-01T05:48:36Z — P6 evidence hardening (validator consistency)
 

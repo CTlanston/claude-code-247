@@ -1,0 +1,243 @@
+{
+  "mission": {
+    "id": "01KT775DN6PYFQMEYSA8GZ05NM",
+    "status": "paused",
+    "githubPrUrl": null
+  },
+  "operatorView": {
+    "stage": "pr_blocked",
+    "stageLabel": "PR blocked by policy · PR 被安全门拦截",
+    "confidence": 96,
+    "progressPercent": 95,
+    "primaryAction": {
+      "id": "check-draft-pr-gate",
+      "label": "Re-check Draft PR Gate · 重新检查 PR 安全门",
+      "kind": "primary"
+    },
+    "secondaryActions": [],
+    "providerSummary": {
+      "planner": {
+        "name": "test-synthetic",
+        "mode": "mock",
+        "status": "Planner finished",
+        "tokens": null
+      },
+      "worker": {
+        "name": "mock",
+        "mode": "mock",
+        "status": "done",
+        "tokens": null
+      },
+      "validators": [
+        {
+          "name": "gemini",
+          "mode": "not_configured",
+          "status": "not_configured"
+        }
+      ]
+    },
+    "safetySummary": {
+      "remoteWrites": "disabled",
+      "prGate": {
+        "status": "blocked",
+        "code": "GEMINI_NOT_CONFIGURED",
+        "reason": "Gemini hard gate has no evidence-only PASS verdict for this mission.",
+        "remediation": "Remote writes are disabled for safety. Enable repo-scoped allow_remote_writes only when you want the worker to push a branch and open a Draft PR; until then no push, PR, or merge occurs."
+      },
+      "testMode": {
+        "enabled": true,
+        "reason": "mock/template mode is active; no external model or remote write is implied."
+      }
+    },
+    "understanding": {
+      "roundsCompleted": 0,
+      "questions": [],
+      "readyReason": "Planner confidence is at least 95% and no clarification questions are pending."
+    },
+    "projectPulse": {
+      "progress": [
+        {
+          "id": "understand",
+          "label": "Understand · 理解需求",
+          "status": "done"
+        },
+        {
+          "id": "roadmap",
+          "label": "Roadmap · 路线图",
+          "status": "done"
+        },
+        {
+          "id": "execute",
+          "label": "Execute · 本地执行",
+          "status": "done"
+        },
+        {
+          "id": "validate",
+          "label": "Validate · 独立验证",
+          "status": "done",
+          "detail": "Gemini key is not configured; this is visible and not counted as pass."
+        },
+        {
+          "id": "pr-gate",
+          "label": "PR Gate · PR 安全门",
+          "status": "active"
+        },
+        {
+          "id": "learn",
+          "label": "Learn · 沉淀记忆",
+          "status": "pending"
+        }
+      ],
+      "workingFolder": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-JXyInF/operator-evidence/01KT775DTGWWDDNTCX0BSTTSBM",
+      "touchedFiles": [],
+      "evidence": [
+        {
+          "id": "01KT775DTP573DEKEDRGRXARF0",
+          "title": "ADR draft",
+          "path": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-JXyInF/evidence/01KT775DN6PYFQMEYSA8GZ05NM/adr-mission.md",
+          "type": "adr"
+        },
+        {
+          "id": "01KT775DTP573DEKEDRGRXAREY",
+          "title": "Evidence directory",
+          "path": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-JXyInF/evidence/01KT775DN6PYFQMEYSA8GZ05NM",
+          "type": "evidence"
+        },
+        {
+          "id": "01KT775DTP573DEKEDRGRXAREZ",
+          "title": "PRD",
+          "path": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-JXyInF/evidence/01KT775DN6PYFQMEYSA8GZ05NM/prd.md",
+          "type": "prd"
+        },
+        {
+          "id": "01KT775DTP573DEKEDRGRXARF2",
+          "title": "Workbook summary",
+          "path": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-JXyInF/evidence/01KT775DN6PYFQMEYSA8GZ05NM/workbook-summary.md",
+          "type": "report"
+        },
+        {
+          "id": "01KT775DTP573DEKEDRGRXARF3",
+          "title": "Test summary",
+          "path": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-JXyInF/evidence/01KT775DN6PYFQMEYSA8GZ05NM/test-summary.md",
+          "type": "report"
+        },
+        {
+          "id": "01KT775DTP573DEKEDRGRXARF4",
+          "title": "Risk report",
+          "path": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-JXyInF/evidence/01KT775DN6PYFQMEYSA8GZ05NM/risk-report.md",
+          "type": "report"
+        },
+        {
+          "id": "01KT775DTP573DEKEDRGRXARF5",
+          "title": "Worker diff",
+          "path": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-JXyInF/evidence/01KT775DN6PYFQMEYSA8GZ05NM/diff-summary.md",
+          "type": "report"
+        },
+        {
+          "id": "01KT775DTP573DEKEDRGRXARF6",
+          "title": "Done report",
+          "path": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-JXyInF/evidence/01KT775DN6PYFQMEYSA8GZ05NM/done-report.md",
+          "type": "report"
+        },
+        {
+          "id": "01KT775DTP573DEKEDRGRXARF1",
+          "title": "Roadmap",
+          "path": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-JXyInF/evidence/01KT775DN6PYFQMEYSA8GZ05NM/roadmap.md",
+          "type": "roadmap"
+        },
+        {
+          "id": "01KT775DN81CMQDG626809NC9K",
+          "title": "ADR draft in mission design",
+          "path": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-JXyInF/prd/01KT775DN6PYFQMEYSA8GZ05NM.design.json",
+          "type": "adr"
+        },
+        {
+          "id": "01KT775DN81CMQDG626809NC9H",
+          "title": "PRD",
+          "path": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-JXyInF/prd/01KT775DN6PYFQMEYSA8GZ05NM.md",
+          "type": "prd"
+        },
+        {
+          "id": "01KT775DN81CMQDG626809NC9J",
+          "title": "Mission design JSON",
+          "path": "/var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-JXyInF/prd/01KT775DN6PYFQMEYSA8GZ05NM.design.json",
+          "type": "roadmap"
+        }
+      ],
+      "validatorReviews": [
+        {
+          "id": "validators-not-configured",
+          "validator": "validators",
+          "verdict": "not_configured",
+          "summary": "Independent validation did not run because the Gemini key is not configured.",
+          "checkedEvidence": [
+            "ADR draft",
+            "Evidence directory",
+            "PRD",
+            "Workbook summary",
+            "Test summary",
+            "Risk report",
+            "Worker diff",
+            "Done report"
+          ],
+          "blockingIssues": [],
+          "evidenceGaps": [
+            "No Gemini validator verdict exists for this mission."
+          ],
+          "recommendedNextAction": "Configure validator keys for live verification, or continue reviewing evidence manually."
+        }
+      ]
+    },
+    "memorySummary": {
+      "projectFacts": [
+        {
+          "id": "repo-01KT775AD59G750GYAPQ3RRWD6",
+          "kind": "project",
+          "text": "Target repo is cockpit-quality at /var/folders/v9/_qhw5dj16gx4mpm8yp_pj5mr0000gn/T/aedev-cockpit-quality-JXyInF.",
+          "provenance": "repo registry",
+          "ttlDays": 90,
+          "superseded": false
+        },
+        {
+          "id": "repo-forbidden-01KT775AD59G750GYAPQ3RRWD6",
+          "kind": "safety",
+          "text": "Forbidden paths stay protected: .env*, secrets/**, .github/**, AGENTS.md",
+          "provenance": "repo policy",
+          "ttlDays": 365,
+          "superseded": false
+        }
+      ],
+      "userPreferences": [
+        {
+          "id": "pref-understand-first",
+          "kind": "user_preference",
+          "text": "Ask goal-specific questions and confirm understanding before starting worker execution.",
+          "provenance": "operator product directive",
+          "ttlDays": 365,
+          "superseded": false
+        },
+        {
+          "id": "prompt-01KT775BAMG853B8SPXM67PT7D",
+          "kind": "mission_intent",
+          "text": "Current mission intent: In the dashboard Cockpit page, verify the existing conversation UI quality smoke keeps the single conversation layout, status strip, and safe Draft PR gate visible without changing product behavior. Acceptance: browser smoke passes and evid",
+          "provenance": "operator prompt",
+          "ttlDays": 30,
+          "superseded": false
+        }
+      ],
+      "recentLessons": [
+        {
+          "id": "lesson-0",
+          "kind": "run_lesson",
+          "text": "Draft PR blocked: GEMINI_NOT_CONFIGURED",
+          "provenance": "event:operator.draft_pr_blocked",
+          "ttlDays": 30,
+          "superseded": false
+        }
+      ]
+    },
+    "summary": "Worker done, evidence ready, and the Draft PR gate was blocked by policy. No branch push, PR, or merge occurred.",
+    "nextAction": "Continue reviewing evidence, or explicitly enable repo-scoped remote writes before re-checking the gate.",
+    "testMode": true
+  }
+}

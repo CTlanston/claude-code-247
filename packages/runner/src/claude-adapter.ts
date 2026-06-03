@@ -1,5 +1,6 @@
 import { spawn, execFile } from 'child_process'
 import { promisify } from 'util'
+import { buildLocalCliEnv } from './local-cli-env.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -95,7 +96,7 @@ export class ClaudeCodeAdapter {
     // Subscription-mode strips API credentials so the CLI is forced onto the
     // local keychain credential.  This is the non-negotiable safety gate
     // against silent paid-API fallback.
-    const env: NodeJS.ProcessEnv = { ...process.env }
+    const env: NodeJS.ProcessEnv = authMode === 'local_claude_code' ? buildLocalCliEnv() : { ...process.env }
     if (authMode === 'local_claude_code') {
       delete env['ANTHROPIC_API_KEY']
       delete env['ANTHROPIC_BASE_URL']
