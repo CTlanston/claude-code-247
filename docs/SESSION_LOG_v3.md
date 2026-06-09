@@ -1,5 +1,14 @@
 # SESSION LOG v3
 
+## s_0007 · 2026-06-09 · v3→v4 gap audit + WORKBOOK_v4 created (negotiated with operator)
+
+- Full audit of WORKBOOK_v3 "P0–P7 complete" claim against the code tree: **largely true** — every phase has real implementation, tests, and evidence. Caveats: P5 Memory Compiler runs at Gemini-block time, not nightly (no scheduler); P7 ran in a temp sandbox repo with worker terminal state `paused`; dashboard keeps dead cockpit components; `operator.ts:1304-1311` comment contradicts the implemented P6 DAG path.
+- Documentation drift found: `PRODUCTION_WORKBOOK.md` still claims canonical (dual SoT); `CLAUDE.md` module map lists 7 of 25 packages and omits product-critical `packages/memory`; `docs/roadmap.md` + `docs/aedev-prototype-status.md` are obsolete and contradict reality; `docs/PARKED.md` misses 6 orphan packages.
+- External-date risks assessed: 2026-06-15 `claude -p` moves to a separate Agent SDK monthly credit — directly affects this system's core headless invocation path (`claude-adapter.ts` uses `claude --print`); 2026-06-18 Gemini CLI sunset does **not** affect the validator (it calls the Gemini REST API).
+- Operator decisions (negotiated): keep engine split (Claude=planner/reviewer, Codex=coder; role flip rejected); add a cross-engine review step (Claude reviews Codex diffs); keep headless + add a credit budget guard (interactive/Computer-Use driving rejected as fragile); proceed with the P0–P4 v4 skeleton; open `allow_remote_writes` for one whitelisted safe repo in P4.
+- Created `WORKBOOK_v4.md` as the new SoT (P0 doc reconciliation, P1 credit cost guard, P2 cross-engine review, P3 24/7 watchdog + nightly compiler, P4 real Draft-PR exit). Added SUPERSEDED banner to `WORKBOOK_v3.md`; updated `CLAUDE.md` banner to v4. Full archival of v3/PRODUCTION_WORKBOOK happens in v4-P0.
+- Docs-only session: no code touched; typecheck/lint/test gates deferred to the first v4-P0 work session.
+
 ## s_0006 · 2026-06-03T17:08:05Z · P7 complete · validated end-to-end
 
 - Fixed the final P7 validator gap: cockpit missions now run the configured Gemini API validator directly for the Gemini-only hard gate instead of routing it through the local worker-family separation path.
