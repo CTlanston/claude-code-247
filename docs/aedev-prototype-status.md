@@ -1,5 +1,10 @@
 # aedev TypeScript Runtime — Parity Status Against the Python `claude247` Kernel
 
+> **OBSOLETE (2026-06-09, WORKBOOK_v4 P0):** historical parity record from the
+> dual-kernel migration window (last updated 2026-05-25). The Python kernel is
+> archived under `archive/auto-evo/`; the TS runtime is the only product path.
+> Current source of truth: `WORKBOOK_v4.md`.
+
 > Authoritative record of TypeScript runtime parity against the Python
 > `claude247` execution kernel.  Per
 > [ADR-0009](adr/0009-aedev-as-primary-control-plane.md), `aedev` is the

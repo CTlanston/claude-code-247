@@ -16,15 +16,15 @@
 schema_version: 4
 product: simple-cowork
 version_target: standby-team-v1.5
-current_phase: P0            # P0..P4，见 §3
+current_phase: P1            # P0..P4，见 §3
 current_substep: not_started
-last_session_id: s_0007
+last_session_id: s_0008
 open_holds: 0
 blocked_on: none
 # next_action 硬上限 2 行：
 next_action: |
-  执行 P0 文档收口：归档三份过时 workbook/文档、重建 CLAUDE.md module map、
-  补全 PARKED.md、清理 P3/P6 遗留死代码与过时注释。
+  P0 已完成（单一 SoT、module map 对树、AGENTS.md 重写、死代码清理、全闸绿）。
+  下一步 P1：扩展 cost-meter 为 Agent SDK credit 守卫（计数+预算+HOLD-BUDGET+ntfy）。
 ```
 
 ---

@@ -12,13 +12,14 @@
 > [ADR-0013 Path A](docs/adr/0013-rc-grade-is-prod-grade.md), no `v2.2.0`
 > GA tag is created under the current release policy.
 >
-> **Latest:** `conversational-cockpit-v1` — the P0-P7 workbook is complete:
-> a chat-first Operator Cockpit now uses local Claude Code for clarification and
-> planning, local Codex for implementation, and an isolated Gemini validator as
-> the evidence-only PR hard gate. The strict real smoke, browser quality smoke,
-> in-app browser validation, full test gate, and external Gemini evidence-only
-> validator all passed on 2026-06-03. See
-> [WORKBOOK_v3.md](WORKBOOK_v3.md) and
+> **Latest:** `standby-team-v1.5` planning — the v1 conversational cockpit
+> (P0-P7) is complete: a chat-first Operator Cockpit uses local Claude Code for
+> clarification and planning, local Codex for implementation, and an isolated
+> Gemini validator as the evidence-only PR hard gate; all gates passed on
+> 2026-06-03. The current source of truth is
+> [WORKBOOK_v4.md](WORKBOOK_v4.md) (credit cost guard, cross-engine review,
+> 24/7 watchdog, real Draft-PR exit). History:
+> [archive/WORKBOOK_v3.md](archive/WORKBOOK_v3.md) and
 > [docs/SESSION_LOG_v3.md](docs/SESSION_LOG_v3.md).
 >
 > The architecture has converged to a **TypeScript-only, event-sourced,
@@ -103,7 +104,7 @@ token/cost usage is persisted. Architecture decision:
 [ADR-0019](docs/adr/0019-real-e2e-loop-docker-claude-dual-family.md).
 
 > Historical stage: `ProductionHardened_v2.4_Ready` (superseded by
-> [WORKBOOK_v3.md](WORKBOOK_v3.md)). This is a single-operator
+> [archive/WORKBOOK_v3.md](archive/WORKBOOK_v3.md)). This is a single-operator
 > system; `system.allow_remote_writes` defaults to `false` and gates **every**
 > outward write — `git push`, PR creation, and merge alike.
 

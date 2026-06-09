@@ -1,7 +1,7 @@
 # WORKBOOK v3 · Simple Cowork — 极简对话式编码座舱
 
 > **SUPERSEDED (2026-06-09)：本文件已被 `WORKBOOK_v4.md` 取代，不再是 SoT。**
-> v1（P0–P7）已完成；v4 P0 会把本文件归档进 `archive/`。仅作历史记录保留。
+> v1（P0–P7）已完成；已按 v4-P0 归档进 `archive/`。仅作历史记录保留。
 
 > **本文件是新的唯一事实源 (SoT)。** 取代 `EXECUTION_WORKBOOK.md`(由 P0 归档进 `archive/`)。
 > 设计目标:修掉旧 workbook 的失败模式——§0 是真·机器可读的小状态块,叙事一律进独立的

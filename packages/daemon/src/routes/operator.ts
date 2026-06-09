@@ -1300,15 +1300,15 @@ async function generateRoadmapDesign(
     const design = validateMissionDesign(output.design)
     writeDesignArtifacts(db, stateDir, mission.id, design)
     db.insertEvent('operator.artifact_written', 'mission', mission.id, { types: ['prd', 'adr', 'roadmap', 'task-dag', 'design'] })
-    // Planner task-size judgment (point 3): record the plan's scale. The cockpit
-    // executes the whole mission in ONE worker run today, so a large taskDag is a
-    // signal that the single run may exceed the worker budget.
+    // Planner task-size judgment: record the plan's scale. Plans with more than
+    // 6 taskDag nodes route through per-node DAG execution in MissionRunner
+    // (v3 P6); smaller plans stay on the single worker run.
     const dag = design.taskDag ?? []
     db.insertEvent('operator.plan_scale', 'mission', mission.id, {
       taskDagCount: dag.length,
       coderTaskCount: dag.filter((t) => t.role === 'coder').length,
       largePlan: dag.length > 6,
-      note: 'Cockpit runs the whole mission in a single worker run; the taskDag is not yet executed per-task.',
+      note: 'Plans with >6 taskDag nodes execute per-node via the MissionRunner DAG path; smaller plans run in a single worker run.',
     })
     db.insertEvent('operator.cost_updated', 'operator_session', session.id, {
       scope: 'planner',
