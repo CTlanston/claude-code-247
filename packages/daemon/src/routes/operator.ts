@@ -36,6 +36,7 @@ import {
   recordDiscoveryProbe,
   recordHeadlessCall,
 } from '../headless-budget-guard.js'
+import { ClaudeReviewer, type ReviewVerdict } from '../claude-reviewer.js'
 
 type Stage =
   | 'Intake'
@@ -208,6 +209,28 @@ function renderGeminiPrGateBubble(gate: Exclude<GeminiPrGate, { ok: true }>): st
     `Reason: ${gate.reason}`,
     '',
     'Next repair round: fix the evidence/diff issue Gemini called out, run the worker again, then re-check the Draft PR gate. No push or PR was attempted.',
+  ].join('\n')
+}
+
+/** P2 — the cross-engine review verdict, rendered into the conversation. */
+function renderReviewVerdictBubble(verdict: ReviewVerdict, cycle: number): string {
+  if (verdict.verdict === 'approve') {
+    return [
+      `Claude review (cycle ${cycle}): APPROVE · 过程内审查通过`,
+      '',
+      `Confidence: ${Math.round(verdict.confidence)}%`,
+      ...(verdict.findings.length ? ['', 'Notes:', ...verdict.findings.map((f) => `- ${f}`)] : []),
+      '',
+      'Gemini remains the final evidence-only judge before any Draft PR.',
+    ].join('\n')
+  }
+  return [
+    `Claude review (cycle ${cycle}): REWORK · 审查要求返工`,
+    '',
+    'Findings (the coder repairs all of these next round):',
+    ...verdict.findings.map((f) => `- ${f}`),
+    '',
+    `Confidence: ${Math.round(verdict.confidence)}%`,
   ].join('\n')
 }
 
@@ -1707,6 +1730,18 @@ async function runOperatorMission(db: AedevDb, stateDir: string, sessionId: stri
     ...(runnerConfig ? { runnerConfig } : {}),
     ...runnerOpts,
     ...validatorConfig.runnerOptions,
+    // P2 cross-engine review: real missions get a Claude evidence-only
+    // reviewer before the Gemini final judge (GR#9); mock mode skips it.
+    ...(forceMock ? {} : {
+      reviewer: new ClaudeReviewer({ db, budgetKey: sessionId }),
+      onReviewVerdict: (verdict, cycle) => {
+        db.insertOperatorMessage({
+          sessionId,
+          role: 'assistant',
+          content: renderReviewVerdictBubble(verdict, cycle),
+        })
+      },
+    }),
     requiresDualValidatorGate: false,
     riskFactors: () => ({
       touchesForbiddenPaths: false,

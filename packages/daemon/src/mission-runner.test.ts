@@ -670,3 +670,138 @@ describe('MissionRunner — workbook end-to-end glue', () => {
     expect(db.getMission(mission.id)?.status).toBe('paused')
   })
 })
+
+describe('MissionRunner — P2 cross-engine review loop', () => {
+  function stubReviewer(verdicts: Array<{ verdict: 'approve' | 'rework'; findings?: string[] }>) {
+    let i = 0
+    const calls: number[] = []
+    return {
+      calls,
+      async review({ cycle }: { cycle: number }) {
+        calls.push(cycle)
+        const v = verdicts[Math.min(i, verdicts.length - 1)]!
+        i += 1
+        return { verdict: v.verdict, findings: v.findings ?? [], confidence: 80 }
+      },
+    }
+  }
+
+  function countingRunner(taskEvidenceDir: string) {
+    const runs: string[] = []
+    return {
+      runs,
+      async runTask(task: Task): Promise<RunResult> {
+        runs.push(task.id)
+        return { runId: `run-${task.id}`, taskId: task.id, exitCode: 0, evidenceDir: taskEvidenceDir, durationMs: 5 }
+      },
+    }
+  }
+
+  it('approve verdict passes straight through to validators with review evidence + events', async () => {
+    const mission = approveMission('Reviewed change')
+    const reviewer = stubReviewer([{ verdict: 'approve' }])
+    const runner = countingRunner(makeTaskEvidence())
+    const verdictBubbles: Array<{ verdict: string; cycle: number }> = []
+    const result = await new MissionRunner(db, {
+      stateDir,
+      rolePipeline: fakeRolePipeline(),
+      runner,
+      requiresUi: false,
+      reviewer,
+      onReviewVerdict: (v, cycle) => verdictBubbles.push({ verdict: v.verdict, cycle }),
+      validators: [fakeValidator('gemini', 'pass')],
+    }).runMission(mission.id)
+
+    expect(runner.runs).toHaveLength(1)
+    expect(reviewer.calls).toEqual([1])
+    expect(result.validatorResults).toHaveLength(1)
+    expect(verdictBubbles).toEqual([{ verdict: 'approve', cycle: 1 }])
+    expect(existsSync(join(result.evidenceDir, 'claude-review-1.json'))).toBe(true)
+    expect(db.queryEvents({ type: 'review.requested', entityId: mission.id })).toHaveLength(1)
+    expect(db.queryEvents({ type: 'review.verdict', entityId: mission.id })).toHaveLength(1)
+    expect(db.queryEvents({ type: 'review.rework_started', entityId: mission.id })).toHaveLength(0)
+  })
+
+  it('rework verdict re-runs the coder with the findings, then converges on approve', async () => {
+    const mission = approveMission('Needs one repair round')
+    const reviewer = stubReviewer([{ verdict: 'rework', findings: ['missing acceptance test'] }, { verdict: 'approve' }])
+    const runner = countingRunner(makeTaskEvidence())
+    const result = await new MissionRunner(db, {
+      stateDir,
+      rolePipeline: fakeRolePipeline(),
+      runner,
+      requiresUi: false,
+      reviewer,
+      validators: [fakeValidator('gemini', 'pass')],
+    }).runMission(mission.id)
+
+    expect(runner.runs).toHaveLength(2)
+    expect(reviewer.calls).toEqual([1, 2])
+    const tasks = db.listTasks(mission.id)
+    expect(tasks).toHaveLength(2)
+    const rework = tasks.find((t) => t.title.startsWith('Rework 1'))
+    expect(rework?.prompt).toMatch(/missing acceptance test/)
+    expect(db.queryEvents({ type: 'review.rework_started', entityId: mission.id })).toHaveLength(1)
+    expect(existsSync(join(result.evidenceDir, 'claude-review-2.json'))).toBe(true)
+    expect(result.status).not.toBe('failed')
+  })
+
+  it('holds with HOLD-REVIEW-LOOP after the rework cap instead of fake-passing (GR#7)', async () => {
+    const mission = approveMission('Never converges')
+    const reviewer = stubReviewer([{ verdict: 'rework', findings: ['still broken'] }])
+    const runner = countingRunner(makeTaskEvidence())
+    process.env['AEDEV_BUDGET_MAX_REVIEW_CYCLES'] = '2'
+    try {
+      const result = await new MissionRunner(db, {
+        stateDir,
+        rolePipeline: fakeRolePipeline(),
+        runner,
+        requiresUi: false,
+        reviewer,
+        validators: [fakeValidator('gemini', 'pass')],
+      }).runMission(mission.id)
+
+      expect(result.status).toBe('waiting')
+      expect(result.mergeDecision).toBe('WAITING')
+      expect(result.validatorResults).toHaveLength(0)
+      expect(runner.runs).toHaveLength(3) // initial + 2 capped repair rounds
+      expect(reviewer.calls).toEqual([1, 2, 3])
+      const held = db.queryEvents({ type: 'mission.run_held', entityId: mission.id })
+      expect(held).toHaveLength(1)
+      expect(held[0]!.payload['holdCode']).toBe('HOLD-REVIEW-LOOP')
+      expect(db.getMission(mission.id)?.status).toBe('paused')
+    } finally {
+      delete process.env['AEDEV_BUDGET_MAX_REVIEW_CYCLES']
+    }
+  })
+
+  it('a blocked review (budget/structure) holds the mission with the carried code', async () => {
+    const mission = approveMission('Review blocked')
+    const { ReviewBlockedError: RBE } = await import('./claude-reviewer.js')
+    const reviewer = { async review(): Promise<never> { throw new RBE('HOLD-BUDGET', 'credit budget reached') } }
+    const result = await new MissionRunner(db, {
+      stateDir,
+      rolePipeline: fakeRolePipeline(),
+      runner: countingRunner(makeTaskEvidence()),
+      requiresUi: false,
+      reviewer,
+      validators: [fakeValidator('gemini', 'pass')],
+    }).runMission(mission.id)
+
+    expect(result.status).toBe('waiting')
+    const held = db.queryEvents({ type: 'mission.run_held', entityId: mission.id })
+    expect(held[0]!.payload['holdCode']).toBe('HOLD-BUDGET')
+  })
+
+  it('no reviewer configured → behavior unchanged (no review events)', async () => {
+    const mission = approveMission('Unreviewed change')
+    await new MissionRunner(db, {
+      stateDir,
+      rolePipeline: fakeRolePipeline(),
+      runner: countingRunner(makeTaskEvidence()),
+      requiresUi: false,
+      validators: [fakeValidator('gemini', 'pass')],
+    }).runMission(mission.id)
+    expect(db.queryEvents({ type: 'review.requested', entityId: mission.id })).toHaveLength(0)
+  })
+})

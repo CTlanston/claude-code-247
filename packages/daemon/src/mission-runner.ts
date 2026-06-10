@@ -12,6 +12,13 @@ import type { PreviewAdapter, PreviewResult } from '@aedev/preview'
 import { buildMemoryContext } from '@aedev/memory'
 import { RolePipeline } from './roles/role-pipeline.js'
 import { skipFinalWriteIfCancelled } from './cancellation.js'
+import {
+  HOLD_REVIEW_LOOP_CODE,
+  ReviewBlockedError,
+  maxReviewCyclesFromEnv,
+  type MissionReviewer,
+  type ReviewVerdict,
+} from './claude-reviewer.js'
 import { ReleasePipeline, type GitClient, type DeployFn, type DeployRequest, type ReleaseResult } from './release-pipeline.js'
 import { DraftPrGateError, type DraftPrRequest, type DraftPrInfo } from './draft-pr-gate.js'
 
@@ -71,6 +78,14 @@ export interface MissionRunOptions {
 
   /** Optional long-lived cost roller (the daemon injects one); fed once per model.usage.recorded. */
   costRoller?: { record(sample: { ts: string; costUsd: number; bucket?: string }): void }
+
+  /** P2 cross-engine review (GR#9). When set, Claude reviews the evidence
+   *  bundle after the worker and before validators; `rework` verdicts loop
+   *  the coder through capped repair rounds. Unset (tests/mock) → skipped. */
+  reviewer?: MissionReviewer
+  /** Called on every review verdict — the cockpit uses it to push the verdict
+   *  back into the operator conversation as a bubble. */
+  onReviewVerdict?: (verdict: ReviewVerdict, cycle: number) => void
 
   /**
    * Injected autonomous draft-PR executor.  The daemon wires this as a
@@ -212,6 +227,61 @@ export class MissionRunner {
 
       // 3. Bundle the evidence dir for downstream gates
       const bundle = readEvidenceBundle(evidenceDir)
+
+      // 3a. P2 cross-engine review (GR#9): Claude reviews the evidence bundle
+      // (diff + PRD + logs, never the coder conversation). `rework` sends the
+      // coder through capped repair rounds; over the cap or a blocked/
+      // unstructured review → held mission, never a silent approve (GR#7).
+      if (this.opts.reviewer) {
+        const maxCycles = maxReviewCyclesFromEnv()
+        let reworks = 0
+        for (;;) {
+          const cycle = reworks + 1
+          this.db.insertEvent('review.requested', 'mission', mission.id, { cycle, taskId: task.id })
+          let verdict: ReviewVerdict
+          try {
+            verdict = await this.opts.reviewer.review({ missionId: mission.id, cycle, bundle: { ...bundle } })
+          } catch (e) {
+            if (e instanceof ReviewBlockedError) {
+              return this.createHeldResult({
+                mission, task, evidenceDir, routeDecision,
+                reason: e.message, holdCode: e.holdCode, run,
+              })
+            }
+            throw e
+          }
+          writeFileSync(join(evidenceDir, `claude-review-${cycle}.json`), JSON.stringify({ cycle, ...verdict }, null, 2))
+          this.db.insertEvent('review.verdict', 'mission', mission.id, {
+            cycle, taskId: task.id, verdict: verdict.verdict, findings: verdict.findings, confidence: verdict.confidence,
+          })
+          this.opts.onReviewVerdict?.(verdict, cycle)
+          if (verdict.verdict === 'approve') break
+          if (reworks >= maxCycles) {
+            return this.createHeldResult({
+              mission, task, evidenceDir, routeDecision,
+              reason: `Review still demands rework after ${maxCycles} repair cycle(s): ${verdict.findings.join('; ')}`,
+              holdCode: HOLD_REVIEW_LOOP_CODE, run,
+            })
+          }
+          reworks += 1
+          this.db.insertEvent('review.rework_started', 'mission', mission.id, {
+            cycle: reworks, taskId: task.id, findings: verdict.findings,
+          })
+          task = this.db.insertTask({
+            missionId: mission.id,
+            repoId: mission.repoId,
+            title: `Rework ${reworks}: ${mission.title}`,
+            prompt: buildReworkPrompt(mission, evidenceDir, memoryContext, verdict.findings, reworks),
+            status: 'pending',
+            attemptNumber: reworks + 1,
+          })
+          const reworkRunner = this.opts.runner ?? new RunnerManager(this.db, buildRunnerConfig(this.opts, routeDecision))
+          run = await reworkRunner.runTask(task)
+          importTaskEvidence(run.evidenceDir, evidenceDir)
+          this.persistModelUsage(mission.id, task.id, run, routeDecision.provider)
+          Object.assign(bundle, readEvidenceBundle(evidenceDir))
+        }
+      }
 
       // 3b. Real-diff forbidden-path signal.  The runner writes changed-paths.json
       // (the actual `git diff` file list, computed in the worker/runner plane) into
@@ -618,6 +688,18 @@ export class MissionRunner {
 }
 
 // ---------- helpers ----------
+
+/** P2 — repair-round prompt: the original task contract plus the reviewer's
+ *  concrete findings. The coder never sees the reviewer conversation, only
+ *  the structured findings. */
+function buildReworkPrompt(mission: Mission, evidenceDir: string, memoryContext: string, findings: string[], reworkRound: number): string {
+  return [
+    buildTaskPrompt(mission, evidenceDir, memoryContext),
+    '',
+    `## Review findings — repair round ${reworkRound} (address ALL of these)`,
+    ...findings.map((f) => `- ${f}`),
+  ].join('\n')
+}
 
 function buildTaskPrompt(mission: Mission, evidenceDir: string, memoryContext = ''): string {
   return [

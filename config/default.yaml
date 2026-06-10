@@ -160,3 +160,5 @@ budget:
   max_headless_calls_per_mission: 15
   # AEDEV_BUDGET_MAX_HEADLESS_PER_DAY (default 60)
   max_headless_calls_per_day: 60
+  # AEDEV_BUDGET_MAX_REVIEW_CYCLES (default 2) — P2 cross-engine review repair cap
+  max_review_cycles: 2

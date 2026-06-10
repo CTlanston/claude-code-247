@@ -1,5 +1,14 @@
 # SESSION LOG v3
 
+## s_0010 · 2026-06-10 · v4-P2 complete · cross-engine review loop
+
+- Added `packages/daemon/src/claude-reviewer.ts`: `MissionReviewer` contract, `ClaudeReviewer` (headless claude over the evidence bundle ONLY — PRD/diff/logs selected by `selectReviewEvidence`, never the coder conversation), strict `parseReviewVerdict` (`{verdict, findings[], confidence}`; rework-without-findings and unparseable output are rejected, GR#7), and `ReviewBlockedError` carrying a hold code. Review calls go through the P1 budget guard (checked before spawn, recorded as `cost.headless_call` with role=reviewer after).
+- MissionRunner: new 3a review stage between evidence bundling and validators. `approve` → straight to the Gemini gate (GR#9: review never replaces the final judge). `rework` → repair task (`Rework <n>` with the findings appended to the original contract) re-runs the coder and re-imports evidence; cap `AEDEV_BUDGET_MAX_REVIEW_CYCLES` (default 2) → over cap returns a held mission with `HOLD-REVIEW-LOOP`; blocked/unstructured review holds with the carried code (HOLD-BUDGET / HOLD-REVIEW-STRUCTURE). Events: `review.requested` / `review.verdict` / `review.rework_started`; evidence: `claude-review-<n>.json` per cycle.
+- Cockpit wiring: real (non-mock) operator missions construct `ClaudeReviewer` with the session as budget key, and every verdict is pushed into the conversation as a bubble (`renderReviewVerdictBubble`); mock/test mode skips review so existing flows are unchanged.
+- Knob documented in `config/default.yaml` + `.env.example` (`AEDEV_BUDGET_MAX_REVIEW_CYCLES=2`).
+- Gates: `pnpm typecheck` PASS; `pnpm lint` PASS; `pnpm test` PASS with 699 passed, 6 skipped (117 files; +13 new tests: 8 reviewer, 5 runner-loop).
+- Next: P3 24/7 watchdog — tick scheduler (zero idle LLM calls), nightly Memory Compiler, hold → ntfy.
+
 ## s_0009 · 2026-06-10 · v4-P1 complete · Agent SDK credit guard
 
 - Added `packages/cost-meter/src/headless-budget.ts` (pure): per-mission/per-day verdict logic, env parsing (`AEDEV_BUDGET_MAX_HEADLESS_PER_MISSION` default 15, `AEDEV_BUDGET_MAX_HEADLESS_PER_DAY` default 60; 0 disables), and HOLD reason text. 7 unit tests.
