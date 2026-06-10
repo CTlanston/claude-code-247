@@ -252,6 +252,20 @@ export interface SecretGrant {
   revokeReason?: string
 }
 
+export type FleetWorkerStatus = 'active' | 'frozen'
+
+/** v5-P2 BYO fleet worker (ADR-0022/0023). Identity is a registered ed25519
+ *  public key — the coordinator NEVER stores worker tokens or API keys. */
+export interface FleetWorker {
+  workerId: string
+  operatorId: string
+  /** Raw 32-byte ed25519 public key, lowercase hex. */
+  publicKey: string
+  status: FleetWorkerStatus
+  lastSeenAt?: string
+  registeredAt: string
+}
+
 export interface Event {
   id: string
   type: string

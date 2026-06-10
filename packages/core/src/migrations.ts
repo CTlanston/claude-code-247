@@ -240,6 +240,34 @@ CREATE INDEX IF NOT EXISTS idx_holds_entity ON holds(entity_type, entity_id, sta
     up: `ALTER TABLE events ADD COLUMN operator_id TEXT;`,
     skipIf: (db) => (db.prepare('PRAGMA table_info(events)').all() as { name: string }[])
       .some((c) => c.name === 'operator_id') },
+  // v5-P2 (ADR-0022/0023): BYO fleet worker registry + nonce idempotency table.
+  // fleet_workers stores public-key identity only — never tokens/credentials.
+  // fleet_nonces is the replay guard: PRIMARY KEY (worker_id, nonce) makes a
+  // signed request first-write-wins; response_json caches the claim response
+  // so a replayed claim is idempotent instead of double-assigning.
+  { version: 8, name: 'v5-p2-fleet-workers',
+    up: `
+CREATE TABLE IF NOT EXISTS fleet_workers (
+  worker_id TEXT PRIMARY KEY,
+  operator_id TEXT NOT NULL,
+  public_key TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  last_seen_at TEXT,
+  registered_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS fleet_nonces (
+  worker_id TEXT NOT NULL,
+  nonce TEXT NOT NULL,
+  endpoint TEXT NOT NULL,
+  response_json TEXT,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (worker_id, nonce)
+);
+CREATE INDEX IF NOT EXISTS idx_fleet_workers_status ON fleet_workers(status);
+`,
+    skipIf: (db) => !!db.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='fleet_workers'",
+    ).get() },
 ]
 
 export function runMigrations(db: Database.Database): void {
