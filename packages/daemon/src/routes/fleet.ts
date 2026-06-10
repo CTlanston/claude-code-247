@@ -6,6 +6,7 @@
  *   POST /fleet/heartbeat  liveness; silence > 10min makes claims reclaimable
  *   POST /fleet/events     batch evidence ingestion, registry-bound identity
  *   POST /fleet/evidence   gate self-report (reference only — CI is the anchor)
+ *   GET  /fleet/overview   v5-P3 read-only squad view (owner's local cockpit)
  *
  * The coordinator only hands out task descriptions and evidence requirements;
  * it never sends or stores credentials, and rejects any payload that carries
@@ -16,6 +17,8 @@ import type { AedevDb } from '@aedev/core'
 import { authenticateFleetRequest, findCredentialField, systemClock, type FleetClock } from '../fleet/auth.js'
 import { isRawEd25519Hex } from '../fleet/signing.js'
 import { claimTask } from '../fleet/claims.js'
+import { buildFleetOverview, fleetBudgetSessionKey } from '../fleet/overview.js'
+import { checkHeadlessBudget, createBudgetHold, HOLD_BUDGET_CODE } from '../headless-budget-guard.js'
 
 export interface FleetRouteOptions {
   /** Injectable clock for skew/heartbeat windows (tests use a fake clock). */
@@ -68,6 +71,15 @@ export function registerFleetRoutes(app: FastifyInstance, db: AedevDb, options: 
       // Idempotent claim: a retried (workerId, nonce) gets the original answer.
       return reply.send(JSON.parse(auth.replayResponse))
     }
+    // v5-P3 per-operator budget gate: an over-budget operator's worker is
+    // refused BEFORE any task is assigned — 429 plus exactly one active
+    // HOLD-BUDGET on the operator's fleet budget session (`fleet:<op>`).
+    const sessionKey = fleetBudgetSessionKey(auth.worker.operatorId)
+    const verdict = checkHeadlessBudget(db, sessionKey, new Date(clock.now()), auth.worker.operatorId)
+    if (!verdict.allowed) {
+      const reason = createBudgetHold(db, sessionKey, verdict)
+      return reply.code(429).send({ error: 'budget_exceeded', holdCode: HOLD_BUDGET_CODE, reason })
+    }
     const result = claimTask(db, auth.worker, auth.nonce, clock)
     const response = { task: result.task }
     db.saveFleetNonceResponse(auth.worker.workerId, auth.nonce, JSON.stringify(response))
@@ -102,6 +114,12 @@ export function registerFleetRoutes(app: FastifyInstance, db: AedevDb, options: 
     }
     return { ingested }
   })
+
+  // v5-P3 read-only squad view: who is running what + per-operator credit
+  // counts and holds. No auth headers — this is the owner's local cockpit.
+  // Derived entirely from existing events/tables (GR#5); exposes no write
+  // actions and no key material.
+  app.get('/fleet/overview', async () => buildFleetOverview(db, clock))
 
   app.post<{ Body: EvidenceBody }>('/fleet/evidence', async (req, reply) => {
     const auth = authenticateFleetRequest(db, req.headers, req.body ?? {}, clock, { endpoint: '/fleet/evidence' })

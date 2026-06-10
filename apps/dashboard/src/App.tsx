@@ -4,10 +4,11 @@ import { TasksPage } from './pages/Tasks.js'
 import { ApprovalsPage } from './pages/Approvals.js'
 import { MemoryPage } from './pages/Memory.js'
 import { CockpitPage } from './pages/Cockpit.js'
+import { FleetPage } from './pages/Fleet.js'
 import { useSSE } from './hooks/useSSE.js'
 
-type Tab = 'cockpit' | 'missions' | 'tasks' | 'approvals' | 'memory'
-const TABS: Tab[] = ['cockpit', 'missions', 'tasks', 'approvals', 'memory']
+type Tab = 'cockpit' | 'missions' | 'tasks' | 'fleet' | 'approvals' | 'memory'
+const TABS: Tab[] = ['cockpit', 'missions', 'tasks', 'fleet', 'approvals', 'memory']
 
 export function App() {
   const [tab, setTab] = useState<Tab>('cockpit')
@@ -29,6 +30,7 @@ export function App() {
         {tab === 'cockpit' && <CockpitPage onNavigate={(t) => setTab(t as Tab)} />}
         {tab === 'missions' && <MissionsPage />}
         {tab === 'tasks' && <TasksPage />}
+        {tab === 'fleet' && <FleetPage />}
         {tab === 'approvals' && <ApprovalsPage onNavigate={(t) => setTab(t as Tab)} />}
         {tab === 'memory' && <MemoryPage />}
       </div>
