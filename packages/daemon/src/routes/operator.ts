@@ -1,4 +1,6 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'fs'
+import { execFileSync } from 'child_process'
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
 import { join } from 'path'
 import type { FastifyInstance } from 'fastify'
 import type { AedevDb, MissionArtifact, MissionDesign, OperatorChoice, OperatorMessageMeta, OperatorQuestion, Run, Task, ValidatorResult } from '@aedev/core'
@@ -1308,9 +1310,13 @@ function ensureOperatorRepo(db: AedevDb, requestedRepoId?: string): string {
   if (requestedRepoId && requestedRepoId !== 'unknown' && db.getRepo(requestedRepoId)) return requestedRepoId
   const existing = db.listRepos()[0]
   if (existing) return existing.id
+  // Under the test runtime the fallback repo gets a throwaway git repo:
+  // with path=cwd, mission flows that compile Tier-1 memory (Gemini block)
+  // would write into the daemon's own working tree and dirty it.
+  const fallbackPath = isTestRuntime() ? createThrowawayWorkspace() : process.cwd()
   return db.insertRepo({
     name: 'local-workspace',
-    path: process.cwd(),
+    path: fallbackPath,
     defaultBranch: 'main',
     enabled: true,
     testCommands: [],
@@ -1318,6 +1324,23 @@ function ensureOperatorRepo(db: AedevDb, requestedRepoId?: string): string {
     riskRules: {},
     mergePolicy: 'WAITING',
   }).id
+}
+
+/** Test-runtime fallback workspace: a tiny real git repo (validateTargetRepo
+ *  requires commits) in tmp, so test missions never touch the daemon's own
+ *  working tree. Falls back to cwd if git is unavailable. */
+function createThrowawayWorkspace(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'aedev-local-workspace-'))
+  try {
+    execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: dir, stdio: 'ignore' })
+    execFileSync('git', [
+      '-c', 'user.email=test@aedev.invalid', '-c', 'user.name=aedev-test', '-c', 'commit.gpgsign=false',
+      'commit', '--allow-empty', '-q', '-m', 'init',
+    ], { cwd: dir, stdio: 'ignore' })
+    return dir
+  } catch {
+    return process.cwd()
+  }
 }
 
 async function generateRoadmapDesign(
