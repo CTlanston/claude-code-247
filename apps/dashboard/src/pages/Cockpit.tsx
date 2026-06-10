@@ -233,6 +233,12 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
           <span className="ck-progress-dot" style={{ '--p': `${Math.max(0, Math.min(100, progressPercent))}%` } as CSSProperties} />
         </span>
         <span className="ck-strip-spacer" />
+        {typeof operatorView?.headlessCallsToday === 'number' && (
+          <span className="ck-stat" data-testid="cockpit-headless-calls" title="Metered headless claude calls today (Agent SDK credit) · 今日 headless 调用">
+            <span className="k">calls</span>
+            <span className="v">{operatorView.headlessCallsToday}</span>
+          </span>
+        )}
         <span className="ck-stat provider-shadow" data-testid="provider-planner" aria-label="planner provider">{plannerProvider ? `${plannerProvider.name} · ${plannerProvider.mode}` : '—'}</span>
         <span className="ck-stat provider-shadow" data-testid="provider-worker" aria-label="worker provider">{workerProvider ? `${workerProvider.name} · ${workerProvider.mode}` : '—'}</span>
         <button className="ck-stat approvals" onClick={() => onNavigate?.('approvals')} title="Open approvals · 打开审批">

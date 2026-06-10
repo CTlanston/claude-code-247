@@ -11,6 +11,7 @@ import { resolveStateDir } from './paths.js'
 import { createDefaultMissionValidatorFactory } from './validator-factory.js'
 import { DraftPrGate } from './draft-pr-gate.js'
 import { allowRemoteWritesEnabled } from './remote-write-policy.js'
+import { recordDiscoveryProbe } from './headless-budget-guard.js'
 import { CostRoller } from '@aedev/cost-meter'
 
 export const DEFAULT_PORT = 7247
@@ -80,9 +81,11 @@ export class Daemon {
         // DraftPrGate itself fail-closes when allow_remote_writes is false, so the
         // autonomous loop opens a real draft PR only when the operator enables it.
         const allowRemoteWrites = allowRemoteWritesEnabled(this.stateDir)
+        const workerSessions = await discoverWorkerSessions()
+        recordDiscoveryProbe(this.db, null, workerSessions)
         const runner = new MissionRunner(this.db, {
           stateDir: this.stateDir,
-          workerSessions: await discoverWorkerSessions(),
+          workerSessions,
           validatorFactory: createDefaultMissionValidatorFactory(),
           draftPrExecutor: new DraftPrGate({ allowRemoteWrites }, new GhGitRemoteWriter(), new GhDraftPrCreator()),
           costRoller: this.costRoller,

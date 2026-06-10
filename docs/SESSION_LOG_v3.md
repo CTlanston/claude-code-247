@@ -1,5 +1,15 @@
 # SESSION LOG v3
 
+## s_0009 · 2026-06-10 · v4-P1 complete · Agent SDK credit guard
+
+- Added `packages/cost-meter/src/headless-budget.ts` (pure): per-mission/per-day verdict logic, env parsing (`AEDEV_BUDGET_MAX_HEADLESS_PER_MISSION` default 15, `AEDEV_BUDGET_MAX_HEADLESS_PER_DAY` default 60; 0 disables), and HOLD reason text. 7 unit tests.
+- Added `packages/daemon/src/headless-budget-guard.ts`: counts `cost.headless_call` events straight from the event store (UTC-day window — GR#5 rebuildable), records every spawned `claude --print` (success or failure both consume credit), and on a block creates exactly one active `HOLD-BUDGET` per session plus `operator.hold_created` / `operator.notify_requested` events and an optional ntfy push (`AEDEV_NTFY_TOPIC`/`AEDEV_NTFY_URL`). 5 unit tests.
+- Wired the guard into every daemon headless-claude path: `runLocalPlannerText` (brainstorm + followup), `runPlannerMissionDesign` (fixture/template paths stay free), and the claude-cli worker-discovery probes at all three `discoverWorkerSessions` call sites (recorded only when the probe actually ran, via `probeStatus`). Budget is checked BEFORE spawning; blocked planner rounds return a visible HOLD bubble with `holdCode: HOLD-BUDGET`.
+- Cockpit status strip now shows today's metered call count (`headlessCallsToday` on the operator mission view; `data-testid="cockpit-headless-calls"`).
+- Documented the knobs in `config/default.yaml` (env is authoritative) and `.env.example`.
+- Gates: `pnpm typecheck` PASS; `pnpm lint` PASS; `pnpm test` PASS with 686 passed, 6 skipped (115 files; +12 new budget tests). No silent API fallback paths added (GR#1/#6 intact).
+- Next: P2 cross-engine review — Claude reviews Codex diff + failing logs with a structured verdict and a capped rework loop (`budget.max_review_cycles`).
+
 ## s_0008 · 2026-06-09 · v4-P0 complete · doc reconciliation + dead-code cleanup
 
 - Archived `WORKBOOK_v3.md` and `PRODUCTION_WORKBOOK.md` into `archive/` with SUPERSEDED headers; `WORKBOOK_v4.md` is now the only root file claiming SoT (L1 grep verified). Added OBSOLETE banners to `docs/roadmap.md` (kept in place — `config/default.yaml` scopes roadmap-agent to it) and `docs/aedev-prototype-status.md`.
