@@ -16,15 +16,15 @@
 schema_version: 4
 product: simple-cowork
 version_target: standby-team-v1.5
-current_phase: P2            # P0..P4，见 §3
+current_phase: P3            # P0..P4，见 §3
 current_substep: not_started
-last_session_id: s_0009
+last_session_id: s_0010
 open_holds: 0
 blocked_on: none
 # next_action 硬上限 2 行：
 next_action: |
-  P1 已完成（headless 计数事件+预算守卫+HOLD-BUDGET+ntfy+状态条计数，闸全绿）。
-  下一步 P2：跨引擎 review——Claude 审 Codex diff，结构化判词+返工回合上限。
+  P2 已完成（Claude evidence-only review+返工循环+HOLD-REVIEW-LOOP+判词气泡，闸全绿）。
+  下一步 P3：24/7 watchdog tick 调度器+每晚 Memory Compiler+hold→ntfy。
 ```
 
 ---
