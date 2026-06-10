@@ -194,6 +194,19 @@ export interface ApiApproval {
 export interface ApiMemoryItem {
   id: string; type: string; title: string; content: string; approved: number; createdAt: string
 }
+/** v5-P3 read-only fleet overview — no write actions, no key material. */
+export interface ApiFleetWorker {
+  workerId: string; operatorId: string; status: string; lastSeenAt: string | null; claimedTaskIds: string[]
+}
+export interface ApiFleetHold {
+  code: string; entityType: string; entityId: string; reason: string; createdAt: string
+}
+export interface ApiFleetOperator {
+  operatorId: string; headlessCallsToday: number; activeHolds: ApiFleetHold[]
+}
+export interface ApiFleetOverview {
+  workers: ApiFleetWorker[]; operators: ApiFleetOperator[]
+}
 
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${DAEMON}${path}`)
@@ -251,5 +264,6 @@ export const api = {
   createDraftPr: (id: string) =>
     post<{ status: string; code?: string; reason?: string; pr?: { url: string; number: number }; overview: ApiMissionOverview }>(`/operator/sessions/${id}/create-pr`, {}),
   getMissionOverview: (id: string) => get<ApiMissionOverview>(`/missions/${id}/overview`),
+  getFleetOverview: () => get<ApiFleetOverview>('/fleet/overview'),
   getRunLog: (missionId: string, runId: string) => get<{ text: string; logPath: string }>(`/missions/${missionId}/runs/${runId}/log`),
 }

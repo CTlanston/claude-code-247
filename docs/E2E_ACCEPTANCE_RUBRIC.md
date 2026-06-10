@@ -24,11 +24,11 @@
 | 15 | BYO worker claim 协议 [C] | ✅ | v5-P2: /fleet/claim 幂等(nonce 缓存) + 并发无重复 + kill-and-reclaim(>10min 静默回收); routes/fleet.test.ts |
 | 16 | worker 请求签名鉴权 [C] | ✅ | v5-P2: ed25519 canonical-JSON 全请求验签, 坏签名/重放 nonce/陈旧 sent_at 均 401+fleet.rejected_event, 凭证字段红线 400; fleet/auth.ts + 测试 |
 | 17 | 证据信任锚(CI-on-PR+伪证检测) [C] | ✅ | v5-P2: detectEvidenceMismatch 伪证演练 → HOLD-EVIDENCE-MISMATCH + fleet.worker_frozen + 后续 claim/events 403; fleet/claims.ts + 测试 |
-| 18 | 只读小队视图 + 按人预算 HOLD [C] | ❌ | v5-P3 |
+| 18 | 只读小队视图 + 按人预算 HOLD [C] | ✅ | v5-P3: GET /fleet/overview 只读(无鉴权头/无写字段/不回显公钥) + 按人 headless 计数/HOLD 归属; /fleet/claim 超预算 429 + HOLD-BUDGET(fleet:<op>), 他人不受影响; FleetPage 零按钮组件测试; fleet/overview.ts + routes/fleet.test.ts + Fleet.test.tsx |
 | 19 | 5-worker soak [C 可模拟] | ❌ | v5-P4 |
 | 20 | 循环自进化(review→rework→merge 判词落盘) | ✅ | cycles 0-3, evidence/v4/ |
 
-**当前分数：17/20 = 85%。** 距终止线(≥18)差 1 项：剩余 [C] 2 项
-(18 v5-P3、19 v5-P4 任一即达标)，[O] 2 项(12-13)是操作员专属。
+**当前分数：18/20 = 90%（达到终止线）。** 剩余 [C] 1 项(19 v5-P4 soak)，
+[O] 2 项(12-13)是操作员专属。
 
 更新规则：每个 cycle 结束时由循环如实更新本表，禁止无证据打勾(GR#7)。

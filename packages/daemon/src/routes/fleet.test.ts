@@ -11,6 +11,7 @@ import { registerFleetRoutes } from './fleet.js'
 import { signFleetMessage, rawPublicKeyHex, canonicalJson } from '../fleet/signing.js'
 import { type FleetClock, MAX_SENT_AT_SKEW_MS, HEARTBEAT_TIMEOUT_MS } from '../fleet/auth.js'
 import { detectEvidenceMismatch } from '../fleet/claims.js'
+import { recordHeadlessCall, HOLD_BUDGET_CODE } from '../headless-budget-guard.js'
 import { createServer } from '../server.js'
 
 const T0 = Date.parse('2026-06-10T08:00:00.000Z')
@@ -352,6 +353,127 @@ describe('POST /fleet/evidence + detectEvidenceMismatch — CI is the only trust
   })
 })
 
+describe('GET /fleet/overview — read-only squad view (v5-P3)', () => {
+  it('returns an empty fleet with no workers and no operators', async () => {
+    const res = await app.inject({ method: 'GET', url: '/fleet/overview' })
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toEqual({ workers: [], operators: [] })
+  })
+
+  it('lists two workers with per-operator headless call counts and live claimed tasks', async () => {
+    // Align the fake clock with the real wall clock: cost.headless_call
+    // events carry a real created_at and the day-window must match.
+    nowMs = Date.now()
+    const a = await registerWorker('w-alice-1', 'alice')
+    await registerWorker('w-bob-1', 'bob')
+    const tasks = seedTasks(2)
+    const claimed = await post('/fleet/claim', a, {})
+    expect(claimed.statusCode).toBe(200)
+    recordHeadlessCall(db, null, { role: 'worker', provider: 'claude-cli', operatorId: 'alice' })
+    recordHeadlessCall(db, null, { role: 'worker', provider: 'claude-cli', operatorId: 'alice' })
+    recordHeadlessCall(db, null, { role: 'worker', provider: 'claude-cli', operatorId: 'bob' })
+
+    const res = await app.inject({ method: 'GET', url: '/fleet/overview' })
+    expect(res.statusCode).toBe(200)
+    const body = res.json()
+    expect(body.workers).toHaveLength(2)
+    const wAlice = body.workers.find((w: { workerId: string }) => w.workerId === 'w-alice-1')
+    const wBob = body.workers.find((w: { workerId: string }) => w.workerId === 'w-bob-1')
+    expect(wAlice.operatorId).toBe('alice')
+    expect(wAlice.status).toBe('active')
+    expect(wAlice.lastSeenAt).toBe(new Date(nowMs).toISOString())
+    expect(wAlice.claimedTaskIds).toEqual([tasks[0]!.id])
+    expect(wBob.claimedTaskIds).toEqual([])
+    const ops = Object.fromEntries(body.operators.map((o: { operatorId: string }) => [o.operatorId, o]))
+    expect(ops['alice'].headlessCallsToday).toBe(2)
+    expect(ops['bob'].headlessCallsToday).toBe(1)
+    expect(ops['alice'].activeHolds).toEqual([])
+    expect(ops['bob'].activeHolds).toEqual([])
+  })
+
+  it('shows a frozen worker as frozen and attributes HOLD-EVIDENCE-MISMATCH to its operator', async () => {
+    nowMs = Date.now()
+    const w = await registerWorker('w-alice-1', 'alice')
+    const [task] = seedTasks(1)
+    await post('/fleet/evidence', w, { taskId: task!.id, selfReport: { gates: { test: true } } })
+    detectEvidenceMismatch(db, task!.id, { gates: { test: false } })
+
+    const body = (await app.inject({ method: 'GET', url: '/fleet/overview' })).json()
+    expect(body.workers[0].status).toBe('frozen')
+    const alice = body.operators.find((o: { operatorId: string }) => o.operatorId === 'alice')
+    expect(alice.activeHolds.some(
+      (h: { code: string; entityId: string }) => h.code === 'HOLD-EVIDENCE-MISMATCH' && h.entityId === task!.id,
+    )).toBe(true)
+  })
+
+  it('is read-only: no auth headers needed, no write-action fields, no key material', async () => {
+    nowMs = Date.now()
+    const w = await registerWorker('w-alice-1', 'alice')
+    recordHeadlessCall(db, null, { role: 'worker', provider: 'claude-cli', operatorId: 'alice' })
+    // GET without any x-worker-id/x-signature headers: owner's local cockpit.
+    const res = await app.inject({ method: 'GET', url: '/fleet/overview' })
+    expect(res.statusCode).toBe(200)
+    // never echo key material — the registered public key must not appear
+    expect(res.body).not.toContain(w.publicKey)
+    const body = res.json()
+    expect(Object.keys(body).sort()).toEqual(['operators', 'workers'])
+    expect(Object.keys(body.workers[0]).sort()).toEqual(
+      ['claimedTaskIds', 'lastSeenAt', 'operatorId', 'status', 'workerId'],
+    )
+    expect(Object.keys(body.operators[0]).sort()).toEqual(
+      ['activeHolds', 'headlessCallsToday', 'operatorId'],
+    )
+  })
+})
+
+describe('POST /fleet/claim — per-operator budget HOLD (v5-P3)', () => {
+  const DAY_CAP_KEY = 'AEDEV_BUDGET_MAX_HEADLESS_PER_DAY'
+  let savedDayCap: string | undefined
+  beforeEach(() => {
+    savedDayCap = process.env[DAY_CAP_KEY]
+    process.env[DAY_CAP_KEY] = '2'
+    nowMs = Date.now() // headless-call events use the real clock's UTC day
+  })
+  afterEach(() => {
+    if (savedDayCap === undefined) delete process.env[DAY_CAP_KEY]
+    else process.env[DAY_CAP_KEY] = savedDayCap
+  })
+
+  function burnAliceDayBudget(): void {
+    recordHeadlessCall(db, null, { role: 'worker', provider: 'claude-cli', operatorId: 'alice' })
+    recordHeadlessCall(db, null, { role: 'worker', provider: 'claude-cli', operatorId: 'alice' })
+  }
+
+  it('refuses an over-budget operator claim with 429 + HOLD-BUDGET and assigns no task', async () => {
+    const a = await registerWorker('w-alice-1', 'alice')
+    seedTasks(1)
+    burnAliceDayBudget()
+    const res = await post('/fleet/claim', a, {})
+    expect(res.statusCode).toBe(429)
+    expect(res.json().error).toBe('budget_exceeded')
+    expect(res.json().holdCode).toBe(HOLD_BUDGET_CODE)
+    expect(db.queryEvents({ type: 'fleet.task_claimed' })).toHaveLength(0)
+    const holds = db.listActiveHolds('fleet:alice')
+    expect(holds.some((h) => h.code === HOLD_BUDGET_CODE)).toBe(true)
+    // the hold is visible in the read-only overview, attributed to alice
+    const overview = (await app.inject({ method: 'GET', url: '/fleet/overview' })).json()
+    const alice = overview.operators.find((o: { operatorId: string }) => o.operatorId === 'alice')
+    expect(alice.activeHolds.some((h: { code: string }) => h.code === HOLD_BUDGET_CODE)).toBe(true)
+  })
+
+  it("another operator's worker still claims fine while the first is over budget", async () => {
+    const a = await registerWorker('w-alice-1', 'alice')
+    const b = await registerWorker('w-bob-1', 'bob')
+    const tasks = seedTasks(1)
+    burnAliceDayBudget()
+    expect((await post('/fleet/claim', a, {})).statusCode).toBe(429)
+    const resB = await post('/fleet/claim', b, {})
+    expect(resB.statusCode).toBe(200)
+    expect(resB.json().task.id).toBe(tasks[0]!.id)
+    expect(db.listActiveHolds('fleet:bob')).toHaveLength(0)
+  })
+})
+
 describe('wiring + ground rules', () => {
   it('createServer exposes the fleet routes', async () => {
     const stateDir = mkdtempSync(join(tmpdir(), 'aedev-fleet-'))
@@ -369,7 +491,7 @@ describe('wiring + ground rules', () => {
   })
 
   it('GROUND RULE 8: fleet daemon sources never import child_process', () => {
-    const sources = ['./fleet.ts', '../fleet/signing.ts', '../fleet/auth.ts', '../fleet/claims.ts']
+    const sources = ['./fleet.ts', '../fleet/signing.ts', '../fleet/auth.ts', '../fleet/claims.ts', '../fleet/overview.ts']
     for (const rel of sources) {
       const src = readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8')
       expect(src.includes('child_process'), `${rel} must not touch child_process`).toBe(false)
