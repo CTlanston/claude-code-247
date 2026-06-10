@@ -28,3 +28,9 @@
 - Gemini hard gate returned fail: Missing regression test for the changed behavior. (Missing regression test for the changed behavior.)
 <!-- lesson:01KT77CWN54747H4GRE4EAR3JT-gemini -->
 - Gemini hard gate returned fail: Missing regression test for the changed behavior. (Missing regression test for the changed behavior.)
+<!-- lesson:01KTQBKT5GFVMBC8605APSY0PD-gemini -->
+- Gemini hard gate returned fail: Missing regression test for the changed behavior. (Missing regression test for the changed behavior.)
+<!-- lesson:01KTQBNH2B1T6920XQ01ZBPJBY-gemini -->
+- Gemini hard gate returned fail: Missing regression test for the changed behavior. (Missing regression test for the changed behavior.)
+<!-- lesson:01KTQBQRV97NBQF784PGS7CKWQ-gemini -->
+- Gemini hard gate returned fail: Missing regression test for the changed behavior. (Missing regression test for the changed behavior.)

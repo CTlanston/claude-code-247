@@ -1,5 +1,10 @@
 # PRODUCTION_WORKBOOK · Claude Code 247
 
+> **SUPERSEDED (2026-06-09, archived by WORKBOOK_v4 P0):** this pre-v3 "v24
+> production-hardening" workbook is no longer canonical. The current source of
+> truth is `WORKBOOK_v4.md` at the repo root. It references the archived
+> `EXECUTION_WORKBOOK.md` and machine-specific paths; historical record only.
+
 > Canonical production-hardening workbook for the current v24 repository.
 > Read this after `AGENTS.md` and `EXECUTION_WORKBOOK.md §0` before any write.
 > Do one stage or one named slice per run, then update this file and

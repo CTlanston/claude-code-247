@@ -1,11 +1,12 @@
 # CLAUDE.md — repository-level guidance for `claude-code-247`
 
-> **v3 banner — Simple Cowork · TS-only · event-first.**
-> `WORKBOOK_v3.md` is the current source of truth. The product is a
-> conversational coding cockpit: Claude Code clarifies and plans through the
+> **v4 banner — Simple Cowork · TS-only · event-first.**
+> `WORKBOOK_v4.md` is the current source of truth (v3 / P0–P7 is complete and
+> superseded). The product is a conversational coding cockpit evolving into a
+> 24/7 standby team: Claude Code clarifies, plans and reviews through the
 > local subscription CLI, Codex implements through the local subscription CLI,
 > and Gemini validates from evidence only. Every session must read
-> [WORKBOOK_v3.md §0](WORKBOOK_v3.md) before any write.
+> [WORKBOOK_v4.md §0](WORKBOOK_v4.md) before any write.
 
 > This file is auto-loaded by Claude Code when it operates inside this repo.
 > It is **not** an instruction from a user; treat it as repository policy.
@@ -31,20 +32,39 @@ The previous Auto-Evo + AutoDev v3 implementation lives under
 
 ## Module map
 
+Product path (wired into the Simple Cowork flow; `packages/daemon` and
+`packages/runner` package.json dependencies are the ground truth):
+
 ```
-packages/core/          SQLite schema, events, ids, repo registry, state machine
-packages/daemon/        daemon, Fastify routes, mission lifecycle, PR gate,
-                         operator cockpit backend, memory helpers, validators
-packages/runner/        local CLI adapters, Docker runner, repo-bound worktrees,
-                         evidence writer, worker session discovery
-packages/validators/    Gemini/OpenAI evidence-only validators and merge policy
-packages/github/        GitHub client and PR/check helpers
-packages/cli/           `aedev` command surface
-packages/qa/            browser QA utilities
-apps/dashboard/         React/Vite operator cockpit
-scripts/                dev startup, smoke/e2e runners, launchd helpers
-docs/                   architecture, operations, handoff, parked-package notes
-archive/auto-evo/       legacy reference only; do not import from it
+packages/core/             SQLite schema, events, ids, repo registry, state machine
+packages/daemon/           daemon, Fastify routes, mission lifecycle, PR gate,
+                            operator cockpit backend, validator factory
+packages/runner/           local CLI adapters, Docker runner, repo-bound worktrees,
+                            evidence writer, worker session discovery
+packages/memory/           team memory Tier 1+2 + compiler (v3 P5; daemon dep)
+packages/validators/       Gemini evidence-only validator (factory is Gemini-only)
+packages/github/           GitHub client and PR/check helpers
+packages/cost-meter/       cost roller + /metrics gauges (daemon dep; extended in v4 P1)
+packages/event-log/        event-log utilities (daemon dep)
+packages/preview/          preview helpers (daemon dep)
+packages/claude247-bridge/ Python-kernel compatibility bridge (runner dep; rollback path)
+packages/cli/              `aedev` command surface
+packages/qa/               browser QA utilities
+apps/dashboard/            React/Vite operator cockpit (conversational)
+scripts/                   dev startup, smoke/e2e runners, launchd helpers
+docs/                      architecture, operations, handoff, parked-package notes
+archive/                   superseded workbooks + legacy auto-evo; do not import
+```
+
+Parked (experimental, not in the product flow — see `docs/PARKED.md` for the
+authoritative list and revival rule):
+
+```
+packages/agent-mesh/  packages/approval-v2/  packages/chaos/
+packages/cli-robust/  packages/interrupt-bus/  packages/moves/
+packages/push-policy/ packages/roadmap-agent/  packages/secrets/
+packages/security/    packages/sentinel/  packages/shadow/
+packages/supervisor/
 ```
 
 Runtime state lives under `~/.aedev/` by default, or under `AEDEV_HOME` when
@@ -105,12 +125,13 @@ fallback.
 
 ## Where to read state
 
-CLI:
+CLI (the command surface is `aedev`, from `packages/cli/`):
 ```
-claude247 status            system + active tasks + holds + pending approvals
-claude247 repos             registry view
-claude247 tasks             active + recent task list
-claude247 logs tail         live logs
+aedev status                system + active tasks + holds + pending approvals
+aedev repo                  registry view
+aedev task                  active + recent task list
+aedev mission               mission lifecycle view
+aedev doctor                environment / CLI session health
 ```
 
 Files (do not edit directly unless a phase explicitly requires it):

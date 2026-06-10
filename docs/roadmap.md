@@ -1,5 +1,10 @@
 # aedev Phased Roadmap
 
+> **OBSOLETE (2026-06-09, WORKBOOK_v4 P0):** this is the original aedev
+> ten-phase roadmap; its status line was never updated and no longer reflects
+> reality. Current planning lives in `WORKBOOK_v4.md`. Kept in place because
+> `config/default.yaml` scopes the parked roadmap-agent to this path.
+
 **Status:** Phase 0 in progress  
 **Date:** 2026-05-25
 
