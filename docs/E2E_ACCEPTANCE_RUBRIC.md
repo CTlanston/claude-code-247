@@ -21,15 +21,14 @@
 | 12 | 真实 Draft PR 出口 [O] | ❌ | 待操作员开闸 E2E |
 | 13 | 当前 main 上的真订阅 CLI 全链 E2E [O] | ❌ | 06-10 的跑在旧 checkout |
 | 14 | 多用户身份/隔离(operator_id+迁移) [C] | ✅ | v5-P1: migration v7, 读时回填, 按人预算; db/migrations/budget-guard 测试 |
-| 15 | BYO worker claim 协议 [C] | ❌ | v5-P2 |
-| 16 | worker 请求签名鉴权 [C] | ❌ | v5-P2 |
-| 17 | 证据信任锚(CI-on-PR+伪证检测) [C] | ❌ | v5-P2 |
+| 15 | BYO worker claim 协议 [C] | ✅ | v5-P2: /fleet/claim 幂等(nonce 缓存) + 并发无重复 + kill-and-reclaim(>10min 静默回收); routes/fleet.test.ts |
+| 16 | worker 请求签名鉴权 [C] | ✅ | v5-P2: ed25519 canonical-JSON 全请求验签, 坏签名/重放 nonce/陈旧 sent_at 均 401+fleet.rejected_event, 凭证字段红线 400; fleet/auth.ts + 测试 |
+| 17 | 证据信任锚(CI-on-PR+伪证检测) [C] | ✅ | v5-P2: detectEvidenceMismatch 伪证演练 → HOLD-EVIDENCE-MISMATCH + fleet.worker_frozen + 后续 claim/events 403; fleet/claims.ts + 测试 |
 | 18 | 只读小队视图 + 按人预算 HOLD [C] | ❌ | v5-P3 |
 | 19 | 5-worker soak [C 可模拟] | ❌ | v5-P4 |
 | 20 | 循环自进化(review→rework→merge 判词落盘) | ✅ | cycles 0-3, evidence/v4/ |
 
-**当前分数：14/20 = 70%。** 距终止线差 5 项：其中 [C] 6 项循环可自建
-(14-19，取 5 即达标)，[O] 2 项(12-13)是操作员专属——若操作员完成 12-13，
-则只需再建 3 项 [C]。
+**当前分数：17/20 = 85%。** 距终止线(≥18)差 1 项：剩余 [C] 2 项
+(18 v5-P3、19 v5-P4 任一即达标)，[O] 2 项(12-13)是操作员专属。
 
 更新规则：每个 cycle 结束时由循环如实更新本表，禁止无证据打勾(GR#7)。
