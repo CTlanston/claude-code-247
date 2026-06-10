@@ -13,6 +13,7 @@ import { registerSmokeRoutes } from './routes/smoke.js'
 import { registerOperatorRoutes } from './routes/operator.js'
 import type { OperatorRouteOptions } from './routes/operator.js'
 import { registerApprovalRoutes } from './routes/approvals.js'
+import { registerFleetRoutes } from './routes/fleet.js'
 import { MissionRunner } from './mission-runner.js'
 import { discoverWorkerSessions } from '@aedev/runner'
 import { resolveStateDir } from './paths.js'
@@ -40,6 +41,7 @@ export function createServer(
   registerSmokeRoutes(app, db, costRoller)
   registerOperatorRoutes(app, db, stateDir, operatorOptions)
   registerApprovalRoutes(app, db, stateDir)
+  registerFleetRoutes(app, db) // v5-P2 BYO-worker fleet (real wall clock)
   app.post<{ Params: { id: string } }>('/missions/:id/run', async (req, reply) => {
     try {
       const workerSessions = await discoverWorkerSessions()

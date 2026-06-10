@@ -4,6 +4,7 @@ import { generateId, nowIso } from './ids.js'
 import type {
   Repo, Mission, Task, Run, Approval, Event, RiskScore, ValidatorResult, MemoryItem,
   OperatorSession, OperatorMessage, MissionArtifact, ModelUsage, Hold, HoldStatus,
+  FleetWorker, FleetWorkerStatus,
 } from './schema.js'
 import type { RiskLevel, RunnerMode, ValidatorName, ValidatorVerdict } from './schema.js'
 
@@ -467,6 +468,66 @@ export class AedevDb {
       costUsd: r['cost_usd'] as number | undefined,
       notes: r['notes'] as string | undefined,
       createdAt: r['created_at'] as string,
+    }
+  }
+
+  // --- Fleet workers (v5-P2, ADR-0022/0023) ---
+  /** Register a BYO worker by public-key identity. Never stores credentials. */
+  insertFleetWorker(w: { workerId: string; operatorId: string; publicKey: string }): FleetWorker {
+    const now = nowIso()
+    this.db.prepare(`INSERT INTO fleet_workers (worker_id,operator_id,public_key,status,last_seen_at,registered_at) VALUES (?,?,?,?,?,?)`).run(
+      w.workerId, w.operatorId, w.publicKey, 'active', null, now
+    )
+    return { workerId: w.workerId, operatorId: w.operatorId, publicKey: w.publicKey, status: 'active', registeredAt: now }
+  }
+
+  getFleetWorker(workerId: string): FleetWorker | undefined {
+    const row = this.db.prepare('SELECT * FROM fleet_workers WHERE worker_id = ?').get(workerId) as Record<string, unknown> | undefined
+    return row ? this.rowToFleetWorker(row) : undefined
+  }
+
+  listFleetWorkers(): FleetWorker[] {
+    const rows = this.db.prepare('SELECT * FROM fleet_workers ORDER BY registered_at ASC').all() as Record<string, unknown>[]
+    return rows.map((r) => this.rowToFleetWorker(r))
+  }
+
+  /** Liveness ledger: heartbeats and claims both touch last_seen_at. */
+  touchFleetWorker(workerId: string, lastSeenAt: string): void {
+    this.db.prepare('UPDATE fleet_workers SET last_seen_at = ? WHERE worker_id = ?').run(lastSeenAt, workerId)
+  }
+
+  setFleetWorkerStatus(workerId: string, status: FleetWorkerStatus): void {
+    this.db.prepare('UPDATE fleet_workers SET status = ? WHERE worker_id = ?').run(status, workerId)
+  }
+
+  /** First-write-wins replay guard. Returns false when (workerId, nonce) was already used. */
+  recordFleetNonce(workerId: string, nonce: string, endpoint: string): boolean {
+    const res = this.db.prepare('INSERT OR IGNORE INTO fleet_nonces (worker_id,nonce,endpoint,response_json,created_at) VALUES (?,?,?,NULL,?)').run(
+      workerId, nonce, endpoint, nowIso()
+    )
+    return res.changes > 0
+  }
+
+  getFleetNonce(workerId: string, nonce: string): { endpoint: string; responseJson?: string } | undefined {
+    const row = this.db.prepare('SELECT endpoint, response_json FROM fleet_nonces WHERE worker_id = ? AND nonce = ?').get(workerId, nonce) as
+      { endpoint: string; response_json: string | null } | undefined
+    if (!row) return undefined
+    return { endpoint: row.endpoint, ...(row.response_json !== null ? { responseJson: row.response_json } : {}) }
+  }
+
+  /** Cache the response for an idempotent endpoint (claim) so replays return the same answer. */
+  saveFleetNonceResponse(workerId: string, nonce: string, responseJson: string): void {
+    this.db.prepare('UPDATE fleet_nonces SET response_json = ? WHERE worker_id = ? AND nonce = ?').run(responseJson, workerId, nonce)
+  }
+
+  private rowToFleetWorker(r: Record<string, unknown>): FleetWorker {
+    return {
+      workerId: r['worker_id'] as string,
+      operatorId: r['operator_id'] as string,
+      publicKey: r['public_key'] as string,
+      status: r['status'] as FleetWorkerStatus,
+      ...(r['last_seen_at'] ? { lastSeenAt: r['last_seen_at'] as string } : {}),
+      registeredAt: r['registered_at'] as string,
     }
   }
 
