@@ -259,6 +259,9 @@ export interface Event {
   entityId?: string
   payload: Record<string, unknown>
   createdAt: string
+  /** v5-P1 operator identity (ADR-0023). Rows written before the
+   *  operator_id migration read back as 'owner' (backfill-at-read rule). */
+  operatorId?: string
 }
 
 export interface RunnerConfig {

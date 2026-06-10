@@ -4,6 +4,11 @@ export interface Migration {
   version: number
   name: string
   up: string
+  /** Optional pragma-style guard: when it returns true the SQL is skipped
+   *  (but the migration is still recorded). Needed for ALTER TABLE ADD COLUMN,
+   *  which SQLite cannot express idempotently and which survives the Stage M
+   *  rollback drills that only delete migration rows. */
+  skipIf?: (db: Database.Database) => boolean
 }
 
 const INITIAL_SQL = `
@@ -228,6 +233,13 @@ CREATE TABLE IF NOT EXISTS holds (
 );
 CREATE INDEX IF NOT EXISTS idx_holds_entity ON holds(entity_type, entity_id, status);
 ` },
+  // v5-P1 (ADR-0023): operator identity on the legacy events table. Nullable
+  // on purpose — historical rows are NOT rewritten; readers treat NULL as
+  // 'owner' (COALESCE at query time), so GR#5 rebuilds stay intact.
+  { version: 7, name: 'v5-p1-events-operator-id',
+    up: `ALTER TABLE events ADD COLUMN operator_id TEXT;`,
+    skipIf: (db) => (db.prepare('PRAGMA table_info(events)').all() as { name: string }[])
+      .some((c) => c.name === 'operator_id') },
 ]
 
 export function runMigrations(db: Database.Database): void {
@@ -239,7 +251,7 @@ export function runMigrations(db: Database.Database): void {
   const appliedVersions = new Set(applied.map((r) => r.version))
   for (const m of MIGRATIONS) {
     if (!appliedVersions.has(m.version)) {
-      db.exec(m.up)
+      if (!m.skipIf?.(db)) db.exec(m.up)
       db.prepare('INSERT INTO migrations (version, name, applied_at) VALUES (?, ?, ?)').run(
         m.version, m.name, new Date().toISOString()
       )

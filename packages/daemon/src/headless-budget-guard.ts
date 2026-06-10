@@ -30,25 +30,30 @@ export interface HeadlessCallRecord {
   inputTokens?: number | undefined
   outputTokens?: number | undefined
   exitCode?: number | undefined
+  /** v5-P1 (ADR-0022): per-operator cost accounting. Defaults to 'owner'. */
+  operatorId?: string | undefined
 }
 
-/** Count today's headless calls system-wide. UTC day from the event's
- *  ISO `createdAt`, so the count is derived purely from the event log. */
-export function countHeadlessCallsToday(db: AedevDb, now: Date = new Date()): number {
+/** Count today's headless calls. UTC day from the event's ISO `createdAt`,
+ *  so the count is derived purely from the event log. Unscoped = whole
+ *  fleet; pass `operatorId` for per-operator accounting (v5-P1). Pre-v5
+ *  events without an operator_id count toward 'owner' (ADR-0023). */
+export function countHeadlessCallsToday(db: AedevDb, now: Date = new Date(), operatorId?: string): number {
   const day = now.toISOString().slice(0, 10)
-  return db.queryEvents({ type: HEADLESS_CALL_EVENT })
+  return db.queryEvents({ type: HEADLESS_CALL_EVENT, ...(operatorId !== undefined ? { operatorId } : {}) })
     .filter((e) => e.createdAt.slice(0, 10) === day)
     .length
 }
 
-/** Count headless calls recorded against one operator session/mission. */
-export function countHeadlessCallsForSession(db: AedevDb, sessionId: string): number {
-  return db.queryEvents({ type: HEADLESS_CALL_EVENT, entityId: sessionId }).length
+/** Count headless calls recorded against one operator session/mission,
+ *  optionally scoped to one operator (v5-P1). */
+export function countHeadlessCallsForSession(db: AedevDb, sessionId: string, operatorId?: string): number {
+  return db.queryEvents({ type: HEADLESS_CALL_EVENT, entityId: sessionId, ...(operatorId !== undefined ? { operatorId } : {}) }).length
 }
 
 /** Record one headless call. MUST be called for every spawned
  *  `claude --print`, success or failure — a failed call still consumed
- *  Agent SDK credit. */
+ *  Agent SDK credit. Attributed to `record.operatorId` ('owner' default). */
 export function recordHeadlessCall(db: AedevDb, sessionId: string | null, record: HeadlessCallRecord): void {
   db.insertEvent(HEADLESS_CALL_EVENT, 'operator_session', sessionId ?? undefined, {
     role: record.role,
@@ -57,15 +62,17 @@ export function recordHeadlessCall(db: AedevDb, sessionId: string | null, record
     ...(record.inputTokens !== undefined ? { inputTokens: record.inputTokens } : {}),
     ...(record.outputTokens !== undefined ? { outputTokens: record.outputTokens } : {}),
     ...(record.exitCode !== undefined ? { exitCode: record.exitCode } : {}),
-  })
+  }, record.operatorId ?? 'owner')
 }
 
-/** Evaluate the budget for one more call attributed to this session. */
-export function checkHeadlessBudget(db: AedevDb, sessionId: string, now: Date = new Date()): HeadlessBudgetVerdict {
+/** Evaluate the budget for one more call attributed to this session. When
+ *  `operatorId` is given, both caps are evaluated for that operator only
+ *  (v5-P1 per-operator HOLD-BUDGET, ADR-0022). */
+export function checkHeadlessBudget(db: AedevDb, sessionId: string, now: Date = new Date(), operatorId?: string): HeadlessBudgetVerdict {
   return evaluateHeadlessBudget(
     {
-      missionCalls: countHeadlessCallsForSession(db, sessionId),
-      dayCalls: countHeadlessCallsToday(db, now),
+      missionCalls: countHeadlessCallsForSession(db, sessionId, operatorId),
+      dayCalls: countHeadlessCallsToday(db, now, operatorId),
     },
     headlessLimitsFromEnv(),
   )
