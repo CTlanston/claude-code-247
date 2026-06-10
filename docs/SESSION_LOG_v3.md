@@ -1,5 +1,14 @@
 # SESSION LOG v3
 
+## s_0011 · 2026-06-10 · v4-P3 complete · 24/7 watchdog
+
+- Added `packages/daemon/src/watchdog.ts`: tick loop (default 30 min, `AEDEV_WATCHDOG_TICK_MINUTES`) that is **zero LLM calls by construction** — it only reads the event store. Three duties per tick: (1) hold events (`operator.hold_created` / `mission.run_held`) not yet seen → one ntfy each, deduped forever via `watchdog.hold_notified` keyed by source event id (timestamp-independent, restart-safe; the first tick marks pre-existing holds as seen WITHOUT notifying); (2) `running` missions with no event activity past `AEDEV_WATCHDOG_STALE_MINUTES` (45) → one notification per mission ever (`watchdog.stale_notified`); (3) nightly Memory Compiler — once per calendar day at/after `AEDEV_WATCHDOG_COMPILE_HOUR` (2), Tier-2 lessons compile into each repo's Tier-1 `cowork-memory.md` (fixes the v3-P5 "每晚" deviation). Every tick appends `watchdog.tick`, so the window is event-sourced (GR#5).
+- Extracted `packages/daemon/src/ntfy.ts` (`sendNtfy`) shared by the P1 budget guard and the watchdog; notification failure never blocks the state change.
+- Daemon wiring: `autoStartWatchdog` (default true) + `watchdogTickMinutes` in `DaemonConfig`; the stop signal interrupts the tick sleep so shutdown never waits out a 30-minute window.
+- Knobs documented in `config/default.yaml` + `.env.example`.
+- Gates: `pnpm typecheck` PASS; `pnpm lint` PASS; `pnpm test` PASS with 704 passed, 6 skipped (118 files; +5 watchdog tests: quiet tick is silent + zero LLM, hold notify-once, stale dedupe, nightly compile once-per-day + Tier-1 update, interruptible stop).
+- Next: P4 per-repo whitelist remote-write exit; first real Draft PR on the operator-designated safe repo.
+
 ## s_0010 · 2026-06-10 · v4-P2 complete · cross-engine review loop
 
 - Added `packages/daemon/src/claude-reviewer.ts`: `MissionReviewer` contract, `ClaudeReviewer` (headless claude over the evidence bundle ONLY — PRD/diff/logs selected by `selectReviewEvidence`, never the coder conversation), strict `parseReviewVerdict` (`{verdict, findings[], confidence}`; rework-without-findings and unparseable output are rejected, GR#7), and `ReviewBlockedError` carrying a hold code. Review calls go through the P1 budget guard (checked before spawn, recorded as `cost.headless_call` with role=reviewer after).

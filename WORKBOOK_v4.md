@@ -16,15 +16,15 @@
 schema_version: 4
 product: simple-cowork
 version_target: standby-team-v1.5
-current_phase: P3            # P0..P4，见 §3
+current_phase: P4            # P0..P4，见 §3
 current_substep: not_started
-last_session_id: s_0010
+last_session_id: s_0011
 open_holds: 0
 blocked_on: none
 # next_action 硬上限 2 行：
 next_action: |
-  P2 已完成（Claude evidence-only review+返工循环+HOLD-REVIEW-LOOP+判词气泡，闸全绿）。
-  下一步 P3：24/7 watchdog tick 调度器+每晚 Memory Compiler+hold→ntfy。
+  P3 已完成（watchdog tick 调度器+空闲零 LLM+每晚 Compiler+hold→ntfy，闸全绿）。
+  下一步 P4：per-repo 白名单远程写出口，在安全 repo 上产出第一个真实 Draft PR。
 ```
 
 ---

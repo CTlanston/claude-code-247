@@ -12,6 +12,7 @@ import { createDefaultMissionValidatorFactory } from './validator-factory.js'
 import { DraftPrGate } from './draft-pr-gate.js'
 import { allowRemoteWritesEnabled } from './remote-write-policy.js'
 import { recordDiscoveryProbe } from './headless-budget-guard.js'
+import { Watchdog } from './watchdog.js'
 import { CostRoller } from '@aedev/cost-meter'
 
 export const DEFAULT_PORT = 7247
@@ -29,6 +30,10 @@ export interface DaemonConfig {
   autoWriteDailySummary?: boolean
   /** Injected sleep — used by tests to drive the scheduler loop instantly. */
   sleepFn?: (ms: number) => Promise<void>
+  /** When false, the P3 watchdog loop is not started automatically.  Tests pass false. */
+  autoStartWatchdog?: boolean
+  /** Watchdog tick cadence in minutes (default 30 / AEDEV_WATCHDOG_TICK_MINUTES). */
+  watchdogTickMinutes?: number
 }
 
 export class Daemon {
@@ -38,6 +43,7 @@ export class Daemon {
   private startTime!: Date
   private scheduler?: MissionScheduler
   private schedulerLoop?: Promise<{ ticks: number; totalDispatched: number }>
+  private watchdog?: Watchdog
   private stateDir!: string
   /** Long-lived rolling cost window; injected into every MissionRunner and scraped by /metrics. */
   private readonly costRoller = new CostRoller()
@@ -98,6 +104,18 @@ export class Daemon {
       })
     }
 
+    // P3 watchdog — standby watcher (zero idle LLM calls): notifies on new
+    // holds, flags stale running missions, and runs the nightly Memory
+    // Compiler. Survives restarts because its window derives from events.
+    if (this.config.autoStartWatchdog ?? true) {
+      this.watchdog = new Watchdog({
+        db: this.db,
+        ...(this.config.watchdogTickMinutes !== undefined ? { tickMinutes: this.config.watchdogTickMinutes } : {}),
+        ...(this.config.sleepFn !== undefined ? { sleepFn: this.config.sleepFn } : {}),
+      })
+      this.watchdog.start()
+    }
+
     if (this.config.autoWriteDailySummary !== false) {
       this.writeDailySummary()
     }
@@ -105,6 +123,7 @@ export class Daemon {
 
   async stop(): Promise<void> {
     this.heartbeat.stop()
+    if (this.watchdog) await this.watchdog.stop()
     if (this.scheduler) this.scheduler.stop()
     if (this.schedulerLoop) await this.schedulerLoop
     await this.server.close()
