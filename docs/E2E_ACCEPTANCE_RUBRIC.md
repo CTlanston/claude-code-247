@@ -20,7 +20,7 @@
 | 11 | 远程写双闸 + per-repo 白名单 | ✅ | v4-P4 REPO_NOT_WHITELISTED 测试 |
 | 12 | 真实 Draft PR 出口 [O] | ❌ | 待操作员开闸 E2E |
 | 13 | 当前 main 上的真订阅 CLI 全链 E2E [O] | ❌ | 06-10 的跑在旧 checkout |
-| 14 | 多用户身份/隔离(operator_id+迁移) [C] | ❌ | v5-P1 |
+| 14 | 多用户身份/隔离(operator_id+迁移) [C] | ✅ | v5-P1: migration v7, 读时回填, 按人预算; db/migrations/budget-guard 测试 |
 | 15 | BYO worker claim 协议 [C] | ❌ | v5-P2 |
 | 16 | worker 请求签名鉴权 [C] | ❌ | v5-P2 |
 | 17 | 证据信任锚(CI-on-PR+伪证检测) [C] | ❌ | v5-P2 |
@@ -28,7 +28,7 @@
 | 19 | 5-worker soak [C 可模拟] | ❌ | v5-P4 |
 | 20 | 循环自进化(review→rework→merge 判词落盘) | ✅ | cycles 0-3, evidence/v4/ |
 
-**当前分数：13/20 = 65%。** 距终止线差 5 项：其中 [C] 6 项循环可自建
+**当前分数：14/20 = 70%。** 距终止线差 5 项：其中 [C] 6 项循环可自建
 (14-19，取 5 即达标)，[O] 2 项(12-13)是操作员专属——若操作员完成 12-13，
 则只需再建 3 项 [C]。
 
