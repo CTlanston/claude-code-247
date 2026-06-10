@@ -90,6 +90,38 @@ describe('migrations (Stage A.2)', () => {
     expect(getMigrationVersion(db)).toBe(MIGRATIONS[MIGRATIONS.length - 1].version)
   })
 
+  it('v8 creates fleet_workers and fleet_nonces (v5-P2 BYO worker fleet)', () => {
+    const workerCols = db.prepare('PRAGMA table_info(fleet_workers)').all() as { name: string; notnull: number; pk: number }[]
+    const byName = Object.fromEntries(workerCols.map((c) => [c.name, c]))
+    expect(byName['worker_id']?.pk).toBe(1)
+    expect(byName['operator_id']?.notnull).toBe(1)
+    expect(byName['public_key']?.notnull).toBe(1)
+    expect(byName['status']?.notnull).toBe(1)
+    expect(byName['last_seen_at']).toBeDefined()
+    expect(byName['registered_at']?.notnull).toBe(1)
+
+    const nonceCols = db.prepare('PRAGMA table_info(fleet_nonces)').all() as { name: string }[]
+    const nonceNames = nonceCols.map((c) => c.name)
+    expect(nonceNames).toContain('worker_id')
+    expect(nonceNames).toContain('nonce')
+    expect(nonceNames).toContain('endpoint')
+    expect(nonceNames).toContain('response_json')
+  })
+
+  it('v8 enforces the (worker_id, nonce) idempotency key on fleet_nonces', () => {
+    const insert = () =>
+      db.prepare('INSERT INTO fleet_nonces (worker_id, nonce, endpoint, created_at) VALUES (?,?,?,?)')
+        .run('w1', 'n1', '/fleet/claim', '2026-06-10T00:00:00.000Z')
+    insert()
+    expect(() => insert()).toThrow(/UNIQUE|PRIMARY/i)
+  })
+
+  it('v8 re-applies safely when the tables already exist (round-trip guard, like v7)', () => {
+    db.prepare('DELETE FROM migrations WHERE version >= 8').run()
+    expect(() => runMigrations(db)).not.toThrow()
+    expect(getMigrationVersion(db)).toBe(MIGRATIONS[MIGRATIONS.length - 1].version)
+  })
+
   it('v4 creates additive operator cockpit tables', () => {
     const tables = db
       .prepare("SELECT name FROM sqlite_master WHERE type='table'")

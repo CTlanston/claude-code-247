@@ -105,6 +105,31 @@ describe('AedevDb', () => {
     expect(approved).toHaveLength(1)
   })
 
+  it('registers, touches, and freezes fleet workers (v5-P2)', () => {
+    const w = db.insertFleetWorker({ workerId: 'w-mac-1', operatorId: 'alice', publicKey: 'a'.repeat(64) })
+    expect(w.status).toBe('active')
+    expect(db.getFleetWorker('w-mac-1')?.operatorId).toBe('alice')
+    expect(db.getFleetWorker('w-mac-1')?.lastSeenAt).toBeUndefined()
+
+    db.touchFleetWorker('w-mac-1', '2026-06-10T01:00:00.000Z')
+    expect(db.getFleetWorker('w-mac-1')?.lastSeenAt).toBe('2026-06-10T01:00:00.000Z')
+
+    db.setFleetWorkerStatus('w-mac-1', 'frozen')
+    expect(db.getFleetWorker('w-mac-1')?.status).toBe('frozen')
+    expect(db.listFleetWorkers()).toHaveLength(1)
+  })
+
+  it('fleet nonces are first-write-wins with an optional cached response (idempotent claim, v5-P2)', () => {
+    db.insertFleetWorker({ workerId: 'w1', operatorId: 'alice', publicKey: 'b'.repeat(64) })
+    expect(db.recordFleetNonce('w1', 'n1', '/fleet/claim')).toBe(true)
+    expect(db.recordFleetNonce('w1', 'n1', '/fleet/claim')).toBe(false) // replay
+    expect(db.getFleetNonce('w1', 'n1')?.endpoint).toBe('/fleet/claim')
+    expect(db.getFleetNonce('w1', 'n1')?.responseJson).toBeUndefined()
+    db.saveFleetNonceResponse('w1', 'n1', '{"task":null}')
+    expect(db.getFleetNonce('w1', 'n1')?.responseJson).toBe('{"task":null}')
+    expect(db.getFleetNonce('w1', 'other')).toBeUndefined()
+  })
+
   it('inserts and lists model_usage rows', () => {
     const repo = db.insertRepo({ name: 'r', path: '/tmp/r', defaultBranch: 'main', enabled: true, testCommands: [], forbiddenPaths: [], riskRules: {}, mergePolicy: 'WAITING' })
     const mission = db.insertMission({ repoId: repo.id, title: 'm', status: 'approved' })
