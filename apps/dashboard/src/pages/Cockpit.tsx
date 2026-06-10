@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import {
   api,
+  ApiError,
   type ApiMissionOverview,
   type ApiOperatorChoice,
   type ApiOperatorMissionView,
@@ -57,13 +58,18 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [errDetail, setErrDetail] = useState<string | null>(null)
   const [note, setNote] = useState('')
   const [skippedClarify, setSkippedClarify] = useState<Set<string>>(() => new Set())
   useEffect(() => {
     api.getRepos().then((r) => {
       setRepos(r)
       setRepoId((current) => current || r[0]?.id || 'unknown')
-    }).catch((e: Error) => setErr(e.message))
+    }).catch((e: Error) => {
+      const human = mapErrorToHuman(e)
+      setErr(human.text)
+      setErrDetail(human.detail ?? null)
+    })
   }, [])
 
   // Authoritative pending-approval count from the same /approvals source the
@@ -135,6 +141,7 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
   async function action<T>(label: string, fn: () => Promise<T>, after?: (x: T) => void) {
     setBusy(label)
     setErr(null)
+    setErrDetail(null)
     setNotice(actionStartMessage(label))
     try {
       const out = await fn()
@@ -146,8 +153,17 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
         setNotice(actionDoneMessage(label))
       }
     } catch (e) {
-      setErr(formatError(e as Error))
-      setNotice(null)
+      // Raw HTTP/gate codes never reach the chat: structured refusals become a
+      // normal assistant-style notice, everything else a generic human message.
+      const human = mapErrorToHuman(e)
+      if (human.kind === 'guidance') {
+        setErr(null)
+        setNotice(human.text)
+      } else {
+        setErr(human.text)
+        setErrDetail(human.detail ?? null)
+        setNotice(null)
+      }
     } finally {
       setBusy(null)
     }
@@ -160,6 +176,7 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
     setOverview(null)
     setDraftPrStatus(null)
     setErr(null)
+    setErrDetail(null)
     setPrompt(DEFAULT_PROMPT)
     setTitle('Operator Cockpit Mission')
     setNotice('已开始新任务。New mission — describe your goal, then start a brainstorm.')
@@ -207,6 +224,18 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
   const stageForDom = operatorView?.stage ?? (session?.status === 'brainstorming' ? 'brainstorming' : session?.missionId ? 'roadmap_ready' : 'new')
   const progressPercent = operatorView?.progressPercent ?? Math.round((overview?.progress ?? 0) * 100)
   const nowRunning = busy ? actionName(busy) : operatorView?.nextAction ?? guidance.title
+  // v-ux-1 — client-side tick so "Last activity" and the in-flight elapsed
+  // counter keep moving even when no new event arrives (phases never look frozen).
+  const [nowTs, setNowTs] = useState(() => Date.now())
+  useEffect(() => {
+    const timer = setInterval(() => setNowTs(Date.now()), 1_000)
+    return () => clearInterval(timer)
+  }, [])
+  const lastActivity = operatorView?.lastActivity
+  const lastActivityAgoMs = lastActivity?.atIso
+    ? Math.max(0, nowTs - Date.parse(lastActivity.atIso))
+    : lastActivity?.agoMs ?? null
+  const phaseInFlight = lastActivity?.phase === 'planning' || lastActivity?.phase === 'executing'
 
   return (
     <div
@@ -225,8 +254,19 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
         </span>
         <span className="ck-stat ck-now" data-testid="cockpit-now-running">
           <span className="k">Now</span>
-          <span className="v">{nowRunning}</span>
+          <span className="v">
+            {nowRunning}
+            {phaseInFlight && lastActivityAgoMs != null && (
+              <span data-testid="cockpit-now-elapsed">{` · ${fmtElapsed(lastActivityAgoMs)}`}</span>
+            )}
+          </span>
         </span>
+        {lastActivity && (
+          <span className="ck-stat" data-testid="cockpit-last-activity" title="距上次活动 · Time since the last recorded event">
+            <span className="k">Last activity</span>
+            <span className="v">{lastActivityAgoMs != null ? `${fmtElapsed(lastActivityAgoMs)} ago` : '—'}</span>
+          </span>
+        )}
         <span className="ck-stat ck-progress" data-testid="cockpit-progress">
           <span className="k">Progress</span>
           <span className="v">{progressPercent}%</span>
@@ -255,7 +295,17 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
             </div>
           </div>
 
-          {err && <div className="ck-banner error">Error: {err}</div>}
+          {err && (
+            <div className="ck-banner error">
+              {err}
+              {errDetail && (
+                <details className="ck-err-detail">
+                  <summary>详情 · details</summary>
+                  <pre style={{ whiteSpace: 'pre-wrap', margin: '4px 0 0' }}>{errDetail}</pre>
+                </details>
+              )}
+            </div>
+          )}
           {overview?.activeHolds && overview.activeHolds.length > 0 && (
             <div className="ck-banner error">
               {overview.activeHolds.map((h) => (
@@ -296,7 +346,7 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
             canChoose={false}
             onChoice={handleChoice}
             onAnswer={(answers) => session && action('answer', () => api.answerQuestions(session.id, answers), (x) => { setSession(x.session); setMessages(x.messages) })}
-            footer={<><IndependentReviewBlock overview={overview} /><ProcessBlock overview={overview} busy={busy} /></>}
+            footer={<><LoopSummaryCard view={operatorView} /><IndependentReviewBlock overview={overview} /><ProcessBlock overview={overview} busy={busy} /></>}
           />
 
           {pendingClarify && pendingClarify.questions && pendingClarify.questions.length > 0 && (
@@ -342,14 +392,37 @@ function draftPrRemediation(code?: string): string {
   return 'Remote writes 默认关闭（安全门）· Remote writes are off by default (safety gate). Enabling allow_remote_writes for this repo (P5) lets the worker push a real Draft PR; until then "blocked" is the expected, safe outcome.'
 }
 
-function formatError(e: Error): string {
-  if (/Load failed|Failed to fetch|NetworkError/i.test(e.message)) {
-    return 'Load failed. Daemon connection is down or restarting. 请确认 pnpm cockpit:dev 仍在运行，然后刷新页面。'
+const CLARIFY_GUIDANCE_FALLBACK = '还有几个问题需要你先确认，回答上面的待确认问题后就能继续 · Please answer the outstanding questions above; once answered, the AI can continue.'
+const GENERIC_HUMAN_ERROR = '系统遇到问题，正在保护现场 · Something needs attention. The system paused safely; nothing was pushed or published.'
+
+/**
+ * v-ux-1 — north star: raw HTTP codes, gate codes and stack traces never reach
+ * the primary chat flow. Structured CLARIFY-gate refusals become assistant-style
+ * guidance; everything else becomes a generic human message with the raw text
+ * tucked into an expandable detail.
+ */
+export function mapErrorToHuman(e: unknown): { kind: 'guidance' | 'error'; text: string; detail?: string } {
+  const err = e instanceof Error ? e : new Error(String(e))
+  const body = err instanceof ApiError
+    ? err.body as { humanState?: string; guidance?: string; blocked?: { code?: string } } | null
+    : null
+  if (body && (body.humanState === 'needs_more_context' || body.blocked?.code === 'CLARIFY_GATE_BLOCKED')) {
+    return { kind: 'guidance', text: body.guidance ?? CLARIFY_GUIDANCE_FALLBACK }
   }
-  if (/HTTP 404: \/operator\//.test(e.message)) {
-    return `${e.message}. The dashboard is newer than the daemon on port 7247. Restart with: pnpm cockpit:dev`
+  if (/CLARIFY_GATE_BLOCKED|HTTP 409|\b409\b/.test(err.message)) {
+    return { kind: 'guidance', text: CLARIFY_GUIDANCE_FALLBACK }
   }
-  return e.message
+  if (/Load failed|Failed to fetch|NetworkError/i.test(err.message)) {
+    return { kind: 'error', text: 'Load failed. Daemon connection is down or restarting. 请确认 pnpm cockpit:dev 仍在运行，然后刷新页面。' }
+  }
+  if (/HTTP 404: \/operator\//.test(err.message)) {
+    return {
+      kind: 'error',
+      text: '控制台和后台版本不一致，请重启 pnpm cockpit:dev · The dashboard is newer than the daemon — restart with: pnpm cockpit:dev',
+      detail: err.message,
+    }
+  }
+  return { kind: 'error', text: GENERIC_HUMAN_ERROR, detail: err.message }
 }
 
 function isHoldResponse(out: unknown): out is { hold: { code: string; reason: string } } {
@@ -573,6 +646,33 @@ export function buildGuidance(opts: {
     title: 'Watch the mission move · 查看执行进展',
     body: '继续在这条对话里观察进度、补充约束或推进下一步。',
   }
+}
+
+/**
+ * v-ux-1 — compact read-only "Loop" card: what changed, what was checked, who
+ * worked, what the reviewer said, and why the loop stopped or continues. All
+ * content comes from the existing overview — no new endpoints.
+ */
+function LoopSummaryCard({ view }: { view?: ApiOperatorMissionView }) {
+  const loop = view?.loopSummary
+  if (!loop) return null
+  return (
+    <div className="ck-review-block" data-testid="cockpit-loop-summary">
+      <div className="ck-review-head">
+        <strong>Loop · 本轮工作</strong>
+        <span>{view?.userState?.labelZh ?? 'read-only'}</span>
+      </div>
+      <div className="ck-review">
+        <dl>
+          <div><dt>Changed</dt><dd>{loop.whatChanged.length ? loop.whatChanged.join(', ') : '还没有文件改动 · No file changes yet'}</dd></div>
+          <div><dt>Checks</dt><dd>{loop.testsRan.length ? loop.testsRan.join(', ') : '还没有检查记录 · No checks recorded yet'}</dd></div>
+          <div><dt>Agents</dt><dd>{loop.agents.length ? loop.agents.join(', ') : '—'}</dd></div>
+          <div><dt>Review</dt><dd>{loop.validatorSaid ?? '结果评审还没有结论 · No review verdict yet'}</dd></div>
+          <div><dt>Why</dt><dd>{loop.whyStoppedOrContinuing}</dd></div>
+        </dl>
+      </div>
+    </div>
+  )
 }
 
 function IndependentReviewBlock({ overview }: { overview: ApiMissionOverview | null }) {

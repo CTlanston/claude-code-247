@@ -99,6 +99,28 @@ export interface ApiOperatorActionView {
   kind: 'primary' | 'secondary'
   disabled?: boolean
 }
+/** v-ux-1 — non-developer state vocabulary mirrored from the daemon. */
+export type ApiUserState =
+  | 'understanding'
+  | 'needs_more_context'
+  | 'planning'
+  | 'ready_to_execute'
+  | 'executing'
+  | 'testing'
+  | 'evaluating'
+  | 'blocked'
+  | 'waiting_for_approval'
+  | 'completed'
+export interface ApiUserStateView {
+  state: ApiUserState; label: string; labelZh: string; explanation: string
+}
+export interface ApiLastActivity {
+  atIso: string | null; agoMs: number | null; phase: string
+}
+export interface ApiLoopSummary {
+  whatChanged: string[]; testsRan: string[]; agents: string[]
+  validatorSaid: string | null; whyStoppedOrContinuing: string
+}
 export interface ApiOperatorMissionView {
   stage: ApiOperatorMissionStage
   stageLabel: string
@@ -147,6 +169,10 @@ export interface ApiOperatorMissionView {
   summary: string
   nextAction: string
   testMode: boolean
+  /** v-ux-1 — optional so the dashboard stays compatible with an older daemon. */
+  userState?: ApiUserStateView
+  lastActivity?: ApiLastActivity
+  loopSummary?: ApiLoopSummary
 }
 export interface ApiMissionOverview {
   mission: ApiMission
@@ -208,16 +234,33 @@ export interface ApiFleetOverview {
   workers: ApiFleetWorker[]; operators: ApiFleetOperator[]
 }
 
+/**
+ * v-ux-1 — HTTP failure that keeps the parsed response body, so the UI can
+ * translate structured refusals (e.g. CLARIFY-gate 409 guidance) into human
+ * wording instead of surfacing raw status codes.
+ */
+export class ApiError extends Error {
+  constructor(message: string, readonly status: number, readonly body: unknown) {
+    super(message)
+    this.name = 'ApiError'
+  }
+}
+
+async function throwApiError(res: Response, path: string): Promise<never> {
+  const body = await res.json().catch(() => null)
+  throw new ApiError(`HTTP ${res.status}: ${path}`, res.status, body)
+}
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${DAEMON}${path}`)
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${path}`)
+  if (!res.ok) await throwApiError(res, path)
   return res.json() as Promise<T>
 }
 async function post<T>(path: string, body: unknown = {}): Promise<T> {
   const res = await fetch(`${DAEMON}${path}`, {
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
   })
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${path}`)
+  if (!res.ok) await throwApiError(res, path)
   return res.json() as Promise<T>
 }
 

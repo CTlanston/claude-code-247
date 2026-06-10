@@ -38,6 +38,7 @@ import {
   recordHeadlessCall,
 } from '../headless-budget-guard.js'
 import { ClaudeReviewer, type ReviewVerdict } from '../claude-reviewer.js'
+import { deriveUserState, type UserStateView } from '../user-state.js'
 
 type Stage =
   | 'Intake'
@@ -136,6 +137,18 @@ interface OperatorMissionView {
   summary: string
   nextAction: string
   testMode: boolean
+  /** v-ux-1 — non-developer state vocabulary; safe to render verbatim (no raw codes). */
+  userState: UserStateView
+  /** v-ux-1 — progress visibility: when something last happened + the in-flight phase. */
+  lastActivity: { atIso: string | null; agoMs: number | null; phase: string }
+  /** v-ux-1 — read-only loop summary derived from existing overview inputs. */
+  loopSummary: {
+    whatChanged: string[]
+    testsRan: string[]
+    agents: string[]
+    validatorSaid: string | null
+    whyStoppedOrContinuing: string
+  }
 }
 
 interface OperatorSessionBody {
@@ -234,6 +247,10 @@ function renderReviewVerdictBubble(verdict: ReviewVerdict, cycle: number): strin
     `Confidence: ${Math.round(verdict.confidence)}%`,
   ].join('\n')
 }
+
+/** v-ux-1 — friendly bilingual guidance for CLARIFY-gate refusals; never raw codes. */
+const CLARIFY_GATE_GUIDANCE =
+  '还有几个问题需要你先确认。回答上面的待确认问题后，就可以继续生成方案并执行 · A few questions still need your answers. Answer the outstanding questions above and the plan can continue.'
 
 export function registerOperatorRoutes(app: FastifyInstance, db: AedevDb, stateDir: string, options: OperatorRouteOptions = {}): void {
   const intake = new IntakeService(db, stateDir)
@@ -358,6 +375,8 @@ export function registerOperatorRoutes(app: FastifyInstance, db: AedevDb, stateD
       return reply.code(409).send({
         session: db.getOperatorSession(session.id),
         messages: db.listOperatorMessages(session.id),
+        humanState: 'needs_more_context',
+        guidance: CLARIFY_GATE_GUIDANCE,
         blocked: {
           code: 'CLARIFY_GATE_BLOCKED',
           reason: clarifyGate.state.reason,
@@ -430,6 +449,8 @@ export function registerOperatorRoutes(app: FastifyInstance, db: AedevDb, stateD
         return reply.code(409).send({
           session: db.getOperatorSession(session.id),
           result: { status: 'blocked', mergeDecision: 'BLOCKED' },
+          humanState: 'needs_more_context',
+          guidance: CLARIFY_GATE_GUIDANCE,
           blocked: {
             code: 'CLARIFY_GATE_BLOCKED',
             reason: clarifyGate.state.reason,
@@ -2507,6 +2528,54 @@ function buildMemorySummary(opts: {
   return { projectFacts, userPreferences, recentLessons }
 }
 
+/**
+ * v-ux-1 — when something last happened plus the in-flight phase, so the
+ * cockpit can show a live "Last activity Xs ago" and phases never look frozen.
+ */
+function buildLastActivity(
+  runs: Run[],
+  events: Array<{ type: string; createdAt?: string }>,
+  fallbackPhase: string,
+): OperatorMissionView['lastActivity'] {
+  const atIso = events.find((e) => typeof e.createdAt === 'string')?.createdAt ?? null
+  let plannerInFlight = false
+  for (const e of events) { // events arrive newest-first
+    if (e.type === 'operator.role_done') break
+    if (e.type === 'operator.role_started') { plannerInFlight = true; break }
+  }
+  const phase = runs.some((r) => r.status === 'running') ? 'executing' : plannerInFlight ? 'planning' : fallbackPhase
+  return { atIso, agoMs: atIso ? Math.max(0, Date.now() - Date.parse(atIso)) : null, phase }
+}
+
+/** v-ux-1 — read-only loop summary derived from what the overview already carries. */
+function buildLoopSummary(opts: {
+  userState: UserStateView
+  projectPulse: OperatorMissionView['projectPulse']
+  providerSummary: OperatorMissionView['providerSummary']
+  artifacts: Array<MissionArtifact & { preview?: string | null }>
+  validators: ValidatorResult[]
+}): OperatorMissionView['loopSummary'] {
+  const testsRan = opts.artifacts
+    .filter((a) => /(test|gate|check|junit|lint)/i.test(`${a.type} ${a.title ?? ''} ${a.path}`))
+    .map((a) => a.title ?? a.path)
+    .slice(0, 8)
+  const agents = [
+    ...(opts.providerSummary.planner ? [`planner · ${opts.providerSummary.planner.name}`] : []),
+    ...(opts.providerSummary.worker ? [`worker · ${opts.providerSummary.worker.name}`] : []),
+    ...opts.providerSummary.validators.map((v) => `validator · ${v.name}`),
+  ]
+  const [latestVerdict] = [...opts.validators].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+  return {
+    whatChanged: opts.projectPulse.touchedFiles.slice(0, 12),
+    testsRan,
+    agents,
+    validatorSaid: latestVerdict
+      ? `${latestVerdict.validator}: ${latestVerdict.verdict}${latestVerdict.summary ? ` — ${latestVerdict.summary}` : ''}`
+      : null,
+    whyStoppedOrContinuing: opts.userState.explanation,
+  }
+}
+
 function buildOperatorMissionView(opts: {
   db: AedevDb
   mission: { status: string; githubPrUrl?: string | null }
@@ -2519,9 +2588,11 @@ function buildOperatorMissionView(opts: {
   validatorSecretStatus: ReturnType<typeof inspectDefaultMissionValidatorSecrets>
   validatorStatus: string
   artifacts: Array<MissionArtifact & { preview?: string | null }>
-  events: Array<{ type: string; entityType?: string; payload: Record<string, unknown> }>
+  events: Array<{ type: string; entityType?: string; payload: Record<string, unknown>; createdAt?: string }>
   cost: ReturnType<typeof summarizeCost>
   remoteWrites: 'enabled' | 'disabled'
+  /** Active (unresolved) hold codes for the mission/session — drives userState=blocked. */
+  activeHoldCodes?: string[]
 }): OperatorMissionView {
   const stage = inferOperatorStage({
     mission: opts.mission,
@@ -2548,6 +2619,23 @@ function buildOperatorMissionView(opts: {
   const stageLabel = labelForOperatorStage(stage)
   const questions = latestPendingQuestions(opts.db, opts.sessionId)
   const understanding = buildUnderstandingSummary(opts.db, opts.sessionId, stage, questions)
+  const providerSummary = buildProviderSummary(opts.latestRun, opts.validators, opts.validatorStatus, opts.validatorSecretStatus, opts.cost, opts.events)
+  const projectPulse = buildProjectPulse({
+    stage,
+    repo: opts.repo,
+    latestRun: opts.latestRun,
+    artifacts: opts.artifacts,
+    validators: opts.validators,
+    validatorStatus: opts.validatorStatus,
+    events: opts.events.map((e, index) => ({ id: String(index), type: e.type, payload: e.payload })),
+  })
+  const userState = deriveUserState({
+    stage,
+    activeHoldCodes: opts.activeHoldCodes ?? [],
+    validatorStatus: opts.validatorStatus,
+    prGate: prGate ? { status: prGate.status, code: 'code' in prGate ? prGate.code : undefined } : undefined,
+    pendingQuestionCount: questions.length,
+  })
   return {
     stage,
     stageLabel,
@@ -2561,22 +2649,14 @@ function buildOperatorMissionView(opts: {
           { id: 'start-over', label: 'Stop · 停止', kind: 'secondary' },
         ]
       : [],
-    providerSummary: buildProviderSummary(opts.latestRun, opts.validators, opts.validatorStatus, opts.validatorSecretStatus, opts.cost, opts.events),
+    providerSummary,
     safetySummary: {
       remoteWrites: opts.remoteWrites,
       ...(prGate ? { prGate } : {}),
       ...(testMode ? { testMode: { enabled: true, reason: 'mock/template mode is active; no external model or remote write is implied.' } } : {}),
     },
     understanding: understanding.understanding,
-    projectPulse: buildProjectPulse({
-      stage,
-      repo: opts.repo,
-      latestRun: opts.latestRun,
-      artifacts: opts.artifacts,
-      validators: opts.validators,
-      validatorStatus: opts.validatorStatus,
-      events: opts.events.map((e, index) => ({ id: String(index), type: e.type, payload: e.payload })),
-    }),
+    projectPulse,
     memorySummary: buildMemorySummary({
       repo: opts.repo,
       session: opts.sessionId ? { id: opts.sessionId, prompt: opts.session?.prompt ?? '' } : undefined,
@@ -2585,6 +2665,15 @@ function buildOperatorMissionView(opts: {
     summary: summaryForStage(stage, opts.validatorStatus, opts.remoteWrites),
     nextAction: nextActionForStage(stage, opts.remoteWrites),
     testMode,
+    userState,
+    lastActivity: buildLastActivity(opts.runs, opts.events, userState.state),
+    loopSummary: buildLoopSummary({
+      userState,
+      projectPulse,
+      providerSummary,
+      artifacts: opts.artifacts,
+      validators: opts.validators,
+    }),
   }
 }
 
@@ -2661,6 +2750,7 @@ function buildMissionOverview(db: AedevDb, missionId: string, stateDir: string =
     events,
     cost,
     remoteWrites,
+    activeHoldCodes: activeHolds.map((h) => h.code),
   })
   return {
     mission,
