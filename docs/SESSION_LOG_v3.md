@@ -1,5 +1,12 @@
 # SESSION LOG v3
 
+## s_0013 · 2026-06-10 · operator-reported real-chain regression PASS (closed-gate) · P4 still pending open-gate run
+
+- Operator ran a real Mac E2E against `hermus-agent` (temp clone): planner=`claude-cli/local_claude_code`, coder=`codex-cli/local_codex`, **Gemini verdict `pass`** persisted to `validator-summary.json`, Draft-PR gate blocked with `REMOTE_WRITES_DISABLED`; no push, no PR URL, no merge; hermus-agent itself untouched. Report (operator machine): `evidence/launch/operator-cockpit-real-smoke-2026-06-10T07-06-36-411Z.md`. Operator gates green locally.
+- Provenance note (GR#7): the operator's checkout predates PR #31–#33 (688 passed / 115 files vs main's 704/118 and this branch's 711/119), so the run exercised the **v1 chain** — no P2 Claude-review round, no P4 whitelist. It is recorded as a valuable closed-gate regression of the real planner/coder/validator chain, **not** as the P4 exit.
+- Operator also patched `scripts/operator-cockpit-real-smoke.ts` locally (Gemini verdict into the main report + `validator-summary.json` persistence); patch + evidence still live on the operator machine and should be pushed into this branch.
+- P4 exit unchanged (`blocked_on: operator_real_e2e`): merge PR #33 → pull main → `AEDEV_ALLOW_REMOTE_WRITES=1` + `AEDEV_REMOTE_WRITE_WHITELIST=hermus-agent` → rerun → real Draft PR URL + evidence → mark §0 done.
+
 ## s_0012 · 2026-06-10 · v4-P4 implementation complete · real E2E pending on operator Mac
 
 - GR#3 revision implemented: `DraftPrGateConfig` now requires `remoteWriteWhitelist: string[]` (compile-time enforcement at every construction site) and the gate throws the new `REPO_NOT_WHITELISTED` before push for any repo off the list — empty list blocks every repo even when `allow_remote_writes` is true (fail-closed). Gate order: global flag → whitelist → repo.enabled → forbidden paths.
