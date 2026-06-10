@@ -14,10 +14,11 @@ const apiMock = vi.hoisted(() => {
 })
 const sseMock = vi.hoisted(() => ({ value: { connected: true, missions: [], tasks: [], pendingApprovals: 0, events: [] } }))
 
-vi.mock('../api.js', () => ({ api: apiMock }))
+vi.mock('../api.js', async (importOriginal) => ({ ...(await importOriginal<typeof import('../api.js')>()), api: apiMock }))
 vi.mock('../hooks/useSSE.js', () => ({ useSSE: () => sseMock.value }))
 
-import { CockpitPage, buildGuidance } from './Cockpit.js'
+import { CockpitPage, buildGuidance, mapErrorToHuman } from './Cockpit.js'
+import { ApiError, type ApiMissionOverview } from '../api.js'
 
 afterEach(cleanup)
 beforeEach(() => {
@@ -49,6 +50,87 @@ describe('CockpitPage', () => {
   it('shows the selected repo path in the composer (operator always sees the target repo)', async () => {
     render(<CockpitPage />)
     expect(await screen.findByText(/the worker runs in an isolated git worktree of this repo/)).toBeTruthy()
+  })
+})
+
+// v-ux-1 — non-developer UX: raw HTTP codes / gate codes never reach the chat flow.
+describe('mapErrorToHuman', () => {
+  it('turns a CLARIFY_GATE_BLOCKED 409 body into assistant-style guidance (not an error)', () => {
+    const e = new ApiError('HTTP 409: /operator/sessions/s1/generate-roadmap', 409, {
+      humanState: 'needs_more_context',
+      guidance: '还有几个问题需要你先确认 · Please answer the outstanding questions first.',
+      blocked: { code: 'CLARIFY_GATE_BLOCKED' },
+    })
+    const h = mapErrorToHuman(e)
+    expect(h.kind).toBe('guidance')
+    expect(h.text).toContain('确认')
+    expect(h.text).not.toMatch(/CLARIFY_GATE_BLOCKED|409/)
+  })
+
+  it('never renders raw CLARIFY_GATE_BLOCKED / 409 strings verbatim, even without a body', () => {
+    const h = mapErrorToHuman(new Error('HTTP 409: CLARIFY_GATE_BLOCKED'))
+    expect(h.kind).toBe('guidance')
+    expect(h.text).not.toMatch(/CLARIFY_GATE_BLOCKED|409/)
+  })
+
+  it('maps unknown errors to a generic human message with the raw text only as detail', () => {
+    const h = mapErrorToHuman(new Error('TypeError: boom at stack trace line 42'))
+    expect(h.kind).toBe('error')
+    expect(h.text).toContain('系统遇到问题，正在保护现场')
+    expect(h.text).toContain('Something needs attention')
+    expect(h.detail).toContain('boom')
+  })
+
+  it('keeps the friendly daemon-down message for network failures', () => {
+    const h = mapErrorToHuman(new Error('Failed to fetch'))
+    expect(h.kind).toBe('error')
+    expect(h.text).toMatch(/cockpit:dev/)
+  })
+})
+
+function makeOverview(): ApiMissionOverview {
+  return {
+    mission: { id: 'm1', title: 'M', status: 'approved', createdAt: '2026-01-01' },
+    stage: 'Approved',
+    stages: [],
+    operatorView: {
+      stage: 'approved',
+      stageLabel: 'Ready to execute · 可启动执行',
+      confidence: 96,
+      progressPercent: 50,
+      secondaryActions: [],
+      providerSummary: { planner: { name: 'claude', mode: 'subscription-local' }, validators: [] },
+      safetySummary: { remoteWrites: 'disabled' },
+      understanding: { roundsCompleted: 1, questions: [] },
+      projectPulse: { progress: [], touchedFiles: [], evidence: [], validatorReviews: [] },
+      memorySummary: { projectFacts: [], userPreferences: [], recentLessons: [] },
+      summary: 'ready',
+      nextAction: 'start',
+      testMode: false,
+      userState: { state: 'ready_to_execute', label: 'Ready to start', labelZh: '可以开始执行', explanation: '方案已批准，点击开始后才会动手。' },
+      lastActivity: { atIso: new Date().toISOString(), agoMs: 1000, phase: 'planning' },
+      loopSummary: { whatChanged: ['src/a.ts'], testsRan: ['gate.json'], agents: ['planner · claude'], validatorSaid: null, whyStoppedOrContinuing: '等待你的确认' },
+    },
+    tasks: [], runs: [], validators: [], artifacts: [], approvals: [],
+    activeAgents: [], cliProvider: 'mock', progress: 0.5, holds: [], events: [],
+    cost: { mode: 'subscription_mode_usage', runCount: 0, validatorCount: 0, inputTokens: null, outputTokens: null, costUsd: null, note: '' },
+  }
+}
+
+describe('CockpitPage · progress + loop visibility (v-ux-1)', () => {
+  it('renders last-activity and the loop summary once a mission overview exists', async () => {
+    apiMock.getLatestOperatorSession.mockResolvedValue({
+      session: { id: 's1', missionId: 'm1', title: 'M', prompt: 'p', status: 'approved', createdAt: '2026-01-01', updatedAt: '2026-01-01' },
+      messages: [],
+    })
+    apiMock.getMissionOverview.mockResolvedValue(makeOverview())
+    render(<CockpitPage />)
+    await waitFor(() => expect(apiMock.getMissionOverview).toHaveBeenCalled())
+    expect(await screen.findByTestId('cockpit-last-activity')).toBeTruthy()
+    expect(screen.getByTestId('cockpit-last-activity').textContent).toMatch(/ago/)
+    expect(screen.getByTestId('cockpit-loop-summary').textContent).toContain('src/a.ts')
+    // The Now cell shows a live elapsed counter while planner/worker is in flight.
+    expect(screen.getByTestId('cockpit-now-elapsed')).toBeTruthy()
   })
 })
 
