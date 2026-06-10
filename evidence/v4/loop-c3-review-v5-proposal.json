@@ -1,0 +1,18 @@
+{
+  "cycle": 3,
+  "reviewer": "fresh-context independent agent (claude; codex CLI unavailable in container)",
+  "target": "proposals/WORKBOOK_v5_PROPOSAL.md @ 24176cd",
+  "verdict": "rework",
+  "confidence": 82,
+  "findings": [
+    "P0 depends on phantom AUTONOMOUS_FLEET_LOOP_SPEC.md (not in repo)",
+    "BYO worker evidence is self-reported/forgeable; needs a concrete trust anchor in P2",
+    "SQLite state plane cannot accept remote appends; fleet event-ingestion routes + provenance unspecified",
+    "push->pull architecture inversion of daemon/runner contract unacknowledged (keep/wrap/refactor)",
+    "worker authn (request signing) underspecified despite registered key fingerprint",
+    "per-worker write gate not technically enforceable coordinator-side; move enforcement to GitHub-side controls + detection",
+    "operator_id schema change lacks migration/backfill rule (GR#5 historical rebuild breaks)",
+    "scope: trim P3 to read-only list + per-person HOLD; make 5 simulated workers the MVP exit"
+  ],
+  "resolution": "all findings incorporated in proposal rework r1 (same PR #36)"
+}
