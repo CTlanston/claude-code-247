@@ -1,4 +1,5 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'fs'
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
 import { join } from 'path'
 import type { FastifyInstance } from 'fastify'
 import type { AedevDb, MissionArtifact, MissionDesign, OperatorChoice, OperatorMessageMeta, OperatorQuestion, Run, Task, ValidatorResult } from '@aedev/core'
@@ -1308,9 +1309,17 @@ function ensureOperatorRepo(db: AedevDb, requestedRepoId?: string): string {
   if (requestedRepoId && requestedRepoId !== 'unknown' && db.getRepo(requestedRepoId)) return requestedRepoId
   const existing = db.listRepos()[0]
   if (existing) return existing.id
+  // Under the test runtime the fallback repo gets a throwaway directory:
+  // with path=cwd, mission flows that compile Tier-1 memory (Gemini block)
+  // would write into the daemon's own working tree and dirty it. Tests that
+  // need a git-valid workspace insert their own repo fixture instead (GR#8
+  // forbids the daemon from forking git itself).
+  const fallbackPath = isTestRuntime()
+    ? mkdtempSync(join(tmpdir(), 'aedev-local-workspace-'))
+    : process.cwd()
   return db.insertRepo({
     name: 'local-workspace',
-    path: process.cwd(),
+    path: fallbackPath,
     defaultBranch: 'main',
     enabled: true,
     testCommands: [],

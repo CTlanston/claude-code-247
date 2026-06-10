@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import type { AddressInfo } from 'net'
+import { execFileSync } from 'child_process'
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -630,6 +631,17 @@ describe('createServer', () => {
     process.env['AEDEV_DISABLE_GEMINI_API'] = '1'
     process.env['AEDEV_DISABLE_OPENAI_API'] = '1'
     try {
+      // FORCE_REAL missions hit validateTargetRepo, which requires a git repo
+      // with commits — give the session a real tmp fixture (the auto-created
+      // fallback repo is a bare tmp dir under the test runtime).
+      const workspace = mkdtempSync(join(tmpdir(), 'aedev-broken-cli-repo-'))
+      const git = (args: string[]) => execFileSync('git', args, { cwd: workspace, stdio: 'ignore' })
+      git(['init', '-q', '-b', 'main'])
+      git(['-c', 'user.email=test@aedev.invalid', '-c', 'user.name=aedev-test', '-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-q', '-m', 'init'])
+      db.insertRepo({
+        name: 'broken-cli-repo', path: workspace, defaultBranch: 'main', enabled: true,
+        testCommands: [], forbiddenPaths: [], riskRules: {}, mergePolicy: 'low-risk',
+      })
       const app = createServer(db, new Date(), stateDir)
       const created = await app.inject({ method: 'POST', url: '/operator/sessions', payload: { title: 'Broken CLI', prompt: 'Run with broken CLI' } })
       const sessionId = created.json<{ session: { id: string } }>().session.id
