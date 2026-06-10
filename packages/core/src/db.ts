@@ -471,19 +471,22 @@ export class AedevDb {
   }
 
   // --- Events ---
-  insertEvent(type: string, entityType?: string, entityId?: string, payload: Record<string, unknown> = {}): Event {
+  /** v5-P1: every new event carries an operator identity (default 'owner'). */
+  insertEvent(type: string, entityType?: string, entityId?: string, payload: Record<string, unknown> = {}, operatorId: string = 'owner'): Event {
     const id = generateId(); const now = nowIso()
-    this.db.prepare(`INSERT INTO events (id,type,entity_type,entity_id,payload,created_at) VALUES (?,?,?,?,?,?)`).run(
-      id, type, entityType ?? null, entityId ?? null, JSON.stringify(payload), now
+    this.db.prepare(`INSERT INTO events (id,type,entity_type,entity_id,payload,created_at,operator_id) VALUES (?,?,?,?,?,?,?)`).run(
+      id, type, entityType ?? null, entityId ?? null, JSON.stringify(payload), now, operatorId
     )
-    return { id, type, entityType, entityId, payload, createdAt: now }
+    return { id, type, entityType, entityId, payload, createdAt: now, operatorId }
   }
 
-  queryEvents(filters: { type?: string; entityId?: string; limit?: number } = {}): Event[] {
+  queryEvents(filters: { type?: string; entityId?: string; operatorId?: string; limit?: number } = {}): Event[] {
     let sql = 'SELECT * FROM events WHERE 1=1'
     const params: unknown[] = []
     if (filters.type) { sql += ' AND type = ?'; params.push(filters.type) }
     if (filters.entityId) { sql += ' AND entity_id = ?'; params.push(filters.entityId) }
+    // ADR-0023 backfill rule: pre-v5 rows (NULL operator_id) belong to 'owner'.
+    if (filters.operatorId) { sql += " AND COALESCE(operator_id, 'owner') = ?"; params.push(filters.operatorId) }
     sql += ' ORDER BY created_at DESC'
     if (filters.limit) { sql += ' LIMIT ?'; params.push(filters.limit) }
     const rows = this.db.prepare(sql).all(...params) as Record<string, unknown>[]
@@ -493,6 +496,7 @@ export class AedevDb {
       entityId: r['entity_id'] as string | undefined,
       payload: JSON.parse(r['payload'] as string) as Record<string, unknown>,
       createdAt: r['created_at'] as string,
+      operatorId: (r['operator_id'] as string | null) ?? 'owner',
     }))
   }
 }

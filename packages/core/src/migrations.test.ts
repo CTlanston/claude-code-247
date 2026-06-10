@@ -73,6 +73,23 @@ describe('migrations (Stage A.2)', () => {
     expect(names).toContain('idx_event_log_causation')
   })
 
+  it('v7 adds a nullable operator_id column to events (v5-P1 operator identity)', () => {
+    const cols = db
+      .prepare('PRAGMA table_info(events)')
+      .all() as { name: string; notnull: number }[]
+    const op = cols.find((c) => c.name === 'operator_id')
+    expect(op).toBeDefined()
+    expect(op?.notnull).toBe(0)
+  })
+
+  it('v7 re-applies safely when the column already exists (round-trip guard)', () => {
+    // Simulate the Stage M rollback pattern: the migration row is deleted but
+    // the ALTERed column survives. Re-running must not throw "duplicate column".
+    db.prepare('DELETE FROM migrations WHERE version >= 7').run()
+    expect(() => runMigrations(db)).not.toThrow()
+    expect(getMigrationVersion(db)).toBe(MIGRATIONS[MIGRATIONS.length - 1].version)
+  })
+
   it('v4 creates additive operator cockpit tables', () => {
     const tables = db
       .prepare("SELECT name FROM sqlite_master WHERE type='table'")

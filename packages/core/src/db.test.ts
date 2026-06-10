@@ -1,5 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import Database from 'better-sqlite3'
+import * as fs from 'node:fs'
+import * as os from 'node:os'
+import * as path from 'node:path'
 import { AedevDb } from './db.js'
+import { MIGRATIONS } from './migrations.js'
 
 let db: AedevDb
 beforeEach(() => { db = new AedevDb(':memory:') })
@@ -32,6 +37,46 @@ describe('AedevDb', () => {
     expect(taskEvents).toHaveLength(2)
     const byEntityId = db.queryEvents({ entityId: 'task-1' })
     expect(byEntityId).toHaveLength(1)
+  })
+
+  it('attributes new events to operator "owner" by default and filters by operatorId (v5-P1)', () => {
+    const def = db.insertEvent('task.created', 'task', 'task-1')
+    expect(def.operatorId).toBe('owner')
+    const alice = db.insertEvent('task.created', 'task', 'task-2', {}, 'alice')
+    expect(alice.operatorId).toBe('alice')
+    expect(db.queryEvents({ entityId: 'task-1' })[0]?.operatorId).toBe('owner')
+    const aliceEvents = db.queryEvents({ operatorId: 'alice' })
+    expect(aliceEvents).toHaveLength(1)
+    expect(aliceEvents[0]?.entityId).toBe('task-2')
+    expect(db.queryEvents({ type: 'task.created', operatorId: 'owner' })).toHaveLength(1)
+  })
+
+  it('treats pre-v5 rows without operator_id as "owner" at read time (ADR-0023 backfill rule, GR#5)', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aedev-operator-id-'))
+    const file = path.join(dir, 'state.db')
+    try {
+      // 1. Build an old-style DB: migrations up to v6 only — events has no operator_id column.
+      const raw = new Database(file)
+      raw.exec(`CREATE TABLE IF NOT EXISTS migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL)`)
+      for (const m of MIGRATIONS.filter((mig) => mig.version <= 6)) {
+        raw.exec(m.up)
+        raw.prepare('INSERT INTO migrations (version, name, applied_at) VALUES (?,?,?)').run(m.version, m.name, '2026-01-01T00:00:00Z')
+      }
+      raw.prepare(`INSERT INTO events (id,type,entity_type,entity_id,payload,created_at)
+                   VALUES ('ev_old','cost.headless_call','operator_session','s1','{}','2026-01-01T00:00:00Z')`).run()
+      raw.close()
+      // 2. Reopen through AedevDb — the v5-P1 migration adds the column; the old row stays NULL
+      //    in storage but reads back as operator 'owner', so GR#5 rebuilds stay intact.
+      const upgraded = new AedevDb(file)
+      const owner = upgraded.queryEvents({ operatorId: 'owner' })
+      expect(owner).toHaveLength(1)
+      expect(owner[0]?.id).toBe('ev_old')
+      expect(owner[0]?.operatorId).toBe('owner')
+      expect(upgraded.queryEvents({ operatorId: 'alice' })).toHaveLength(0)
+      upgraded.close()
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
   })
 
   it('updateMissionGitHub sets github fields on a mission', () => {

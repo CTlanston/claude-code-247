@@ -68,6 +68,32 @@ describe('headless budget guard (P1)', () => {
     expect(v.reason).toBe('day_cap')
   })
 
+  it('tallies headless calls per operator; defaulted calls count toward "owner" (v5-P1)', () => {
+    recordHeadlessCall(db, 's1', { role: 'planner', provider: 'claude-cli', operatorId: 'alice' })
+    recordHeadlessCall(db, 's1', { role: 'planner-followup', provider: 'claude-cli', operatorId: 'alice' })
+    recordHeadlessCall(db, 's2', { role: 'planner', provider: 'claude-cli', operatorId: 'bob' })
+    recordHeadlessCall(db, 's3', { role: 'planner', provider: 'claude-cli' }) // no operatorId → 'owner'
+    expect(countHeadlessCallsToday(db, new Date(), 'alice')).toBe(2)
+    expect(countHeadlessCallsToday(db, new Date(), 'bob')).toBe(1)
+    expect(countHeadlessCallsToday(db, new Date(), 'owner')).toBe(1)
+    expect(countHeadlessCallsToday(db)).toBe(4) // unscoped: whole fleet, unchanged behaviour
+    expect(countHeadlessCallsForSession(db, 's1', 'alice')).toBe(2)
+    expect(countHeadlessCallsForSession(db, 's1', 'bob')).toBe(0)
+    expect(countHeadlessCallsForSession(db, 's1')).toBe(2)
+  })
+
+  it('evaluates the day cap per operator: one operator blocked, another still allowed (v5-P1)', () => {
+    process.env['AEDEV_BUDGET_MAX_HEADLESS_PER_MISSION'] = '10'
+    process.env['AEDEV_BUDGET_MAX_HEADLESS_PER_DAY'] = '2'
+    recordHeadlessCall(db, 's1', { role: 'planner', provider: 'claude-cli', operatorId: 'alice' })
+    recordHeadlessCall(db, 's2', { role: 'planner', provider: 'claude-cli', operatorId: 'alice' })
+    const aliceVerdict = checkHeadlessBudget(db, 's3', new Date(), 'alice')
+    expect(aliceVerdict.allowed).toBe(false)
+    expect(aliceVerdict.reason).toBe('day_cap')
+    const bobVerdict = checkHeadlessBudget(db, 's3', new Date(), 'bob')
+    expect(bobVerdict.allowed).toBe(true)
+  })
+
   it('creates one active HOLD-BUDGET per session, emits the hold event and the notify event', () => {
     process.env['AEDEV_BUDGET_MAX_HEADLESS_PER_MISSION'] = '0'
     const verdict = checkHeadlessBudget(db, 's1')
