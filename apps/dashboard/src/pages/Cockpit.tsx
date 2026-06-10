@@ -327,7 +327,7 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
             </div>
           ) : (
             <div className="ck-pr-outcome blocked" data-testid="cockpit-pr-gate-card" data-pr-gate-status="blocked" data-pr-gate-code={draftPrStatus.code ?? ''}>
-              <strong>Draft PR blocked · 被安全门拦截{draftPrStatus.code ? ` · ${draftPrStatus.code}` : ''}</strong>
+              <strong>{draftPrBlockedHeading(draftPrStatus.code)}</strong>
               {draftPrStatus.reason && <span>{draftPrStatus.reason}</span>}
               <span className="ck-pr-remedy">{draftPrRemediation(draftPrStatus.code)}</span>
               <span className="ck-pr-remedy">Safety check: no branch push, no PR creation, no merge · 安全确认：没有 push、没有创建 PR、没有合并。</span>
@@ -376,6 +376,18 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
       </div>
     </div>
   )
+}
+
+/**
+ * Gate-card heading is human-first (ux-2 follow-up): known machine codes get
+ * the calm bilingual phrasing the daemon's user-state model uses; the raw
+ * code stays available to tooling via the data-pr-gate-code attribute only.
+ */
+export function draftPrBlockedHeading(code?: string): string {
+  if (code === 'GEMINI_NOT_CONFIGURED') {
+    return 'Draft PR blocked · 被安全门拦截 · 结果评审尚未配置 · result review not configured'
+  }
+  return `Draft PR blocked · 被安全门拦截${code ? ` · ${code}` : ''}`
 }
 
 /** Honest, actionable remediation for a blocked Draft PR (redesign v2, P4 / #4). */

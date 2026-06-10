@@ -21,6 +21,19 @@ export type { GitExec, RepoPreflight, RepoBoundWorkspace, WorkspaceDiff } from '
 export { ClaudeCodeAdapter } from './claude-adapter.js'
 export { CodexCliAdapter } from './codex-adapter.js'
 export { LocalCliRunner } from './cli-runner.js'
+export { FleetWorkerAgent, scrubCredentialFields } from './fleet-worker.js'
+export type {
+  FleetExecutor,
+  FleetExecutorResult,
+  FleetFetchFn,
+  FleetFetchResponse,
+  FleetLoopResult,
+  FleetRegisterResult,
+  FleetRunLoopOptions,
+  FleetRunOnceResult,
+  FleetWorkerAgentOptions,
+  FleetWorkerClock,
+} from './fleet-worker.js'
 export { WorkerPoolRouter, dynamicConcurrency } from './worker-pool-router.js'
 export { discoverWorkerSessions } from './worker-session-discovery.js'
 export type {

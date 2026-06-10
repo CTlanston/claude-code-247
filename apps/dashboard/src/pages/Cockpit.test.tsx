@@ -17,7 +17,7 @@ const sseMock = vi.hoisted(() => ({ value: { connected: true, missions: [], task
 vi.mock('../api.js', async (importOriginal) => ({ ...(await importOriginal<typeof import('../api.js')>()), api: apiMock }))
 vi.mock('../hooks/useSSE.js', () => ({ useSSE: () => sseMock.value }))
 
-import { CockpitPage, buildGuidance, mapErrorToHuman } from './Cockpit.js'
+import { CockpitPage, buildGuidance, draftPrBlockedHeading, mapErrorToHuman } from './Cockpit.js'
 import { ApiError, type ApiMissionOverview } from '../api.js'
 
 afterEach(cleanup)
@@ -131,6 +131,45 @@ describe('CockpitPage · progress + loop visibility (v-ux-1)', () => {
     expect(screen.getByTestId('cockpit-loop-summary').textContent).toContain('src/a.ts')
     // The Now cell shows a live elapsed counter while planner/worker is in flight.
     expect(screen.getByTestId('cockpit-now-elapsed')).toBeTruthy()
+  })
+})
+
+// ux-2 follow-up — the gate card heading is human-first: the raw machine code
+// never shows in visible text; tooling reads it from data-pr-gate-code only.
+describe('Draft PR gate card · GEMINI_NOT_CONFIGURED is humanized', () => {
+  it('draftPrBlockedHeading maps GEMINI_NOT_CONFIGURED to calm bilingual phrasing', () => {
+    const h = draftPrBlockedHeading('GEMINI_NOT_CONFIGURED')
+    expect(h).toContain('结果评审尚未配置')
+    expect(h).toContain('result review not configured')
+    expect(h).not.toContain('GEMINI_NOT_CONFIGURED')
+    // unknown codes keep their existing literal rendering
+    expect(draftPrBlockedHeading('SOME_OTHER_CODE')).toContain('SOME_OTHER_CODE')
+    expect(draftPrBlockedHeading(undefined)).toBe('Draft PR blocked · 被安全门拦截')
+  })
+
+  it('renders the blocked card without the raw code in visible text, keeping it in data-pr-gate-code', async () => {
+    apiMock.getLatestOperatorSession.mockResolvedValue({
+      session: { id: 's1', missionId: 'm1', title: 'M', prompt: 'p', status: 'waiting', createdAt: '2026-01-01', updatedAt: '2026-01-01' },
+      messages: [],
+    })
+    // mission at the evidence gate so the guidance keeps the Check Draft PR Gate CTA
+    const atGate = makeOverview()
+    atGate.mission.status = 'done'
+    apiMock.getMissionOverview.mockResolvedValue(atGate)
+    apiMock.createDraftPr.mockResolvedValue({
+      status: 'blocked',
+      code: 'GEMINI_NOT_CONFIGURED',
+      reason: 'Gemini validation has not produced a verdict for this mission.',
+      overview: atGate,
+    })
+    render(<CockpitPage />)
+    fireEvent.click(await screen.findByTestId('cockpit-check-draft-pr-gate'))
+    const card = await screen.findByTestId('cockpit-pr-gate-card')
+    expect(card.getAttribute('data-pr-gate-status')).toBe('blocked')
+    expect(card.getAttribute('data-pr-gate-code')).toBe('GEMINI_NOT_CONFIGURED')
+    expect(card.textContent).not.toContain('GEMINI_NOT_CONFIGURED')
+    expect(card.textContent).toContain('结果评审尚未配置')
+    expect(card.textContent).toContain('result review not configured')
   })
 })
 
