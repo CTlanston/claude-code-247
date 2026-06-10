@@ -21,6 +21,7 @@
     "cockpit:dev": "tsx scripts/dev-operator-cockpit.ts --replace",
     "test:cockpit:e2e": "tsx scripts/operator-cockpit-e2e.ts",
     "test:cockpit:quality-smoke": "tsx scripts/operator-cockpit-webui-quality-smoke.ts",
+    "test:cockpit:user-e2e": "tsx scripts/operator-cockpit-user-e2e.ts",
     "test:cockpit:screens": "tsx scripts/operator-cockpit-screens.ts",
     "test:cockpit:real-smoke": "tsx scripts/operator-cockpit-real-smoke.ts",
     "test:cockpit:p3-remote-smoke": "tsx scripts/operator-cockpit-p3-remote-smoke.ts",
