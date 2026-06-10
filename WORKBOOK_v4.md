@@ -17,14 +17,14 @@ schema_version: 4
 product: simple-cowork
 version_target: standby-team-v1.5
 current_phase: P4            # P0..P4，见 §3
-current_substep: not_started
-last_session_id: s_0011
+current_substep: impl_complete_real_e2e_pending
+last_session_id: s_0012
 open_holds: 0
-blocked_on: none
+blocked_on: operator_real_e2e
 # next_action 硬上限 2 行：
 next_action: |
-  P3 已完成（watchdog tick 调度器+空闲零 LLM+每晚 Compiler+hold→ntfy，闸全绿）。
-  下一步 P4：per-repo 白名单远程写出口，在安全 repo 上产出第一个真实 Draft PR。
+  P4 代码侧已完成（per-repo 白名单双闸+回归测试，闸全绿）。剩真实 E2E：
+  操作员按 docs/operations/P4-first-real-draft-pr.md 在 Mac 上产出第一个真 Draft PR。
 ```
 
 ---

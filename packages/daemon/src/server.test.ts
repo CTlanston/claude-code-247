@@ -710,7 +710,9 @@ describe('createServer', () => {
 
   it('turns an enabled but unavailable draft PR executor into a visible HOLD, not fake success', async () => {
     const oldAllow = process.env['AEDEV_ALLOW_REMOTE_WRITES']
+    const oldWhitelist = process.env['AEDEV_REMOTE_WRITE_WHITELIST']
     process.env['AEDEV_ALLOW_REMOTE_WRITES'] = '1'
+    process.env['AEDEV_REMOTE_WRITE_WHITELIST'] = 'local-workspace'
     try {
       const app = createServer(db, new Date(), stateDir)
       const { sessionId, missionId } = await prepareCockpitMission(app)
@@ -725,12 +727,15 @@ describe('createServer', () => {
       expect(db.getMission(missionId)?.githubPrUrl).toBeNull()
     } finally {
       restoreEnv('AEDEV_ALLOW_REMOTE_WRITES', oldAllow)
+      restoreEnv('AEDEV_REMOTE_WRITE_WHITELIST', oldWhitelist)
     }
   })
 
   it('uses an injected side-effect executor for idempotent draft PR reuse without example.invalid', async () => {
     const oldAllow = process.env['AEDEV_ALLOW_REMOTE_WRITES']
+    const oldWhitelist = process.env['AEDEV_REMOTE_WRITE_WHITELIST']
     process.env['AEDEV_ALLOW_REMOTE_WRITES'] = '1'
+    process.env['AEDEV_REMOTE_WRITE_WHITELIST'] = 'local-workspace'
     const calls: string[] = []
     try {
       const app = createServer(db, new Date(), stateDir, {
@@ -756,6 +761,7 @@ describe('createServer', () => {
       expect(db.getMission(missionId)?.githubPrUrl).toBe('https://github.com/owner/repo/pull/12')
     } finally {
       restoreEnv('AEDEV_ALLOW_REMOTE_WRITES', oldAllow)
+      restoreEnv('AEDEV_REMOTE_WRITE_WHITELIST', oldWhitelist)
     }
   })
 })

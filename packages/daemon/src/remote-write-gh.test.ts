@@ -77,7 +77,7 @@ describe('DraftPrGate with real adapters', () => {
   it('blocks push + PR when allow_remote_writes is false (no exec at all)', async () => {
     const git = recorder(() => ok())
     const pr = recorder(() => ok())
-    const gate = new DraftPrGate({ allowRemoteWrites: false }, new GhGitRemoteWriter(git.exec), new GhDraftPrCreator(pr.exec))
+    const gate = new DraftPrGate({ allowRemoteWrites: false, remoteWriteWhitelist: [repo.name] }, new GhGitRemoteWriter(git.exec), new GhDraftPrCreator(pr.exec))
     await expect(gate.openDraftPr(req)).rejects.toMatchObject({ code: 'REMOTE_WRITES_DISABLED' })
     expect(git.calls.length).toBe(0)
     expect(pr.calls.length).toBe(0)
@@ -93,7 +93,7 @@ describe('DraftPrGate with real adapters', () => {
     }
     const git = recorder(handler)
     const pr = recorder(handler)
-    const gate = new DraftPrGate({ allowRemoteWrites: true }, new GhGitRemoteWriter(git.exec), new GhDraftPrCreator(pr.exec))
+    const gate = new DraftPrGate({ allowRemoteWrites: true, remoteWriteWhitelist: [repo.name] }, new GhGitRemoteWriter(git.exec), new GhDraftPrCreator(pr.exec))
     const info = await gate.openDraftPr(req)
     expect(info.draft).toBe(true)
     expect(info.number).toBe(2)

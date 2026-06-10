@@ -26,7 +26,7 @@ import { LeadAgent } from '../lead-agent.js'
 import type { DraftPrInfo, DraftPrRequest } from '../draft-pr-gate.js'
 import { DraftPrGate, DraftPrGateError } from '../draft-pr-gate.js'
 import { createDefaultMissionValidatorFactory, inspectDefaultMissionValidatorSecrets } from '../validator-factory.js'
-import { allowRemoteWritesEnabled } from '../remote-write-policy.js'
+import { allowRemoteWritesEnabled, remoteWriteWhitelist } from '../remote-write-policy.js'
 import { buildPlannerCoderEnv } from '../no-paid-api-guard.js'
 import {
   HOLD_BUDGET_CODE,
@@ -529,6 +529,7 @@ export function registerOperatorRoutes(app: FastifyInstance, db: AedevDb, stateD
       return { status: 'blocked', code: geminiGate.code, reason: geminiGate.reason, overview: buildMissionOverview(db, mission.id, stateDir) }
     }
     const allowRemoteWrites = allowRemoteWritesEnabled(stateDir)
+    const whitelist = remoteWriteWhitelist(stateDir)
     const executor = options.draftPrExecutor
     const prEvidence = readDraftPrEvidence(overview.evidenceDir)
     const request: DraftPrRequest = {
@@ -548,8 +549,8 @@ export function registerOperatorRoutes(app: FastifyInstance, db: AedevDb, stateD
       repo: prEvidence.worktreePath ? { ...repo, path: prEvidence.worktreePath } : repo,
     }
     try {
-      if (!allowRemoteWrites) {
-        await new DraftPrGate({ allowRemoteWrites }, { pushBranch: async () => undefined }, { createDraftPr: async () => {
+      if (!allowRemoteWrites || !whitelist.includes(repo.name)) {
+        await new DraftPrGate({ allowRemoteWrites, remoteWriteWhitelist: whitelist }, { pushBranch: async () => undefined }, { createDraftPr: async () => {
           throw new Error('unreachable')
         } }).openDraftPr(request)
       }
