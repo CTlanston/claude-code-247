@@ -7,6 +7,7 @@
  * session plus an ntfy notification. Never falls back to a paid API (GR#6).
  */
 import type { AedevDb } from '@aedev/core'
+import { sendNtfy } from './ntfy.js'
 import {
   describeHeadlessBudgetBlock,
   evaluateHeadlessBudget,
@@ -120,16 +121,5 @@ export async function notifyBudgetHold(db: AedevDb, sessionId: string, reason: s
     holdCode: HOLD_BUDGET_CODE,
     reason,
   })
-  const topic = process.env['AEDEV_NTFY_TOPIC']
-  if (!topic) return
-  const base = process.env['AEDEV_NTFY_URL'] ?? 'https://ntfy.sh'
-  try {
-    await fetch(`${base.replace(/\/$/, '')}/${topic}`, {
-      method: 'POST',
-      headers: { Title: `aedev ${HOLD_BUDGET_CODE}`, Priority: 'high' },
-      body: `${HOLD_BUDGET_CODE} (${sessionId}): ${reason}`,
-    })
-  } catch {
-    // Notification failure must never block the hold itself.
-  }
+  await sendNtfy(`aedev ${HOLD_BUDGET_CODE}`, `${HOLD_BUDGET_CODE} (${sessionId}): ${reason}`, 'high')
 }

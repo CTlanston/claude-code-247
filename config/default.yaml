@@ -162,3 +162,14 @@ budget:
   max_headless_calls_per_day: 60
   # AEDEV_BUDGET_MAX_REVIEW_CYCLES (default 2) — P2 cross-engine review repair cap
   max_review_cycles: 2
+
+# WORKBOOK_v4 P3 — 24/7 watchdog (env is authoritative; documented here).
+# Standby watcher: notifies new holds, flags stale running missions, runs
+# the nightly Tier2→Tier1 Memory Compiler. Idle ticks make zero LLM calls.
+watchdog:
+  # AEDEV_WATCHDOG_TICK_MINUTES (default 30)
+  tick_minutes: 30
+  # AEDEV_WATCHDOG_COMPILE_HOUR (default 2)
+  compile_hour: 2
+  # AEDEV_WATCHDOG_STALE_MINUTES (default 45)
+  stale_minutes: 45
