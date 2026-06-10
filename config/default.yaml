@@ -173,3 +173,10 @@ watchdog:
   compile_hour: 2
   # AEDEV_WATCHDOG_STALE_MINUTES (default 45)
   stale_minutes: 45
+
+# WORKBOOK_v4 P4 — per-repo remote-write whitelist (GR#3 revision).
+# Double gate: allow_remote_writes AND whitelist membership. Empty list
+# blocks every repo even when the global flag is true (fail-closed).
+# Set in ~/.aedev/config.yaml (or AEDEV_REMOTE_WRITE_WHITELIST env):
+# remote_write_whitelist:
+#   - hermus-agent

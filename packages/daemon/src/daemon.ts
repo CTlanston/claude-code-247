@@ -10,7 +10,7 @@ import { discoverWorkerSessions, GhGitRemoteWriter, GhDraftPrCreator } from '@ae
 import { resolveStateDir } from './paths.js'
 import { createDefaultMissionValidatorFactory } from './validator-factory.js'
 import { DraftPrGate } from './draft-pr-gate.js'
-import { allowRemoteWritesEnabled } from './remote-write-policy.js'
+import { allowRemoteWritesEnabled, remoteWriteWhitelist } from './remote-write-policy.js'
 import { recordDiscoveryProbe } from './headless-budget-guard.js'
 import { Watchdog } from './watchdog.js'
 import { CostRoller } from '@aedev/cost-meter'
@@ -69,7 +69,11 @@ export class Daemon {
 
     const allowRemoteWrites = allowRemoteWritesEnabled(this.stateDir)
     this.server = createServer(this.db, this.startTime, this.stateDir, {
-      draftPrExecutor: new DraftPrGate({ allowRemoteWrites }, new GhGitRemoteWriter(), new GhDraftPrCreator()),
+      draftPrExecutor: new DraftPrGate(
+        { allowRemoteWrites, remoteWriteWhitelist: remoteWriteWhitelist(this.stateDir) },
+        new GhGitRemoteWriter(),
+        new GhDraftPrCreator(),
+      ),
     }, this.costRoller)
     await this.server.listen({ port: this.config.port ?? DEFAULT_PORT, host: '127.0.0.1' })
 
@@ -93,7 +97,11 @@ export class Daemon {
           stateDir: this.stateDir,
           workerSessions,
           validatorFactory: createDefaultMissionValidatorFactory(),
-          draftPrExecutor: new DraftPrGate({ allowRemoteWrites }, new GhGitRemoteWriter(), new GhDraftPrCreator()),
+          draftPrExecutor: new DraftPrGate(
+            { allowRemoteWrites, remoteWriteWhitelist: remoteWriteWhitelist(this.stateDir) },
+            new GhGitRemoteWriter(),
+            new GhDraftPrCreator(),
+          ),
           costRoller: this.costRoller,
         })
         await runner.runMission(mission.id).catch((e) => {

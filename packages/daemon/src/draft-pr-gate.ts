@@ -3,6 +3,10 @@ import type { MissionDagTask, Repo, ValidatorResult } from '@aedev/core'
 
 export interface DraftPrGateConfig {
   allowRemoteWrites: boolean
+  /** GR#3 (v4 P4): repo names allowed to receive remote writes. The gate
+   *  fail-closes — a repo not on this list is blocked even when the global
+   *  `allow_remote_writes` flag is on. An empty list blocks every repo. */
+  remoteWriteWhitelist: string[]
 }
 
 export interface DraftPrRequest {
@@ -42,7 +46,7 @@ export interface DraftPrCreator {
 }
 
 export class DraftPrGateError extends Error {
-  constructor(message: string, readonly code: 'REMOTE_WRITES_DISABLED' | 'REPO_DISABLED' | 'FORBIDDEN_PATH') {
+  constructor(message: string, readonly code: 'REMOTE_WRITES_DISABLED' | 'REPO_NOT_WHITELISTED' | 'REPO_DISABLED' | 'FORBIDDEN_PATH') {
     super(message)
     this.name = 'DraftPrGateError'
   }
@@ -58,6 +62,12 @@ export class DraftPrGate {
   async openDraftPr(req: DraftPrRequest): Promise<DraftPrInfo> {
     if (!this.config.allowRemoteWrites) {
       throw new DraftPrGateError('allow_remote_writes=false blocks branch push and draft PR creation', 'REMOTE_WRITES_DISABLED')
+    }
+    if (!this.config.remoteWriteWhitelist.includes(req.repo.name)) {
+      throw new DraftPrGateError(
+        `repo ${req.repo.name} is not on the remote-write whitelist (${this.config.remoteWriteWhitelist.length ? this.config.remoteWriteWhitelist.join(', ') : 'empty'})`,
+        'REPO_NOT_WHITELISTED',
+      )
     }
     if (!req.repo.enabled) {
       throw new DraftPrGateError(`repo ${req.repo.name} is disabled`, 'REPO_DISABLED')

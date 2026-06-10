@@ -59,7 +59,7 @@ async function main(): Promise<void> {
 
   // 1) gate OFF blocks + pushes nothing
   try {
-    await new DraftPrGate({ allowRemoteWrites: false }, git, pr).openDraftPr(req)
+    await new DraftPrGate({ allowRemoteWrites: false, remoteWriteWhitelist: [req.repo.name] }, git, pr).openDraftPr(req)
     failures.push('gate did NOT block when allow_remote_writes=false')
   } catch (e) {
     const code = e instanceof DraftPrGateError ? e.code : 'ERR'
@@ -71,7 +71,7 @@ async function main(): Promise<void> {
   else say('confirmed: no remote branch exists after the blocked attempt')
 
   // 2) gate ON -> push + draft PR
-  const info = await new DraftPrGate({ allowRemoteWrites: true }, git, pr).openDraftPr(req)
+  const info = await new DraftPrGate({ allowRemoteWrites: true, remoteWriteWhitelist: [req.repo.name] }, git, pr).openDraftPr(req)
   say(`gate ON -> draft PR #${info.number} ${info.url} (state=${info.state}, draft=${info.draft})`)
 
   // 3) verify draft + not merged
@@ -82,7 +82,7 @@ async function main(): Promise<void> {
   say(`verified PR #${info.number}: isDraft=${view.isDraft} state=${view.state} mergedAt=${view.mergedAt ?? 'null'}`)
 
   // 4) idempotent re-run reuses the same PR
-  const again = await new DraftPrGate({ allowRemoteWrites: true }, git, pr).openDraftPr(req)
+  const again = await new DraftPrGate({ allowRemoteWrites: true, remoteWriteWhitelist: [req.repo.name] }, git, pr).openDraftPr(req)
   if (again.number !== info.number) failures.push(`idempotency broke: re-run made PR #${again.number} (first #${info.number})`)
   const openCount = JSON.parse(sh('gh', ['pr', 'list', '--repo', SLUG, '--head', BRANCH, '--state', 'open', '--json', 'number'])).length
   if (openCount !== 1) failures.push(`expected exactly 1 open PR for ${BRANCH}, found ${openCount}`)

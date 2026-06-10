@@ -28,7 +28,7 @@ const validator: ValidatorResult = {
 
 describe('DraftPrGate', () => {
   it('blocks when remote writes are disabled', async () => {
-    const gate = new DraftPrGate({ allowRemoteWrites: false }, {
+    const gate = new DraftPrGate({ allowRemoteWrites: false, remoteWriteWhitelist: ['repo'] }, {
       pushBranch: vi.fn(),
     }, {
       createDraftPr: vi.fn(),
@@ -41,7 +41,7 @@ describe('DraftPrGate', () => {
 
   it('blocks forbidden paths before pushing', async () => {
     const pushBranch = vi.fn()
-    const gate = new DraftPrGate({ allowRemoteWrites: true }, { pushBranch }, {
+    const gate = new DraftPrGate({ allowRemoteWrites: true, remoteWriteWhitelist: ['repo'] }, { pushBranch }, {
       createDraftPr: vi.fn(),
     })
 
@@ -54,7 +54,7 @@ describe('DraftPrGate', () => {
   it('pushes a branch and creates a draft PR with evidence body', async () => {
     const pushBranch = vi.fn()
     const createDraftPr = vi.fn().mockResolvedValue({ number: 12, url: 'https://example/pr/12', state: 'open', draft: true })
-    const gate = new DraftPrGate({ allowRemoteWrites: true }, { pushBranch }, { createDraftPr })
+    const gate = new DraftPrGate({ allowRemoteWrites: true, remoteWriteWhitelist: ['repo'] }, { pushBranch }, { createDraftPr })
 
     const out = await gate.openDraftPr(request())
 
@@ -92,3 +92,28 @@ function request(overrides: Partial<Parameters<DraftPrGate['openDraftPr']>[0]> =
     ...overrides,
   }
 }
+
+describe('DraftPrGate — P4 per-repo whitelist (GR#3)', () => {
+  it('blocks a non-whitelisted repo even when allow_remote_writes is true', async () => {
+    const pushBranch = vi.fn()
+    const gate = new DraftPrGate({ allowRemoteWrites: true, remoteWriteWhitelist: ['hermus-agent'] }, { pushBranch }, { createDraftPr: vi.fn() })
+    await expect(gate.openDraftPr(request())).rejects.toMatchObject({
+      code: 'REPO_NOT_WHITELISTED',
+    } satisfies Partial<DraftPrGateError>)
+    expect(pushBranch).not.toHaveBeenCalled()
+  })
+
+  it('an empty whitelist blocks every repo (fail-closed default)', async () => {
+    const gate = new DraftPrGate({ allowRemoteWrites: true, remoteWriteWhitelist: [] }, { pushBranch: vi.fn() }, { createDraftPr: vi.fn() })
+    await expect(gate.openDraftPr(request())).rejects.toMatchObject({
+      code: 'REPO_NOT_WHITELISTED',
+    } satisfies Partial<DraftPrGateError>)
+  })
+
+  it('global flag off wins over the whitelist (double gate)', async () => {
+    const gate = new DraftPrGate({ allowRemoteWrites: false, remoteWriteWhitelist: ['repo'] }, { pushBranch: vi.fn() }, { createDraftPr: vi.fn() })
+    await expect(gate.openDraftPr(request())).rejects.toMatchObject({
+      code: 'REMOTE_WRITES_DISABLED',
+    } satisfies Partial<DraftPrGateError>)
+  })
+})

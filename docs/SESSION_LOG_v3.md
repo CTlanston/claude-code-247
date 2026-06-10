@@ -1,5 +1,15 @@
 # SESSION LOG v3
 
+## s_0012 · 2026-06-10 · v4-P4 implementation complete · real E2E pending on operator Mac
+
+- GR#3 revision implemented: `DraftPrGateConfig` now requires `remoteWriteWhitelist: string[]` (compile-time enforcement at every construction site) and the gate throws the new `REPO_NOT_WHITELISTED` before push for any repo off the list — empty list blocks every repo even when `allow_remote_writes` is true (fail-closed). Gate order: global flag → whitelist → repo.enabled → forbidden paths.
+- `remote-write-policy.ts`: new `remoteWriteWhitelist(stateDir)` reader — `AEDEV_REMOTE_WRITE_WHITELIST` (comma-separated) wins over the `remote_write_whitelist:` block/inline list in the known config.yaml locations; default empty.
+- Wired through all production sites: daemon server executor, scheduler dispatch executor, and the cockpit `create-pr` route (the no-write probe gate now also carries the whitelist, so a non-whitelisted repo blocks with the precise code instead of a generic one).
+- Tests: +3 gate tests (non-whitelisted blocked despite global flag; empty list blocks; flag-off wins) and +4 policy reader tests (fail-closed default, env precedence, yaml block list, inline list); the two server create-pr success-path tests now set the whitelist explicitly, proving the double gate end to end. Existing regression intact: Gemini non-PASS still blocks create-pr.
+- Operator runbook added: `docs/operations/P4-first-real-draft-pr.md` (open the double gate for one safe repo, run the full clarify→code→review→Gemini→Draft-PR chain, L1 checklist incl. a ≥3-tick idle soak with zero `cost.headless_call`, rollback notes).
+- Gates: `pnpm typecheck` PASS; `pnpm lint` PASS; `pnpm test` PASS with 711 passed, 6 skipped (119 files; +7 new).
+- §0 `blocked_on: operator_real_e2e` — the phase closes only when a real Draft PR URL + evidence land from the operator's Mac (this cloud container has no subscription CLIs or real repo access by design).
+
 ## s_0011 · 2026-06-10 · v4-P3 complete · 24/7 watchdog
 
 - Added `packages/daemon/src/watchdog.ts`: tick loop (default 30 min, `AEDEV_WATCHDOG_TICK_MINUTES`) that is **zero LLM calls by construction** — it only reads the event store. Three duties per tick: (1) hold events (`operator.hold_created` / `mission.run_held`) not yet seen → one ntfy each, deduped forever via `watchdog.hold_notified` keyed by source event id (timestamp-independent, restart-safe; the first tick marks pre-existing holds as seen WITHOUT notifying); (2) `running` missions with no event activity past `AEDEV_WATCHDOG_STALE_MINUTES` (45) → one notification per mission ever (`watchdog.stale_notified`); (3) nightly Memory Compiler — once per calendar day at/after `AEDEV_WATCHDOG_COMPILE_HOUR` (2), Tier-2 lessons compile into each repo's Tier-1 `cowork-memory.md` (fixes the v3-P5 "每晚" deviation). Every tick appends `watchdog.tick`, so the window is event-sourced (GR#5).
