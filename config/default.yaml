@@ -148,3 +148,15 @@ roadmap_agent:
   scope_paths:
     - "docs/roadmap.md"
   max_proposals_per_tick: 5
+
+# WORKBOOK_v4 P1 — Agent SDK credit guard (headless `claude --print` budget).
+# The daemon reads these limits from the environment (env is authoritative);
+# this block documents the knobs and their defaults. From 2026-06-15 headless
+# calls consume a separate non-rollover Agent SDK monthly credit, so every
+# call is recorded as a `cost.headless_call` event and capped. Over budget →
+# HOLD-BUDGET + ntfy; never a silent paid-API fallback.
+budget:
+  # AEDEV_BUDGET_MAX_HEADLESS_PER_MISSION (default 15)
+  max_headless_calls_per_mission: 15
+  # AEDEV_BUDGET_MAX_HEADLESS_PER_DAY (default 60)
+  max_headless_calls_per_day: 60

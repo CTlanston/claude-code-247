@@ -104,6 +104,8 @@ export interface ApiOperatorMissionView {
   stageLabel: string
   confidence: number
   progressPercent: number
+  /** P1 — today's metered headless claude calls (Agent SDK credit). */
+  headlessCallsToday?: number
   primaryAction?: ApiOperatorActionView
   secondaryActions: ApiOperatorActionView[]
   providerSummary: {

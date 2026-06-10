@@ -28,6 +28,14 @@ import { DraftPrGate, DraftPrGateError } from '../draft-pr-gate.js'
 import { createDefaultMissionValidatorFactory, inspectDefaultMissionValidatorSecrets } from '../validator-factory.js'
 import { allowRemoteWritesEnabled } from '../remote-write-policy.js'
 import { buildPlannerCoderEnv } from '../no-paid-api-guard.js'
+import {
+  HOLD_BUDGET_CODE,
+  checkHeadlessBudget,
+  countHeadlessCallsToday,
+  createBudgetHold,
+  recordDiscoveryProbe,
+  recordHeadlessCall,
+} from '../headless-budget-guard.js'
 
 type Stage =
   | 'Intake'
@@ -83,6 +91,8 @@ interface OperatorMissionView {
   stageLabel: string
   confidence: number
   progressPercent: number
+  /** P1 — today's metered headless claude calls, derived from events. */
+  headlessCallsToday: number
   primaryAction?: OperatorActionView
   secondaryActions: OperatorActionView[]
   providerSummary: {
@@ -951,7 +961,7 @@ async function completePlannerBrainstorm(
 ): Promise<void> {
   try {
     db.insertEvent('operator.role_started', 'operator_session', sessionId, { role: 'planner', provider: process.env['AEDEV_COCKPIT_PLANNER_PROVIDER'] ?? 'claude' })
-    const brainstorm = await runPlannerBrainstorm(prompt, title, repoId)
+    const brainstorm = await runPlannerBrainstorm(prompt, title, repoId, { db, sessionId })
     const isHold = Boolean(brainstorm.event['holdCode'])
     // Prefer the planner's own goal-specific questions (parsed from its JSON block);
     // fall back to the deterministic template only when the LLM produced none (P3).
@@ -1029,7 +1039,10 @@ function resolveSessionHolds(db: AedevDb, sessionId: string, code?: string): voi
   if (resolved > 0) db.insertEvent('operator.hold_resolved', 'operator_session', sessionId, { resolved, ...(code ? { code } : {}) })
 }
 
-async function runPlannerBrainstorm(prompt: string, title: string, repoId: string): Promise<{ content: string; event: Record<string, unknown> }> {
+/** Budget attribution context for headless planner calls (P1). */
+interface HeadlessBudgetCtx { db: AedevDb; sessionId: string }
+
+async function runPlannerBrainstorm(prompt: string, title: string, repoId: string, budget?: HeadlessBudgetCtx): Promise<{ content: string; event: Record<string, unknown> }> {
   const textFixture = process.env['AEDEV_COCKPIT_PLANNER_BRAINSTORM_FIXTURE_TEXT']
   if (textFixture) {
     return { content: textFixture, event: { role: 'planner', provider: 'fixture', authMode: 'test', repoId, inputTokens: 0, outputTokens: 0, costUsd: null } }
@@ -1058,10 +1071,10 @@ async function runPlannerBrainstorm(prompt: string, title: string, repoId: strin
     'At the very end, append one fenced ```json code block with this exact object shape: {"questions": [{"field": string, "question": string, "why": string, "impact": string, "destination": string, "options": [{"label": string, "recommended": boolean}]}], "confidence": number, "rationale": string}. Use confidence 0-100 for how ready the system is to generate a roadmap. If confidence is below 95, include the concrete goal-specific questions still needed. If confidence is 95 or above, questions must be an empty array.',
     'Do not claim code was changed. This is planning only.',
   ].join('\n')
-  return runLocalPlannerText(systemPrompt, plannerPrompt, 'planner', prompt)
+  return runLocalPlannerText(systemPrompt, plannerPrompt, 'planner', prompt, budget)
 }
 
-async function runPlannerFollowup(requestPrompt: string, title: string, repoId: string, originalPrompt: string, clarifications: string): Promise<{ content: string; event: Record<string, unknown> }> {
+async function runPlannerFollowup(requestPrompt: string, title: string, repoId: string, originalPrompt: string, clarifications: string, budget?: HeadlessBudgetCtx): Promise<{ content: string; event: Record<string, unknown> }> {
   const textFixture = process.env['AEDEV_COCKPIT_PLANNER_FOLLOWUP_FIXTURE_TEXT']
   if (textFixture) {
     return { content: textFixture, event: { role: 'planner-followup', provider: 'fixture', authMode: 'test', repoId, inputTokens: 0, outputTokens: 0, costUsd: null } }
@@ -1095,13 +1108,25 @@ async function runPlannerFollowup(requestPrompt: string, title: string, repoId: 
     'Return an "Operator Questions" section only when more information is truly needed. Planning only.',
     'Also append one fenced ```json code block with this exact object shape: {"questions": [{"field": string, "question": string, "why": string, "impact": string, "destination": string, "options": [{"label": string, "recommended": boolean}]}], "confidence": number, "rationale": string}. Use confidence 0-100 for how ready the system is to generate a roadmap. Below 95 must include the concrete remaining questions. At 95 or above, return "questions": [] and explain why the answers are sufficient.',
   ].join('\n')
-  return runLocalPlannerText(systemPrompt, plannerPrompt, 'planner-followup', requestPrompt)
+  return runLocalPlannerText(systemPrompt, plannerPrompt, 'planner-followup', requestPrompt, budget)
 }
 
-async function runLocalPlannerText(systemPrompt: string, plannerPrompt: string, role: string, holdContextPrompt: string): Promise<{ content: string; event: Record<string, unknown> }> {
+async function runLocalPlannerText(systemPrompt: string, plannerPrompt: string, role: string, holdContextPrompt: string, budget?: HeadlessBudgetCtx): Promise<{ content: string; event: Record<string, unknown> }> {
   const timeoutMs = Number(process.env['AEDEV_COCKPIT_AI_TIMEOUT_MS'] ?? '300000')
   const failures: string[] = []
   const plannerProvider = process.env['AEDEV_COCKPIT_PLANNER_PROVIDER'] ?? 'claude'
+
+  // P1 credit guard: every headless claude call is metered Agent SDK credit.
+  if (budget) {
+    const verdict = checkHeadlessBudget(budget.db, budget.sessionId)
+    if (!verdict.allowed) {
+      const reason = createBudgetHold(budget.db, budget.sessionId, verdict)
+      return {
+        content: renderPlannerHold('headless budget guard', reason, holdContextPrompt),
+        event: { role, provider: null, holdCode: HOLD_BUDGET_CODE, reason },
+      }
+    }
+  }
 
   const claude = new ClaudeCodeAdapter()
   if (plannerProvider === 'claude' && await claude.isAvailable()) {
@@ -1110,6 +1135,16 @@ async function runLocalPlannerText(systemPrompt: string, plannerPrompt: string, 
       permissionMode: 'bypassPermissions',
       timeoutMs,
     })
+    if (budget) {
+      recordHeadlessCall(budget.db, budget.sessionId, {
+        role,
+        provider: 'claude-cli',
+        authMode: result.authMode,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        exitCode: result.exitCode,
+      })
+    }
     if (result.exitCode === 0 && result.transcript.trim()) {
       return {
         content: result.transcript.trim(),
@@ -1161,7 +1196,7 @@ async function completePlannerFollowup(
 ): Promise<void> {
   try {
     db.insertEvent('operator.role_started', 'operator_session', sessionId, { role: 'planner-followup', provider: process.env['AEDEV_COCKPIT_PLANNER_PROVIDER'] ?? 'claude' })
-    const followup = await runPlannerFollowup(requestPrompt, title, repoId, originalPrompt, buildClarifications(db, sessionId))
+    const followup = await runPlannerFollowup(requestPrompt, title, repoId, originalPrompt, buildClarifications(db, sessionId), { db, sessionId })
     const isHold = Boolean(followup.event['holdCode'])
     // Prefer the planner's own goal-specific questions; fall back to the template
     // 3-question set ('ask me 3 questions') only when the LLM produced none (P3).
@@ -1281,7 +1316,7 @@ async function generateRoadmapDesign(
     status: 'draft',
   })
 
-  const output = await runPlannerMissionDesign(session.prompt, session.title, repoId, mission.id, buildClarifications(db, session.id))
+  const output = await runPlannerMissionDesign(session.prompt, session.title, repoId, mission.id, buildClarifications(db, session.id), { db, sessionId: session.id })
   if (!output.ok) {
     return {
       ok: false,
@@ -1355,6 +1390,7 @@ async function runPlannerMissionDesign(
   repoId: string,
   missionId: string,
   clarifications = '',
+  budget?: HeadlessBudgetCtx,
 ): Promise<{
   ok: true
   design: unknown
@@ -1406,9 +1442,27 @@ async function runPlannerMissionDesign(
   const provider = process.env['AEDEV_COCKPIT_PLANNER_PROVIDER'] ?? 'claude'
   const failures: string[] = []
 
+  // P1 credit guard (fixture/template paths above spawn nothing and stay free).
+  if (budget) {
+    const verdict = checkHeadlessBudget(budget.db, budget.sessionId)
+    if (!verdict.allowed) {
+      return { ok: false, reason: createBudgetHold(budget.db, budget.sessionId, verdict) }
+    }
+  }
+
   const claude = new ClaudeCodeAdapter()
   if (provider === 'claude' && await claude.isAvailable()) {
     const result = await claude.run(plannerPrompt, process.cwd(), { timeoutMs, permissionMode: 'bypassPermissions' })
+    if (budget) {
+      recordHeadlessCall(budget.db, budget.sessionId, {
+        role: 'mission-design',
+        provider: 'claude-cli',
+        authMode: result.authMode,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        exitCode: result.exitCode,
+      })
+    }
     if (result.exitCode === 0 && result.transcript.trim()) {
       const parsed = extractJsonObject(result.transcript)
       if (parsed.ok) return {
@@ -1613,6 +1667,7 @@ async function runOperatorMission(db: AedevDb, stateDir: string, sessionId: stri
           probeSessions: !/^(1|true|yes)$/i.test(process.env['AEDEV_COCKPIT_SKIP_SESSION_PROBE'] ?? ''),
         }),
       ]
+  recordDiscoveryProbe(db, sessionId, workerSessions)
   const validatorConfig = buildCockpitValidatorConfig(missionId)
   if (validatorConfig.configuredCount === 0) {
     db.insertEvent('operator.validators_not_configured', 'mission', missionId, {
@@ -2453,6 +2508,7 @@ function buildOperatorMissionView(opts: {
     stageLabel,
     confidence: understanding.confidence,
     progressPercent: stageProgress(stage),
+    headlessCallsToday: countHeadlessCallsToday(opts.db),
     primaryAction: primaryActionForStage(stage),
     secondaryActions: stage === 'running'
       ? [

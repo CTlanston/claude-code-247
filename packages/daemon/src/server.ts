@@ -17,6 +17,7 @@ import { MissionRunner } from './mission-runner.js'
 import { discoverWorkerSessions } from '@aedev/runner'
 import { resolveStateDir } from './paths.js'
 import { createDefaultMissionValidatorFactory } from './validator-factory.js'
+import { recordDiscoveryProbe } from './headless-budget-guard.js'
 import type { CostRoller } from '@aedev/cost-meter'
 
 export function createServer(
@@ -41,9 +42,11 @@ export function createServer(
   registerApprovalRoutes(app, db, stateDir)
   app.post<{ Params: { id: string } }>('/missions/:id/run', async (req, reply) => {
     try {
+      const workerSessions = await discoverWorkerSessions()
+      recordDiscoveryProbe(db, null, workerSessions)
       const runner = new MissionRunner(db, {
         stateDir,
-        workerSessions: await discoverWorkerSessions(),
+        workerSessions,
         validatorFactory: createDefaultMissionValidatorFactory(),
       })
       return await runner.runMission(req.params.id)

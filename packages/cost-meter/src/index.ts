@@ -13,3 +13,9 @@ export {
   CostBreaker,
   type CostBreakerOpts, type BreakerVerdict,
 } from './breaker.js'
+export {
+  DEFAULT_HEADLESS_LIMITS,
+  evaluateHeadlessBudget, headlessLimitsFromEnv, describeHeadlessBudgetBlock,
+  type HeadlessBudgetLimits, type HeadlessBudgetUsage,
+  type HeadlessBudgetReason, type HeadlessBudgetVerdict,
+} from './headless-budget.js'
