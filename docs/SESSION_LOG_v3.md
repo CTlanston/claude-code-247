@@ -1,5 +1,12 @@
 # SESSION LOG v3
 
+## s_v6_0006 · 2026-06-11 · [reconcile-e2e] deterministic cockpit E2E reconciled to the current conversation+five-card contract
+
+- Root cause: `scripts/operator-cockpit-e2e.ts` was pinned to the superseded inline clarification-option contract (`getByRole('button', { name: 'A specific test/command must pass ★' })`) and timed out — clarification answering moved into `ClarificationPopup` and the primary surface is conversation + LoopCard (WORKBOOK_v6 GR#11). Second stale expectation found and fixed: the Draft-PR gate now evaluates the Gemini evidence gate before remote-writes, so the deterministic blocked code is `GEMINI_NOT_CONFIGURED` (as quality-smoke already asserts), not `REMOTE_WRITES_DISABLED`.
+- Fix (no product change, no flags, no old-UI restoration): the e2e now drives the popup with the exact selector contract of `operator-cockpit-user-e2e.ts` (`.ck-clar-popup` / `.ck-clar-q` / recommended `.ck-chip` / "Answer all" submit), uses the same deterministic fenced-JSON planner fixtures (brainstorm confidence 62 → answers → Ask Until Clear follow-up confidence 96 unlocks the plan), then keeps ALL its full-loop assertions: roadmap → approve → execute → root stage → PR gate card blocked + `pr_blocked` operatorView stage + exactly 1 mock run + artifacts + no PR URL.
+- Decision recorded in `docs/cockpit-redesign/DEFAULT_SURFACE_DECISION.md`: conversation+five-card is the default; deterministic E2E must track the shipped product.
+- Suites: `test:cockpit:e2e` PASS (was timing out), `test:cockpit:quality-smoke` PASS (evidence `evidence/browser-cockpit-quality/2026-06-11T14-18-20-197Z/`), `test:cockpit:user-e2e` PASS 7/7 (evidence `evidence/browser-cockpit-user-e2e/2026-06-11T14-18-36-321Z/`). Gates: typecheck/lint/test — 950 baseline, zero regressions.
+
 ## s_v6_0005 · 2026-06-11 · Overnight harness loop — P1/P3/P4/P5/P6 done · P2 honest HOLD
 
 - P1: HOLD-PLANNER-AUTH detection + opt-in AEDEV_PLANNER_FALLBACK=codex (events record codex-cli (fallback), never impersonation) (+18). P3: operator-vocabulary cards + agent strip + on-card actions + PR-gate transparency, user-E2E 7/7 (+17). P4: merge-policy pure function, 864-combination sweep proves GR#10 (auto-merge off) (+14). P5: run-summary.md audit artifact on all four mission exits, absent-means-absent (+12). P6: full uninterrupted 30-min soak 5/5 PASS.
