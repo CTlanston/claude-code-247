@@ -1,5 +1,5 @@
 /**
- * Real (non-mock) Operator Cockpit smoke — CloudHull semantics.
+ * Real (non-mock) Operator Cockpit smoke — CloudHull c1–c4 semantics.
  *
  * Drives the cockpit through the LIVE local planner + worker path (no
  * AEDEV_COCKPIT_FORCE_MOCK / FORCE_TEMPLATE). Safety-first:
@@ -25,22 +25,27 @@
  *   - Regression evidence is required: the evidence bundle must show >=1
  *     executed test command with PASS, else REGRESSION_EVIDENCE_MISSING (the
  *     sandbox fixture ships a real `npm test` node assertion target).
+ *   - AEDEV_COCKPIT_REAL_SMOKE_SOURCE_REPO=<path> (+ _REPO_NAME=<name>) runs
+ *     the mission against a registered real repo's isolated worktree clone
+ *     instead of the disposable sandbox; the report records which was used.
  *
  * An evidence report is written to evidence/launch/.
  */
 import { execFileSync } from 'child_process'
-import { cpSync, mkdtempSync, mkdirSync, rmSync, statSync, writeFileSync, readdirSync, readFileSync, existsSync } from 'fs'
+import { cpSync, mkdtempSync, mkdirSync, rmSync, statSync, writeFileSync, readdirSync, readFileSync, existsSync, realpathSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { AedevDb } from '@aedev/core'
 import {
   createServer,
   buildProviderObservation,
+  describeRepoSource,
   evaluateProviderPolicy,
   expectedPrBlockCode,
   finalResultLabel,
   parseRegressionEvidence,
   resolveRealSmokeMode,
+  resolveSourceRepoChoice,
   resolveValidatorTerminal,
   validatorFailure,
   DEFAULT_VALIDATOR_TIMEOUT_MS,
@@ -77,6 +82,7 @@ const failures: string[] = []
 let server: ReturnType<typeof createServer> | undefined
 let modeVerdict: ModeVerdict | null = null
 let validatorOutcome: ValidatorOutcome | null = null
+let repoSource = 'sandbox'
 
 void main().catch((e) => {
   console.error(e)
@@ -93,12 +99,38 @@ async function main(): Promise<void> {
   buildSandboxFixture(sandboxRepo)
   process.chdir(sandboxRepo)
 
+  // c4: sandbox by default, or a registered real repo via env.
+  const choice = resolveSourceRepoChoice(process.env)
+  if (!choice.ok) {
+    failures.push(`SETUP: ${choice.error}`)
+    return
+  }
+  let missionRepoPath = sandboxRepo
+  let repoName = 'real-smoke'
+  let defaultBranch = 'main'
+  let testCommands: string[] = ['npm test']
+  if (choice.choice.kind === 'registered') {
+    try {
+      missionRepoPath = validateRegisteredRepo(choice.choice.path)
+      repoName = choice.choice.name
+      defaultBranch = detectDefaultBranch(missionRepoPath)
+      testCommands = []
+    } catch (e) {
+      failures.push(`SETUP: registered source repo invalid — ${(e as Error).message}. Refusing to fake a sandbox run.`)
+      return
+    }
+  }
+  repoSource = choice.choice.kind === 'registered'
+    ? describeRepoSource({ kind: 'registered', path: missionRepoPath, name: repoName })
+    : describeRepoSource(choice.choice)
+  log(`repo source: ${repoSource}`)
+
   const repo = db.insertRepo({
-    name: 'real-smoke',
-    path: sandboxRepo,
-    defaultBranch: 'main',
+    name: repoName,
+    path: missionRepoPath,
+    defaultBranch,
     enabled: true,
-    testCommands: ['npm test'],
+    testCommands,
     forbiddenPaths: ['.env*', 'secrets/**', '.github/**', 'AGENTS.md'],
     riskRules: {},
     mergePolicy: 'WAITING',
@@ -106,7 +138,7 @@ async function main(): Promise<void> {
 
   server = createServer(db, new Date(), stateDir)
   await server.listen({ port: PORT, host: '127.0.0.1' })
-  log(`daemon up on ${base}; sandbox repo ${sandboxRepo}`)
+  log(`daemon up on ${base}; mission repo ${missionRepoPath}; planner cwd ${sandboxRepo}`)
 
   const prompt = 'Planning only: propose a single low-risk one-line clarification to add to README.md. '
     + 'Keep the roadmap to one coder task that makes the README change, then runs the repository test command '
@@ -213,12 +245,12 @@ async function main(): Promise<void> {
       const repoPath = String(ready.payload['repoPath'] ?? '')
       const worktreePath = String(ready.payload['worktreePath'] ?? '')
       log(`repo-bound workspace: repoPath=${repoPath} worktreePath=${worktreePath} dirty=${String(ready.payload['dirtyStatus'] ?? '?')}`)
-      if (repoPath !== sandboxRepo) failures.push(`worker repoPath ${repoPath} != registered fixture repo ${sandboxRepo}`)
+      if (repoPath !== missionRepoPath) failures.push(`worker repoPath ${repoPath} != registered mission repo ${missionRepoPath}`)
       if (!worktreePath.includes('operator-workspaces')) failures.push(`worker worktree ${worktreePath} is not an isolated repo-bound workspace`)
       const changedPathsFile = overview.evidenceDir ? join(overview.evidenceDir, 'changed-paths.json') : ''
       if (changedPathsFile && existsSync(changedPathsFile)) {
         const cp = JSON.parse(readFileSync(changedPathsFile, 'utf8')) as { repoPath?: string; changedPaths?: string[] }
-        if (cp.repoPath && cp.repoPath !== sandboxRepo) failures.push(`evidence changed-paths repoPath ${cp.repoPath} != fixture repo`)
+        if (cp.repoPath && cp.repoPath !== missionRepoPath) failures.push(`evidence changed-paths repoPath ${cp.repoPath} != mission repo`)
         log(`worker changed ${cp.changedPaths?.length ?? 0} repo file(s): ${(cp.changedPaths ?? []).join(', ') || '(none)'}`)
       }
     } else {
@@ -265,18 +297,30 @@ function buildSandboxFixture(dir: string): void {
   execFileSync('git', ['commit', '-q', '-m', 'initial fixture commit (real npm test target)'], { cwd: dir })
 }
 
-function readEvidenceTexts(evidenceDir?: string): Record<string, string> {
-  if (!evidenceDir || !existsSync(evidenceDir)) return {}
-  const out: Record<string, string> = {}
-  for (const name of readdirSync(evidenceDir)) {
-    if (!/\.(md|log|txt|json)$/i.test(name)) continue
-    try {
-      const path = join(evidenceDir, name)
-      const stat = statSync(path)
-      if (stat.isFile() && stat.size <= 4 * 1024 * 1024) out[name] = readFileSync(path, 'utf8')
-    } catch { /* unreadable file: skip, parser reports honestly on what it saw */ }
+/** c4: the registered source repo must be a real git repo with >=1 commit. */
+function validateRegisteredRepo(path: string): string {
+  if (!existsSync(path)) throw new Error(`path does not exist: ${path}`)
+  const real = realpathSync(path)
+  try {
+    execFileSync('git', ['-C', real, 'rev-parse', '--is-inside-work-tree'], { stdio: 'pipe' })
+  } catch {
+    throw new Error(`not a git repository: ${real}`)
   }
-  return out
+  try {
+    execFileSync('git', ['-C', real, 'rev-parse', '--verify', 'HEAD'], { stdio: 'pipe' })
+  } catch {
+    throw new Error(`git repository has no commits (worktree clone needs HEAD): ${real}`)
+  }
+  return real
+}
+
+function detectDefaultBranch(repoPath: string): string {
+  try {
+    const branch = execFileSync('git', ['-C', repoPath, 'rev-parse', '--abbrev-ref', 'HEAD'], { stdio: 'pipe' }).toString().trim()
+    return branch && branch !== 'HEAD' ? branch : 'main'
+  } catch {
+    return 'main'
+  }
 }
 
 function summarizeProviders(events: Array<{ type: string; payload: Record<string, unknown> }>): void {
@@ -313,6 +357,20 @@ function writeValidatorSummary(missionId: string, v: {
     writeFileSync(join(v.evidenceDir, 'validator-summary.json'), summary)
   }
   log(`validator-summary.json written (terminal=${v.outcome}) → ${durable}`)
+}
+
+function readEvidenceTexts(evidenceDir?: string): Record<string, string> {
+  if (!evidenceDir || !existsSync(evidenceDir)) return {}
+  const out: Record<string, string> = {}
+  for (const name of readdirSync(evidenceDir)) {
+    if (!/\.(md|log|txt|json)$/i.test(name)) continue
+    try {
+      const path = join(evidenceDir, name)
+      const stat = statSync(path)
+      if (stat.isFile() && stat.size <= 4 * 1024 * 1024) out[name] = readFileSync(path, 'utf8')
+    } catch { /* unreadable file: skip, parser reports honestly on what it saw */ }
+  }
+  return out
 }
 
 function readWorkerUsageString(evidenceDir: string | undefined, key: string): string | undefined {
@@ -445,6 +503,7 @@ function finish(): void {
     `Result: ${label}${label === 'FAIL' ? ' — see violations below' : label === 'DEGRADED (planner fallback)' ? ' — accepted by fallback-proof mode; NOT a strict PASS' : ' — safety invariants + provider policy held'}`,
     `Requested mode: ${MODE}`,
     `Achieved mode: ${modeVerdict ? modeVerdict.achievedMode : '(not reached — no execution evidence)'}`,
+    `Repo source: ${repoSource}`,
     `Validator terminal: ${validatorOutcome ?? '(not reached)'}`,
     '',
     '## Timeline',
