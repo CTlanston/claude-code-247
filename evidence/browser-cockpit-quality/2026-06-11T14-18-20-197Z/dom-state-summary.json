@@ -1,0 +1,6 @@
+{
+  "stage": "pr_blocked",
+  "planner": "mock",
+  "worker": "mock",
+  "prGateCode": "GEMINI_NOT_CONFIGURED"
+}

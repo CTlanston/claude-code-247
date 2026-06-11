@@ -17,6 +17,50 @@ process.env['AEDEV_DISABLE_CODEX_CLI'] = '1'
 process.env['AEDEV_DISABLE_GEMINI_API'] = '1'
 process.env['AEDEV_DISABLE_OPENAI_API'] = '1'
 
+// Deterministic adaptive-clarify journey (current product contract, GR#11 /
+// conversation-first + ClarificationPopup): the brainstorm round asks two
+// questions at confidence 62 (plan locked); the follow-up round after the
+// operator answers reaches confidence 96 (plan unlocked). Same fenced-JSON
+// fixture mechanism as scripts/operator-cockpit-user-e2e.ts — no live CLI.
+process.env['AEDEV_COCKPIT_PLANNER_BRAINSTORM_FIXTURE_TEXT'] = [
+  'Initial brainstorm: deterministic e2e fixture round.',
+  '',
+  '- The goal needs two confirmations before a safe plan.',
+  '- Nothing has been changed yet — planning only.',
+  '',
+  '```json',
+  JSON.stringify({
+    questions: [
+      {
+        field: 'scope',
+        question: 'How tightly should this mission be scoped?',
+        why: 'Scoping avoids an unbounded first mission.',
+        impact: 'It decides the roadmap and the worker prompt.',
+        destination: 'PRD/Roadmap',
+        options: [{ label: 'Smallest viable change', recommended: true }, { label: 'A broader multi-file pass' }],
+      },
+      {
+        field: 'acceptance-criteria',
+        question: 'What is the most important observable acceptance criterion?',
+        why: 'A verifiable acceptance criterion gates execution.',
+        impact: 'It defines the evidence the validator reads.',
+        destination: 'PRD/Roadmap',
+        options: [{ label: 'A specific test/command must pass', recommended: true }, { label: 'A named UI behavior must change' }],
+      },
+    ],
+    confidence: 62,
+    rationale: 'Two answers are still needed before a safe roadmap.',
+  }),
+  '```',
+].join('\n')
+process.env['AEDEV_COCKPIT_PLANNER_FOLLOWUP_FIXTURE_TEXT'] = [
+  'Thanks — your answers are enough to plan safely. · 你的回答已足够，可以生成方案了。',
+  '',
+  '```json',
+  JSON.stringify({ questions: [], confidence: 96, rationale: 'Operator answers resolved scope and acceptance.' }),
+  '```',
+].join('\n')
+
 const stateDir = mkdtempSync(join(tmpdir(), 'aedev-cockpit-e2e-'))
 const db = new AedevDb(':memory:')
 let dashboard: ChildProcess | undefined
@@ -58,8 +102,27 @@ try {
   await page.goto(`http://127.0.0.1:${DASHBOARD_PORT}`, { waitUntil: 'domcontentloaded' })
   await page.getByTestId('cockpit-start-brainstorm').click()
   await page.getByText('Initial brainstorm:', { exact: false }).waitFor({ timeout: 10_000 })
-  await page.getByRole('button', { name: 'A specific test/command must pass ★' }).click()
-  await page.getByRole('button', { name: 'Answer all & continue · 全部确认并继续' }).click()
+  // Clarification answering moved into the bottom-anchored ClarificationPopup
+  // (conversation-first + five-card surface is the default; WORKBOOK_v6 GR#11).
+  // Same selector contract as scripts/operator-cockpit-user-e2e.ts: pick the
+  // recommended chip per question, then submit through the popup.
+  const popup = page.locator('.ck-clar-popup')
+  await popup.waitFor({ timeout: 20_000 })
+  const questions = popup.locator('.ck-clar-q')
+  const count = await questions.count()
+  if (count < 1) throw new Error('Clarification popup rendered with no questions')
+  for (let i = 0; i < count; i++) {
+    const recommended = questions.nth(i).locator('.ck-chip.recommended')
+    if (await recommended.count()) await recommended.first().click()
+    else await questions.nth(i).locator('.ck-chip').first().click()
+  }
+  await popup.getByRole('button', { name: /Answer all/ }).click()
+  await page.getByText('已确认 · Clarifications', { exact: false }).first().waitFor({ timeout: 15_000 })
+  await popup.waitFor({ state: 'detached', timeout: 15_000 })
+  // The confidence gate stays locked (62 < 95) until the planner re-checks with
+  // the answers folded in — Ask Until Clear runs the follow-up round (96).
+  await page.getByRole('button', { name: /Ask Until Clear/ }).click()
+  await page.getByText('your answers are enough to plan safely', { exact: false }).first().waitFor({ timeout: 20_000 })
   await page.getByTestId('cockpit-generate-plan-primary').click()
   await page.getByTestId('mission-stage').waitFor({ timeout: 10_000 })
   await page.getByTestId('cockpit-approve-roadmap').click()
@@ -67,8 +130,11 @@ try {
   await waitForRootStage(page, ['validators_missing', 'evidence_ready', 'pr_ready'])
   await page.getByTestId('cockpit-check-draft-pr-gate').click()
   await page.getByTestId('cockpit-pr-gate-card').waitFor({ timeout: 10_000 })
+  // The Gemini evidence-only hard gate is evaluated BEFORE the remote-writes
+  // gate; with no Gemini verdict configured the deterministic blocked code is
+  // GEMINI_NOT_CONFIGURED (same contract the quality smoke asserts).
   const code = await page.getByTestId('cockpit-pr-gate-card').getAttribute('data-pr-gate-code')
-  if (code !== 'REMOTE_WRITES_DISABLED') throw new Error(`Expected REMOTE_WRITES_DISABLED, got ${code}`)
+  if (code !== 'GEMINI_NOT_CONFIGURED') throw new Error(`Expected GEMINI_NOT_CONFIGURED, got ${code}`)
   await browser.close()
   browser = undefined
 
