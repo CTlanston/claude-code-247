@@ -33,6 +33,42 @@ export AEDEV_REMOTE_WRITE_WHITELIST=hermus-agent
 - 白名单为空 = 全部 repo 挡住（fail-closed），即使全局开关是 true。
 - 白名单外的 repo 行为与 v3 完全一致：`REPO_NOT_WHITELISTED` 阻断。
 
+## 1.5 Real smoke 的两种模式（CloudHull c1–c4，命令以脚本语义为准）
+
+`scripts/operator-cockpit-real-smoke.ts` 的 PASS/FAIL 语义（纯函数实现在
+`packages/daemon/src/real-smoke-policy.ts`，有单测）：
+
+```bash
+# STRICT（默认）：PASS 要求 planner=claude-cli/local_claude_code 且
+# coder=codex-cli/local_codex。planner 走了 AEDEV_PLANNER_FALLBACK=codex
+# 兜底 → 直接 FAIL（PLANNER_FALLBACK_NOT_ACCEPTED），不存在"宽松默认"。
+pnpm test:cockpit:real-smoke
+
+# FALLBACK-PROOF：显式接受 planner=codex-cli (fallback)。结果只会标
+# `DEGRADED (planner fallback)`，永远不算 strict PASS；报告同时记录
+# requested mode 和 achieved mode。
+AEDEV_COCKPIT_REAL_SMOKE_ACCEPT_PLANNER_FALLBACK=1 pnpm test:cockpit:real-smoke
+
+# Gemini 终态等待（默认 180000ms）：必须到 pass / fail / not_configured，
+# 超时报 GEMINI_TIMEOUT（独立一行 + 非 PASS），绝不含糊地停在 "pending"。
+# 每次运行都会写 validator-summary.json（verdicts 数组 + terminal 状态）。
+AEDEV_COCKPIT_REAL_SMOKE_VALIDATOR_TIMEOUT_MS=240000 pnpm test:cockpit:real-smoke
+
+# 强制要求 Gemini PASS（not_configured 也算失败）：
+AEDEV_COCKPIT_REAL_SMOKE_REQUIRE_GEMINI=1 pnpm test:cockpit:real-smoke
+
+# 针对一个已存在的真实 repo 跑（注册后在它的隔离 worktree clone 里执行；
+# 路径必须是有 commit 的 git repo，否则是明确的 SETUP 错误，不会假跑）：
+AEDEV_COCKPIT_REAL_SMOKE_SOURCE_REPO=~/projects/hermus-agent \
+AEDEV_COCKPIT_REAL_SMOKE_REPO_NAME=hermus-agent \
+pnpm test:cockpit:real-smoke
+```
+
+回归证据要求（两种模式相同）：evidence 里必须能解析出 ≥1 条真实执行过且
+PASS 的测试命令（沙箱 fixture 自带 `npm test` 的 node 断言脚本），否则
+FAIL（`REGRESSION_EVIDENCE_MISSING`）。旧的
+`AEDEV_COCKPIT_REAL_SMOKE_REQUIRE_P1` 已废弃：STRICT 现在就是默认。
+
 ## 2. 跑完整闭环
 
 1. 启动 daemon + cockpit（`scripts/dev-operator-cockpit.ts` 或 launchd）。

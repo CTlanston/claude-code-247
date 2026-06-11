@@ -44,8 +44,10 @@ describe('api', () => {
       method: 'POST',
       body: JSON.stringify({ repoId: 'repo-1', title: 'T', prompt: 'Build it' }),
     }))
-    expect(fetchMock).toHaveBeenCalledWith(`${DAEMON}/operator/sessions?latest=1`)
-    expect(fetchMock).toHaveBeenCalledWith(`${DAEMON}/operator/sessions/s1`)
+    // GETs carry an options object so the trusted-local x-aedev-user header
+    // can attach when a display name is stored (cloudhull-c5).
+    expect(fetchMock).toHaveBeenCalledWith(`${DAEMON}/operator/sessions?latest=1`, expect.any(Object))
+    expect(fetchMock).toHaveBeenCalledWith(`${DAEMON}/operator/sessions/s1`, expect.any(Object))
 
     await api.generateRoadmap('s1')
     await api.approveRoadmap('s1')
@@ -60,7 +62,25 @@ describe('api', () => {
     expect(fetchMock).toHaveBeenCalledWith(`${DAEMON}/operator/sessions/s1/pause`, expect.any(Object))
     expect(fetchMock).toHaveBeenCalledWith(`${DAEMON}/operator/sessions/s1/resume`, expect.any(Object))
     expect(fetchMock).toHaveBeenCalledWith(`${DAEMON}/operator/sessions/s1/create-pr`, expect.any(Object))
-    expect(fetchMock).toHaveBeenCalledWith(`${DAEMON}/missions/m1/runs/r1/log`)
+    expect(fetchMock).toHaveBeenCalledWith(`${DAEMON}/missions/m1/runs/r1/log`, expect.any(Object))
+  })
+
+  it('sends the trusted-local x-aedev-user header when a display name is stored (cloudhull-c5)', async () => {
+    vi.stubGlobal('localStorage', { getItem: () => ' Alice ', setItem: vi.fn(), removeItem: vi.fn() })
+    try {
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ session: { id: 's1' }, messages: [] }) })
+      vi.stubGlobal('fetch', fetchMock)
+      await api.getOperatorSession('s1')
+      await api.startOperatorSession('s1')
+      expect(fetchMock).toHaveBeenCalledWith(`${DAEMON}/operator/sessions/s1`, expect.objectContaining({
+        headers: expect.objectContaining({ 'x-aedev-user': 'Alice' }),
+      }))
+      expect(fetchMock).toHaveBeenCalledWith(`${DAEMON}/operator/sessions/s1/start`, expect.objectContaining({
+        headers: expect.objectContaining({ 'x-aedev-user': 'Alice' }),
+      }))
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   it('loads mission overview for cockpit observability', async () => {

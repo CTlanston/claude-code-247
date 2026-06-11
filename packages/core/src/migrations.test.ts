@@ -122,6 +122,21 @@ describe('migrations (Stage A.2)', () => {
     expect(getMigrationVersion(db)).toBe(MIGRATIONS[MIGRATIONS.length - 1].version)
   })
 
+  it('v9 adds a nullable submitted_by column to operator_sessions (cloudhull-c5 multi-user)', () => {
+    const cols = db
+      .prepare('PRAGMA table_info(operator_sessions)')
+      .all() as { name: string; notnull: number }[]
+    const col = cols.find((c) => c.name === 'submitted_by')
+    expect(col).toBeDefined()
+    expect(col?.notnull).toBe(0)
+  })
+
+  it('v9 re-applies safely when the column already exists (round-trip guard, like v7)', () => {
+    db.prepare('DELETE FROM migrations WHERE version >= 9').run()
+    expect(() => runMigrations(db)).not.toThrow()
+    expect(getMigrationVersion(db)).toBe(MIGRATIONS[MIGRATIONS.length - 1].version)
+  })
+
   it('v4 creates additive operator cockpit tables', () => {
     const tables = db
       .prepare("SELECT name FROM sqlite_master WHERE type='table'")

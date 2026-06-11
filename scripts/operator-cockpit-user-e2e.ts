@@ -187,6 +187,11 @@ async function runJourney(page: Page): Promise<void> {
   await step('step-1-compose-and-start', 'Type a user prompt into the composer and start brainstorm', async () => {
     await page.goto(`http://127.0.0.1:${DASHBOARD_PORT}`, { waitUntil: 'domcontentloaded' })
     await page.getByTestId('cockpit-goal-input').waitFor({ timeout: 15_000 })
+    // cloudhull-c5 — the composer carries the trusted-local display-name input.
+    // It stays EMPTY here on purpose: this journey sends no x-aedev-user header,
+    // i.e. the backward-compatible owner path.
+    await page.getByTestId('cockpit-user-name-input').waitFor({ timeout: 15_000 })
+    note('display-name input present (cockpit-user-name-input); left empty → owner path')
     await page.getByTestId('cockpit-title-input').fill('User journey E2E mission')
     await page.getByTestId('cockpit-goal-input').fill(USER_PROMPT)
     note(`composer testid: cockpit-goal-input · prompt: ${USER_PROMPT.slice(0, 60)}…`)

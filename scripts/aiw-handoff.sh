@@ -29,7 +29,8 @@ e2e() {
   doctor
   echo "== closed-gate real E2E (#13) =="
   unset AEDEV_ALLOW_REMOTE_WRITES || true
-  AEDEV_COCKPIT_REAL_SMOKE_REQUIRE_P1=1 \
+  # STRICT 是默认（CloudHull c1）：planner=claude-cli + coder=codex-cli，
+  # planner fallback 直接 FAIL。REQUIRE_P1 已废弃。
   AEDEV_COCKPIT_REAL_SMOKE_REQUIRE_GEMINI=1 \
   pnpm test:cockpit:real-smoke
   echo "Report under evidence/launch/ — verify planner=claude-cli, coder=codex-cli, gemini=pass, gate=REMOTE_WRITES_DISABLED"

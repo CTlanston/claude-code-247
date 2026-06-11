@@ -11,6 +11,9 @@ export function Composer(props: {
   onRepoChange: (v: string) => void
   title: string
   onTitleChange: (v: string) => void
+  // cloudhull-c5 — trusted-local display name (persisted, sent on all calls; NOT auth)
+  userName: string
+  onUserNameChange: (v: string) => void
   // actions
   onBrainstorm: () => void
   onAddNote: () => void
@@ -18,6 +21,19 @@ export function Composer(props: {
 }) {
   const busy = Boolean(props.busy)
   const selectedRepo = props.repos.find((r) => r.id === props.repoId)
+  const nameField = (
+    <div className="ck-user-name-field">
+      <label>你的名字 · Your name</label>
+      <input
+        data-testid="cockpit-user-name-input"
+        type="text"
+        maxLength={40}
+        placeholder="可留空（默认 owner）· optional, defaults to owner"
+        value={props.userName}
+        onChange={(e) => props.onUserNameChange(e.target.value)}
+      />
+    </div>
+  )
   if (props.mode === 'new') {
     return (
       <div className="ck-composer">
@@ -38,6 +54,7 @@ export function Composer(props: {
             <label>Title · 标题</label>
             <input data-testid="cockpit-title-input" type="text" value={props.title} onChange={(e) => props.onTitleChange(e.target.value)} />
           </div>
+          {nameField}
         </div>
         <textarea
           data-testid="cockpit-goal-input"
@@ -55,6 +72,7 @@ export function Composer(props: {
   }
   return (
     <div className="ck-composer">
+      <div className="ck-new-fields">{nameField}</div>
       <textarea
         data-testid="cockpit-note-input"
         placeholder="Add a constraint or reply · 补充约束或回复，然后 Add Note"

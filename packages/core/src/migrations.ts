@@ -268,6 +268,14 @@ CREATE INDEX IF NOT EXISTS idx_fleet_workers_status ON fleet_workers(status);
     skipIf: (db) => !!db.prepare(
       "SELECT name FROM sqlite_master WHERE type='table' AND name='fleet_workers'",
     ).get() },
+  // cloudhull-c5: the display name of the trusted-local user who submitted an
+  // operator session (one shared Mac, Tailscale LAN — NOT authentication).
+  // Nullable on purpose — historical rows are NOT rewritten; readers backfill
+  // NULL as 'owner' at read, the same rule as events.operator_id (ADR-0023).
+  { version: 9, name: 'cloudhull-c5-operator-session-submitted-by',
+    up: `ALTER TABLE operator_sessions ADD COLUMN submitted_by TEXT;`,
+    skipIf: (db) => (db.prepare('PRAGMA table_info(operator_sessions)').all() as { name: string }[])
+      .some((c) => c.name === 'submitted_by') },
 ]
 
 export function runMigrations(db: Database.Database): void {

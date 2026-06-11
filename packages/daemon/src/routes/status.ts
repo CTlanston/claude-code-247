@@ -1,10 +1,14 @@
 import type { FastifyInstance } from 'fastify'
 import type { AedevDb } from '@aedev/core'
+import { configuredOwnerName } from '../owner-gate.js'
 
 export function registerStatusRoutes(app: FastifyInstance, db: AedevDb, startTime: Date): void {
   app.get('/status', async () => ({
     status: 'running',
     version: '0.0.1',
+    // cloudhull-c5 — the owner display name so the dashboard can derive the
+    // viewer's owner/non-owner state client-side (trusted-local, NOT auth).
+    ownerName: configuredOwnerName(),
     missionOs: {
       version: 'v2.4.0-patch1',
       autonomy: 'draft-pr-only',

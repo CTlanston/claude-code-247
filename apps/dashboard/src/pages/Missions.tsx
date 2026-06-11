@@ -1,24 +1,69 @@
 import { useState, useEffect } from 'react'
-import { api, type ApiMission } from '../api.js'
+import { api, type ApiMission, type ApiOperatorSession } from '../api.js'
 
 function statusBadge(s: string) {
   return <span className={`badge badge-${s}`}>{s}</span>
 }
 
+/**
+ * cloudhull-c5 — group operator sessions by the submitting user's display
+ * name (trusted-local multi-user; backfill 'owner' for unnamed sessions).
+ * Exported for tests.
+ */
+export function groupSessionsBySubmitter(sessions: ApiOperatorSession[]): Array<[string, ApiOperatorSession[]]> {
+  const groups = new Map<string, ApiOperatorSession[]>()
+  for (const s of sessions) {
+    const name = s.submittedBy?.trim() || 'owner'
+    const list = groups.get(name) ?? []
+    list.push(s)
+    groups.set(name, list)
+  }
+  return [...groups.entries()]
+}
+
+function SessionsBySubmitter({ sessions }: { sessions: ApiOperatorSession[] }) {
+  if (sessions.length === 0) return null
+  return (
+    <>
+      <h2 style={{ fontSize: 15, margin: '8px 0' }}>Sessions · 会话（按提交人 · by submitter）</h2>
+      {groupSessionsBySubmitter(sessions).map(([name, list]) => (
+        <div key={name} className="card" data-testid="missions-session-group" data-submitted-by={name}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <strong data-testid="missions-session-submitter">{name}</strong>
+            <span style={{ fontSize: 12, color: '#64748b' }}>{list.length} session{list.length === 1 ? '' : 's'}</span>
+          </div>
+          {list.map((s) => (
+            <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '2px 0' }}>
+              <span>{s.title}</span>
+              {statusBadge(s.status)}
+            </div>
+          ))}
+        </div>
+      ))}
+    </>
+  )
+}
+
 export function MissionsPage() {
   const [missions, setMissions] = useState<ApiMission[]>([])
+  const [sessions, setSessions] = useState<ApiOperatorSession[]>([])
   const [err, setErr] = useState<string | null>(null)
 
   const load = () => api.getMissions().then(setMissions).catch((e: Error) => setErr(e.message))
-  useEffect(() => { void load() }, [])
+  useEffect(() => {
+    void load()
+    api.listOperatorSessions().then(setSessions).catch(() => undefined)
+  }, [])
 
   if (err) return <div className="error">Error: {err}</div>
-  if (missions.length === 0) return <div className="empty">No missions yet. Run: aedev intake "..."</div>
 
   return (
     <>
       <h1>Missions</h1>
-      {missions.map((m) => (
+      <SessionsBySubmitter sessions={sessions} />
+      {missions.length === 0 ? (
+        <div className="empty">No missions yet. Run: aedev intake "..."</div>
+      ) : missions.map((m) => (
         <div key={m.id} className="card">
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
             <strong>{m.title}</strong>

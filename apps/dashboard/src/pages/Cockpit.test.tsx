@@ -5,7 +5,7 @@ import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/re
 const apiMock = vi.hoisted(() => {
   const fn = () => vi.fn()
   return {
-    getRepos: vi.fn(), listOperatorSessions: vi.fn(), getApprovals: vi.fn(), getLatestOperatorSession: vi.fn(),
+    getRepos: vi.fn(), listOperatorSessions: vi.fn(), getApprovals: vi.fn(), getLatestOperatorSession: vi.fn(), getStatus: vi.fn(),
     getOperatorSession: fn(), getMissionOverview: fn(), getRunLog: fn(), createOperatorSession: fn(),
     generateRoadmap: fn(), askQuestions: fn(), approveRoadmap: fn(), startOperatorSession: fn(),
     pauseOperatorSession: fn(), resumeOperatorSession: fn(), stopOperatorSession: fn(), createDraftPr: fn(),
@@ -18,7 +18,7 @@ vi.mock('../api.js', async (importOriginal) => ({ ...(await importOriginal<typeo
 vi.mock('../hooks/useSSE.js', () => ({ useSSE: () => sseMock.value }))
 
 import { CockpitPage, buildGuidance, draftPrBlockedHeading, mapErrorToHuman } from './Cockpit.js'
-import { ApiError, type ApiMissionOverview } from '../api.js'
+import { ApiError, USER_NAME_STORAGE_KEY, type ApiMissionOverview } from '../api.js'
 
 afterEach(cleanup)
 beforeEach(() => {
@@ -28,6 +28,7 @@ beforeEach(() => {
   apiMock.listOperatorSessions.mockResolvedValue([])
   apiMock.getApprovals.mockResolvedValue([])
   apiMock.getLatestOperatorSession.mockResolvedValue({ session: null, messages: [] })
+  apiMock.getStatus.mockResolvedValue({ status: 'running', ownerName: 'owner', missionOs: { autonomy: 'draft-pr-only', workerConcurrency: { min: 1, max: 5 } } })
   localStorage.clear()
 })
 
@@ -202,6 +203,98 @@ describe('CockpitPage · loop card carries the primary action + agent strip (ove
     expect(screen.getByTestId('cockpit-card-agents')).toBeTruthy()
     fireEvent.click(btn)
     await waitFor(() => expect(apiMock.startOperatorSession).toHaveBeenCalledWith('s1'))
+  })
+})
+
+// cloudhull-c5 — multi-user prototype: the composer carries a display-name
+// input (persisted in localStorage, sent as submittedBy), owner-gate 403s map
+// to calm guidance, and non-owner viewers see the waiting-for-owner note.
+describe('CockpitPage · display name input (cloudhull-c5)', () => {
+  it('renders the name input, persists it to localStorage, and sends submittedBy on brainstorm', async () => {
+    apiMock.createOperatorSession.mockResolvedValue({
+      session: { id: 's9', title: 'T', prompt: 'p', status: 'brainstorming', createdAt: '2026-01-01', updatedAt: '2026-01-01', submittedBy: 'Bob' },
+      messages: [],
+    })
+    render(<CockpitPage />)
+    const input = await screen.findByTestId('cockpit-user-name-input')
+    fireEvent.change(input, { target: { value: 'Bob' } })
+    expect(localStorage.getItem(USER_NAME_STORAGE_KEY)).toBe('Bob')
+    fireEvent.click(await screen.findByTestId('cockpit-start-brainstorm'))
+    await waitFor(() => expect(apiMock.createOperatorSession).toHaveBeenCalled())
+    expect(apiMock.createOperatorSession.mock.calls[0]![0]).toMatchObject({ submittedBy: 'Bob' })
+  })
+
+  it('restores the stored name on mount', async () => {
+    localStorage.setItem(USER_NAME_STORAGE_KEY, 'Carol')
+    render(<CockpitPage />)
+    const input = await screen.findByTestId('cockpit-user-name-input')
+    expect((input as HTMLInputElement).value).toBe('Carol')
+  })
+})
+
+describe('CockpitPage · non-owner viewers wait for the owner (cloudhull-c5)', () => {
+  it('shows 等待 Owner on the plan card when the stored name is not the owner; no raw codes', async () => {
+    localStorage.setItem(USER_NAME_STORAGE_KEY, 'Bob')
+    apiMock.getStatus.mockResolvedValue({ status: 'running', ownerName: 'lan', missionOs: { autonomy: 'draft-pr-only', workerConcurrency: { min: 1, max: 5 } } })
+    apiMock.getLatestOperatorSession.mockResolvedValue({
+      session: { id: 's1', missionId: 'm1', title: 'M', prompt: 'p', status: 'roadmap_ready', createdAt: '2026-01-01', updatedAt: '2026-01-01', submittedBy: 'Bob' },
+      messages: [],
+    })
+    const overview = makeOverview()
+    overview.operatorView!.card = {
+      type: 'plan',
+      title: '等待你的确认 · Waiting for your go-ahead',
+      next_step: '审阅这份方案；你批准后才会开始动手 · Review this plan; work starts only after you approve it.',
+      machine: { user_state: 'waiting_for_approval', stage: 'roadmap_ready', hold_code: null, pr_gate_code: null },
+      objective: 'obj', phases: [], acceptance_criteria: ['c1'], risk_level: 'low', estimated_calls: 15, requires_approval: true,
+    }
+    apiMock.getMissionOverview.mockResolvedValue(overview)
+    render(<CockpitPage />)
+    const waiting = await screen.findByTestId('cockpit-waiting-for-owner')
+    expect(waiting.textContent).toContain('等待 Owner · waiting for owner')
+    expect(document.body.textContent).not.toMatch(/\b403\b|OWNER_REQUIRED/)
+  })
+
+  it('owner viewers (matching stored name) never see the waiting note', async () => {
+    localStorage.setItem(USER_NAME_STORAGE_KEY, 'lan')
+    apiMock.getStatus.mockResolvedValue({ status: 'running', ownerName: 'lan', missionOs: { autonomy: 'draft-pr-only', workerConcurrency: { min: 1, max: 5 } } })
+    apiMock.getLatestOperatorSession.mockResolvedValue({
+      session: { id: 's1', missionId: 'm1', title: 'M', prompt: 'p', status: 'roadmap_ready', createdAt: '2026-01-01', updatedAt: '2026-01-01' },
+      messages: [],
+    })
+    const overview = makeOverview()
+    overview.operatorView!.card = {
+      type: 'plan',
+      title: '等待你的确认 · Waiting for your go-ahead',
+      next_step: '审阅这份方案；你批准后才会开始动手 · Review this plan; work starts only after you approve it.',
+      machine: { user_state: 'waiting_for_approval', stage: 'roadmap_ready', hold_code: null, pr_gate_code: null },
+      objective: 'obj', phases: [], acceptance_criteria: ['c1'], risk_level: 'low', estimated_calls: 15, requires_approval: true,
+    }
+    apiMock.getMissionOverview.mockResolvedValue(overview)
+    render(<CockpitPage />)
+    await screen.findByTestId('cockpit-loop-card')
+    expect(screen.queryByTestId('cockpit-waiting-for-owner')).toBeNull()
+  })
+})
+
+describe('mapErrorToHuman · owner-gate 403 (cloudhull-c5)', () => {
+  it('turns an owner-gate 403 body into calm guidance, never the raw status', () => {
+    const e = new ApiError('HTTP 403: /operator/sessions/s1/approve-roadmap', 403, {
+      humanState: 'waiting_for_approval',
+      guidance: '这一步需要 Owner 执行 · this step belongs to the owner.',
+      ownerName: 'owner',
+    })
+    const h = mapErrorToHuman(e)
+    expect(h.kind).toBe('guidance')
+    expect(h.text).toContain('这一步需要 Owner 执行')
+    expect(h.text).not.toMatch(/403/)
+  })
+
+  it('falls back to calm owner guidance even without a structured body', () => {
+    const h = mapErrorToHuman(new Error('HTTP 403: /operator/sessions/s1/start'))
+    expect(h.kind).toBe('guidance')
+    expect(h.text).toMatch(/Owner/i)
+    expect(h.text).not.toMatch(/403/)
   })
 })
 

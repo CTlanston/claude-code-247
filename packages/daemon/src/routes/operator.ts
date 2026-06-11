@@ -1,7 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import type { AedevDb, MissionArtifact, MissionDesign, OperatorChoice, OperatorMessageMeta, OperatorQuestion, Run, Task, ValidatorResult } from '@aedev/core'
 import { generateId, nowIso, validateMissionDesign } from '@aedev/core'
 import {
@@ -41,6 +41,7 @@ import { ClaudeReviewer, type ReviewVerdict } from '../claude-reviewer.js'
 import { PLANNER_AUTH_HOLD_CODE, detectPlannerAuthFailure, plannerFallbackProvider } from '../planner-auth.js'
 import { deriveUserState, type UserStateView } from '../user-state.js'
 import { deriveLoopCard, type LoopCard } from '../loop-cards.js'
+import { OWNER_GATE_GUIDANCE, actingUserName, configuredOwnerName, isOwnerRequest } from '../owner-gate.js'
 
 type Stage =
   | 'Intake'
@@ -159,7 +160,13 @@ interface OperatorSessionBody {
   repoId?: string
   title?: string
   prompt?: string
+  /** cloudhull-c5 — display name of the trusted-local submitting user (NOT auth). */
+  submittedBy?: string
 }
+
+/** cloudhull-c5 — display-name hygiene red line: names may never look like credentials. */
+const SUBMITTED_BY_MAX_LENGTH = 40
+const CREDENTIAL_NAME_RED_LINE = /token|api[_-]?key|secret/i
 
 interface ParsedClarification {
   questions: OperatorQuestion[]
@@ -259,6 +266,35 @@ const CLARIFY_GATE_GUIDANCE =
 export function registerOperatorRoutes(app: FastifyInstance, db: AedevDb, stateDir: string, options: OperatorRouteOptions = {}): void {
   const intake = new IntakeService(db, stateDir)
 
+  /**
+   * cloudhull-c5 — owner-only action gate for approve-roadmap/start/create-pr.
+   * Trusted-local display names only (x-aedev-user is NOT auth); absent header
+   * = owner for backward compat. Returns the sent 403 when refused, undefined
+   * when the request may proceed. The refusal is calm + bilingual; raw codes
+   * never render in the UI (mapErrorToHuman).
+   */
+  function refuseNonOwner(
+    req: FastifyRequest,
+    reply: FastifyReply,
+    sessionId: string,
+    action: 'approve-roadmap' | 'start' | 'create-pr',
+  ): unknown | undefined {
+    if (isOwnerRequest(req)) return undefined
+    const actor = actingUserName(req) ?? 'unknown'
+    db.insertEvent('operator.owner_gate_refused', 'operator_session', sessionId, {
+      action,
+      actor,
+      ownerName: configuredOwnerName(),
+    }, actor)
+    return reply.code(403).send({
+      error: 'owner approval required for this step',
+      humanState: 'waiting_for_approval',
+      guidance: OWNER_GATE_GUIDANCE,
+      ownerName: configuredOwnerName(),
+      actor,
+    })
+  }
+
   app.get<{ Querystring: { latest?: string } }>('/operator/sessions', async (req) => {
     const sessions = db.listOperatorSessions()
     if (req.query.latest === '1') {
@@ -272,22 +308,35 @@ export function registerOperatorRoutes(app: FastifyInstance, db: AedevDb, stateD
     const prompt = req.body.prompt?.trim()
     if (!prompt) return reply.code(400).send({ error: 'prompt is required' })
     const title = req.body.title?.trim() || prompt.slice(0, 80)
+    // cloudhull-c5 — optional display name of the submitting trusted-local
+    // user (NOT auth). Body wins; the x-aedev-user header is the fallback.
+    const submittedByRaw = typeof req.body.submittedBy === 'string' ? req.body.submittedBy.trim() : ''
+    const submittedByCandidate = submittedByRaw || actingUserName(req) || ''
+    if (submittedByCandidate.length > SUBMITTED_BY_MAX_LENGTH) {
+      return reply.code(400).send({ error: `submittedBy must be at most ${SUBMITTED_BY_MAX_LENGTH} characters` })
+    }
+    if (submittedByCandidate && CREDENTIAL_NAME_RED_LINE.test(submittedByCandidate)) {
+      return reply.code(400).send({ error: 'submittedBy must be a plain display name — credential-like words (token / api key / secret) are not allowed' })
+    }
+    const submittedBy = submittedByCandidate || 'owner'
     const repoId = ensureOperatorRepo(db, req.body.repoId)
     const session = db.insertOperatorSession({
       repoId,
       title,
       prompt,
       status: 'brainstorming',
+      // Store NULL when no name was given: the read path backfills 'owner'.
+      ...(submittedByCandidate ? { submittedBy: submittedByCandidate } : {}),
     })
     db.insertOperatorMessage({ sessionId: session.id, role: 'user', content: prompt })
-    db.insertEvent('operator.stage_changed', 'operator_session', session.id, { stage: 'Brainstorm', repoId })
+    db.insertEvent('operator.stage_changed', 'operator_session', session.id, { stage: 'Brainstorm', repoId }, submittedBy)
     db.insertOperatorMessage({
       sessionId: session.id,
       role: 'assistant',
       content: 'Brainstorm is running on the local planner CLI. This can take a minute; the conversation will update automatically.',
       meta: thinkingMeta(),
     })
-    db.insertEvent('operator.session.created', 'operator_session', session.id, { repoId })
+    db.insertEvent('operator.session.created', 'operator_session', session.id, { repoId, submittedBy }, submittedBy)
     const brainstormPromise = completePlannerBrainstorm(db, stateDir, session.id, prompt, title, repoId)
     if (isTestRuntime()) {
       await brainstormPromise
@@ -352,6 +401,8 @@ export function registerOperatorRoutes(app: FastifyInstance, db: AedevDb, stateD
       )
       const lines = answers.map((a) => `- ${byId.get(a.questionId)?.question ?? a.questionId} → ${a.value.trim()}`)
       db.insertOperatorMessage({ sessionId: session.id, role: 'user', content: ['已确认 · Clarifications', '', ...lines].join('\n') })
+      // cloudhull-c5 — record the acting display name (trusted-local header, NOT auth).
+      const answeredBy = actingUserName(req)
       db.insertEvent('operator.questions_answered', 'operator_session', session.id, {
         answers: answers.map((a) => {
           const question = byId.get(a.questionId)
@@ -362,7 +413,8 @@ export function registerOperatorRoutes(app: FastifyInstance, db: AedevDb, stateD
             value: a.value.trim(),
           }
         }),
-      })
+        ...(answeredBy ? { answeredBy } : {}),
+      }, answeredBy ?? 'owner')
       const gateState = evaluateClarifyGate(db, session.id)
       db.updateOperatorSession(session.id, { status: gateState.unlocked ? 'brainstorm_ready' : 'clarifying' })
       return { session: db.getOperatorSession(session.id), messages: db.listOperatorMessages(session.id) }
@@ -439,6 +491,10 @@ export function registerOperatorRoutes(app: FastifyInstance, db: AedevDb, stateD
   })
 
   app.post<{ Params: { id: string } }>('/operator/sessions/:id/approve-roadmap', async (req, reply) => {
+    // cloudhull-c5 — owner-only step (trusted-local names; absent header = owner).
+    const refusal = refuseNonOwner(req, reply, req.params.id, 'approve-roadmap')
+    if (refusal !== undefined) return refusal
+    const actor = actingUserName(req) ?? configuredOwnerName()
     const session = db.getOperatorSession(req.params.id)
     if (!session?.missionId) return reply.code(404).send({ error: 'session or mission not found' })
     try {
@@ -447,7 +503,7 @@ export function registerOperatorRoutes(app: FastifyInstance, db: AedevDb, stateD
       if (mission.status === 'draft') intake.requestApproval(mission.id)
       const approved = intake.approveMission(mission.id, 'operator-cockpit')
       db.updateOperatorSession(session.id, { status: 'approved' })
-      db.insertEvent('operator.approval_recorded', 'mission', mission.id, { sessionId: session.id, by: 'operator-cockpit' })
+      db.insertEvent('operator.approval_recorded', 'mission', mission.id, { sessionId: session.id, by: 'operator-cockpit', actor }, actor)
       db.insertEvent('operator.stage_changed', 'mission', mission.id, { stage: 'Approved', sessionId: session.id })
       return { session: db.getOperatorSession(session.id), mission: approved, overview: buildMissionOverview(db, approved.id, stateDir) }
     } catch (e) {
@@ -456,6 +512,10 @@ export function registerOperatorRoutes(app: FastifyInstance, db: AedevDb, stateD
   })
 
   app.post<{ Params: { id: string } }>('/operator/sessions/:id/start', async (req, reply) => {
+    // cloudhull-c5 — owner-only step (trusted-local names; absent header = owner).
+    const ownerRefusal = refuseNonOwner(req, reply, req.params.id, 'start')
+    if (ownerRefusal !== undefined) return ownerRefusal
+    const actor = actingUserName(req) ?? configuredOwnerName()
     const session = db.getOperatorSession(req.params.id)
     if (session) {
       const clarifyGate = blockForClarifyGate(db, session.id, 'start')
@@ -508,7 +568,7 @@ export function registerOperatorRoutes(app: FastifyInstance, db: AedevDb, stateD
       // the cockpit Start button and status are never misleading (event before view).
       db.updateMissionStatus(mission.id, 'running')
       db.updateOperatorSession(session.id, { status: 'running' })
-      db.insertEvent('operator.run_starting', 'mission', mission.id, { sessionId: session.id })
+      db.insertEvent('operator.run_starting', 'mission', mission.id, { sessionId: session.id, actor }, actor)
       db.insertEvent('operator.stage_changed', 'mission', mission.id, { stage: 'Worker', sessionId: session.id })
       const runPromise = runOperatorMission(db, stateDir, session.id, mission.id)
       if (isTestRuntime()) {
@@ -537,6 +597,10 @@ export function registerOperatorRoutes(app: FastifyInstance, db: AedevDb, stateD
   })
 
   app.post<{ Params: { id: string } }>('/operator/sessions/:id/create-pr', async (req, reply) => {
+    // cloudhull-c5 — owner-only step (trusted-local names; absent header = owner).
+    const ownerRefusal = refuseNonOwner(req, reply, req.params.id, 'create-pr')
+    if (ownerRefusal !== undefined) return ownerRefusal
+    const actor = actingUserName(req) ?? configuredOwnerName()
     const session = db.getOperatorSession(req.params.id)
     if (!session?.missionId) return reply.code(404).send({ error: 'session or mission not found' })
     const mission = db.getMission(session.missionId)
@@ -599,7 +663,7 @@ export function registerOperatorRoutes(app: FastifyInstance, db: AedevDb, stateD
         throw new DraftPrExecutorUnavailableError('remote-write executor returned a non-production PR URL')
       }
       db.updateMissionGitHub(mission.id, { githubBranch: request.branch, githubPrUrl: info.url, githubPrNumber: info.number })
-      db.insertEvent('operator.draft_pr_created', 'mission', mission.id, { url: info.url, number: info.number })
+      db.insertEvent('operator.draft_pr_created', 'mission', mission.id, { url: info.url, number: info.number, actor }, actor)
       if (db.resolveHold(mission.id, 'HOLD-DRAFT-PR-EXECUTOR') > 0) {
         db.insertEvent('operator.hold_resolved', 'mission', mission.id, { code: 'HOLD-DRAFT-PR-EXECUTOR' })
       }

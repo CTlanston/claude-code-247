@@ -132,6 +132,38 @@ export type {
 // V6-P5: soak-pending status artifact (shell: scripts/soak-status.ts).
 export { WEEK_MS, buildSoakPending, deriveSoakStatus, readSoakPending, writeSoakPending } from './soak-status.js'
 export type { SoakPending, SoakStatus } from './soak-status.js'
+// CloudHull c1–c4: pure PASS/FAIL policy for the real cockpit smoke
+// (shell: scripts/operator-cockpit-real-smoke.ts).
+export {
+  ACCEPT_PLANNER_FALLBACK_ENV,
+  DEFAULT_VALIDATOR_TIMEOUT_MS,
+  EMPTY_PROVIDER_OBSERVATION,
+  REGRESSION_EVIDENCE_MISSING,
+  REPO_NAME_ENV,
+  SOURCE_REPO_ENV,
+  VALIDATOR_TIMEOUT_ENV,
+  buildProviderObservation,
+  describeRepoSource,
+  evaluateProviderPolicy,
+  expectedPrBlockCode,
+  finalResultLabel,
+  parseRegressionEvidence,
+  resolveRealSmokeMode,
+  resolveSourceRepoChoice,
+  resolveValidatorTerminal,
+  validatorFailure,
+} from './real-smoke-policy.js'
+export type {
+  ModeVerdict,
+  ProviderObservation,
+  RealSmokeMode,
+  RealSmokeResultLabel,
+  RegressionCommand,
+  RegressionEvidence,
+  SourceRepoChoice,
+  ValidatorOutcome,
+  ValidatorTerminal,
+} from './real-smoke-policy.js'
 export { InterruptionPolicy } from './interruption-policy.js'
 export type {
   InterruptionReason,

@@ -1,5 +1,35 @@
 export const DAEMON = typeof window !== 'undefined' ? '/api' : 'http://localhost:7247'
 
+/**
+ * cloudhull-c5 — trusted-local display name (one shared Mac, Tailscale LAN).
+ * Persisted in localStorage and sent as the plain `x-aedev-user` header on
+ * every call. This is attribution for a trusted LAN, explicitly NOT auth.
+ */
+export const USER_NAME_STORAGE_KEY = 'aedevUserName'
+
+export function getStoredUserName(): string {
+  try {
+    return (typeof localStorage !== 'undefined' && localStorage.getItem(USER_NAME_STORAGE_KEY)?.trim()) || ''
+  } catch {
+    return ''
+  }
+}
+
+export function setStoredUserName(name: string): void {
+  try {
+    if (typeof localStorage === 'undefined') return
+    if (name.trim()) localStorage.setItem(USER_NAME_STORAGE_KEY, name.trim())
+    else localStorage.removeItem(USER_NAME_STORAGE_KEY)
+  } catch {
+    // storage unavailable — the header is simply omitted
+  }
+}
+
+function userHeader(): Record<string, string> {
+  const name = getStoredUserName()
+  return name ? { 'x-aedev-user': name } : {}
+}
+
 export interface ApiMission {
   id: string; title: string; status: string; description?: string
   githubPrUrl?: string; githubPrNumber?: number; createdAt: string
@@ -18,6 +48,8 @@ export interface ApiTask {
 }
 export interface ApiOperatorSession {
   id: string; repoId?: string; missionId?: string; title: string; prompt: string; status: string
+  /** cloudhull-c5 — submitting user's display name ('owner' when unset). */
+  submittedBy?: string
   createdAt: string; updatedAt: string
 }
 export interface ApiOperatorChoice {
@@ -272,6 +304,20 @@ export interface ApiFleetOperator {
 export interface ApiFleetOverview {
   workers: ApiFleetWorker[]; operators: ApiFleetOperator[]
 }
+/** cloudhull-c6 — read-only owner Operations view. Derived from events/config
+ *  only; the daemon never probes engines for this payload (probes cost credit). */
+export type ApiEngineStatus = 'unknown' | 'ready' | 'needs_login' | 'not_configured'
+export interface ApiOpsHold {
+  code: string; text: string; entityType: string; entityId: string; createdAt: string
+}
+export interface ApiOpsOverview {
+  activeHolds: ApiOpsHold[]
+  activeMissions: Array<{ id: string; title: string; status: string; submittedBy: string }>
+  lastValidator: { status: string; verdict: string | null; atIso: string } | null
+  remoteWrites: { enabled: boolean; whitelist: string[] }
+  engines: { claude: ApiEngineStatus; codex: ApiEngineStatus; gemini: ApiEngineStatus }
+  suggestedRecovery: string[]
+}
 
 /**
  * v-ux-1 — HTTP failure that keeps the parsed response body, so the UI can
@@ -291,20 +337,20 @@ async function throwApiError(res: Response, path: string): Promise<never> {
 }
 
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${DAEMON}${path}`)
+  const res = await fetch(`${DAEMON}${path}`, { headers: { ...userHeader() } })
   if (!res.ok) await throwApiError(res, path)
   return res.json() as Promise<T>
 }
 async function post<T>(path: string, body: unknown = {}): Promise<T> {
   const res = await fetch(`${DAEMON}${path}`, {
-    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    method: 'POST', headers: { 'content-type': 'application/json', ...userHeader() }, body: JSON.stringify(body),
   })
   if (!res.ok) await throwApiError(res, path)
   return res.json() as Promise<T>
 }
 
 export const api = {
-  getStatus: () => get<{ status: string; missionOs: { autonomy: string; workerConcurrency: { min: number; max: number } } }>('/status'),
+  getStatus: () => get<{ status: string; ownerName?: string; missionOs: { autonomy: string; workerConcurrency: { min: number; max: number } } }>('/status'),
   getRepos: () => get<{ repos: ApiRepo[] }>('/repos').then((r) => r.repos),
   getMissions: () => get<{ missions: ApiMission[] }>('/missions').then((r) => r.missions),
   getTasks: (missionId?: string) => get<{ tasks: ApiTask[] }>(`/tasks${missionId ? `?missionId=${encodeURIComponent(missionId)}` : ''}`).then((r) => r.tasks),
@@ -317,7 +363,7 @@ export const api = {
   resumeMission: (id: string) => post(`/missions/${id}/status`, { status: 'running' }),
   cancelMission: (id: string) => post(`/missions/${id}/status`, { status: 'cancelled' }),
   approveMemory: (id: string) => post(`/memory/${id}/approve`, {}),
-  createOperatorSession: (body: { repoId?: string; title?: string; prompt: string }) =>
+  createOperatorSession: (body: { repoId?: string; title?: string; prompt: string; submittedBy?: string }) =>
     post<{ session: ApiOperatorSession; messages: ApiOperatorMessage[] }>('/operator/sessions', body),
   getLatestOperatorSession: () =>
     get<{ session: ApiOperatorSession | null; messages: ApiOperatorMessage[] }>('/operator/sessions?latest=1'),
@@ -347,5 +393,6 @@ export const api = {
     post<{ status: string; code?: string; reason?: string; pr?: { url: string; number: number }; overview: ApiMissionOverview }>(`/operator/sessions/${id}/create-pr`, {}),
   getMissionOverview: (id: string) => get<ApiMissionOverview>(`/missions/${id}/overview`),
   getFleetOverview: () => get<ApiFleetOverview>('/fleet/overview'),
+  getOpsOverview: () => get<ApiOpsOverview>('/ops/overview'),
   getRunLog: (missionId: string, runId: string) => get<{ text: string; logPath: string }>(`/missions/${missionId}/runs/${runId}/log`),
 }

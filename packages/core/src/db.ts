@@ -294,10 +294,12 @@ export class AedevDb {
   // --- Operator cockpit ---
   insertOperatorSession(s: Omit<OperatorSession, 'id' | 'createdAt' | 'updatedAt'>): OperatorSession {
     const id = generateId(); const now = nowIso()
-    this.db.prepare(`INSERT INTO operator_sessions (id,repo_id,mission_id,title,prompt,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)`).run(
-      id, s.repoId ?? null, s.missionId ?? null, s.title, s.prompt, s.status, now, now
+    this.db.prepare(`INSERT INTO operator_sessions (id,repo_id,mission_id,title,prompt,status,submitted_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)`).run(
+      id, s.repoId ?? null, s.missionId ?? null, s.title, s.prompt, s.status, s.submittedBy ?? null, now, now
     )
-    return { ...s, id, createdAt: now, updatedAt: now }
+    // Backfill-at-read rule applied to the returned view too: an unnamed
+    // submission belongs to 'owner' (cloudhull-c5).
+    return { ...s, submittedBy: s.submittedBy ?? 'owner', id, createdAt: now, updatedAt: now }
   }
 
   updateOperatorSession(id: string, updates: Partial<Pick<OperatorSession, 'missionId' | 'status' | 'title'>>): void {
@@ -421,6 +423,8 @@ export class AedevDb {
       title: r['title'] as string,
       prompt: r['prompt'] as string,
       status: r['status'] as string,
+      // cloudhull-c5 backfill rule: pre-v9 rows (NULL submitted_by) belong to 'owner'.
+      submittedBy: (r['submitted_by'] as string | null) ?? 'owner',
       createdAt: r['created_at'] as string,
       updatedAt: r['updated_at'] as string,
     }
