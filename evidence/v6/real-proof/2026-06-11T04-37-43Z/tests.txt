@@ -1,0 +1,2 @@
+Full gates: 889 passed / 0 failed / 6 skipped
+Targeted regression (draft-pr-gate, remote-write-policy, server, gemini-validator): 41 passed / 1 skipped

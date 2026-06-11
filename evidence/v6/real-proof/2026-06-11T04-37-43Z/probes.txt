@@ -1,0 +1,3 @@
+claude: 2.1.172 (Claude Code)
+AEDEV_GEMINI_API_KEY: ABSENT
+repos.yaml: ABSENT

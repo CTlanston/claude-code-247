@@ -1,5 +1,12 @@
 # SESSION LOG v3
 
+## s_v6_0004 · 2026-06-11 · V6-P3 cycle-4 attempt → honest HOLD-REAL-PROOF-CREDENTIALS
+
+- Planner chain (real, committed): env false-red REFUSE (cycle-2) → dirty-tree honest REFUSE (cycle-3) → clean PROPOSE cycle-4 = v6-p3-real-proof-closeout.
+- Container lacks codex/gh/gemini CLIs, AEDEV_GEMINI_API_KEY, and a registered safe repo → real Draft PR + real Gemini verdict CANNOT be produced here; HOLD with exact 5-step operator recovery in evidence/v6/real-proof/ (GR#6/#7, no fabrication).
+- Regression proofs re-run and captured (41 passed): whitelist-off/off-list blocks, Gemini non-PASS blocks create-pr, missing Gemini key fails closed.
+- §0: blocked_on=operator_real_proof. Machine exit unchanged: Draft PR only, never merge (GR#10).
+
 ## s_v6_0003 · 2026-06-11 · V6-P4 + V6-P5 code complete · recursive planner + soak operationalization
 
 - **V6-P4 recursive planner** (TDD, 20 tests first): `packages/daemon/src/recursive-planner.ts` — pure `planNextCycle` refuses on dirty tree / red tests / blocked budget (carries the budget reason) / ambiguous SoT (≠1 live root-workbook claim, `detectSotAmbiguity`) / open holds / unmerged previous-cycle PR / unparseable §0 / empty gap registry, each with a human recovery action; otherwise proposes exactly ONE gap by the fixed order safety_evidence > user_ux > automation > fleet > polish (ties by stable input order). Cycle ledger `appendCycleLedger` → `evidence/loop-cycles/cycle-<n>.json` {decision, timestamp, workbook_phase, chosen_gap} AND event-sources `planner.cycle_planned` so `rebuildCycleLedgerFromEvents` reproduces the on-disk ledger (GR#5, tested). GR#8 kept: zero child_process in daemon src (eslint static guard stays green).
