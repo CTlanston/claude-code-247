@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import {
   api,
   ApiError,
+  getStoredUserName,
+  setStoredUserName,
   type ApiLoopCard,
   type ApiMissionOverview,
   type ApiOperatorChoice,
@@ -94,6 +96,19 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
   const [errDetail, setErrDetail] = useState<string | null>(null)
   const [note, setNote] = useState('')
   const [skippedClarify, setSkippedClarify] = useState<Set<string>>(() => new Set())
+  // cloudhull-c5 — trusted-local display name (persisted; sent as submittedBy +
+  // the x-aedev-user header on all calls; NOT auth) + the configured owner name.
+  const [userName, setUserNameState] = useState(getStoredUserName)
+  const [ownerName, setOwnerName] = useState('owner')
+  const setUserName = (v: string) => {
+    setUserNameState(v)
+    setStoredUserName(v)
+  }
+  useEffect(() => {
+    api.getStatus().then((s) => setOwnerName(s.ownerName ?? 'owner')).catch(() => undefined)
+  }, [])
+  // Absent/blank name = owner (backward compat with the single-user cockpit).
+  const viewerIsOwner = !userName.trim() || userName.trim() === ownerName
   useEffect(() => {
     api.getRepos().then((r) => {
       setRepos(r)
@@ -232,8 +247,9 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
 
   // overnight-p3 — the ONE handler set behind every action surface: the
   // guidance buttons and the loop card's on-card action share this plumbing.
+  const submittedBy = userName.trim() ? { submittedBy: userName.trim() } : {}
   const actionHandlers = {
-    onBrainstorm: () => action('create', () => api.createOperatorSession({ repoId, title, prompt }), (x) => { setSession(x.session); setMessages(x.messages); setOverview(null); setDraftPrStatus(null) }),
+    onBrainstorm: () => action('create', () => api.createOperatorSession({ repoId, title, prompt, ...submittedBy }), (x) => { setSession(x.session); setMessages(x.messages); setOverview(null); setDraftPrStatus(null) }),
     onRoadmap: () => session && action('roadmap', () => api.generateRoadmap(session.id), (x) => { setSession(x.session); setMessages(x.messages); if (x.mission) void api.getMissionOverview(x.mission.id).then(setOverview) }),
     onApprove: () => session && action('approve', () => api.approveRoadmap(session.id), (x) => { setSession(x.session); setOverview(x.overview) }),
     onStart: () => session && action('start', () => api.startOperatorSession(session.id), (x) => { setSession(x.session); setOverview(x.overview) }),
@@ -394,6 +410,7 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
               busy={Boolean(busy)}
               prGate={operatorView?.safetySummary.prGate}
               lastActivityPhase={operatorView?.lastActivity?.phase}
+              viewerIsOwner={viewerIsOwner}
             />
           )}
 
@@ -425,7 +442,9 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
             onRepoChange={setRepoId}
             title={title}
             onTitleChange={setTitle}
-            onBrainstorm={() => action('create', () => api.createOperatorSession({ repoId, title, prompt }), (x) => { setSession(x.session); setMessages(x.messages); setOverview(null); setDraftPrStatus(null) })}
+            userName={userName}
+            onUserNameChange={setUserName}
+            onBrainstorm={() => action('create', () => api.createOperatorSession({ repoId, title, prompt, ...submittedBy }), (x) => { setSession(x.session); setMessages(x.messages); setOverview(null); setDraftPrStatus(null) })}
             onAddNote={() => session && note.trim() && action('message', () => api.addOperatorMessage(session.id, note), (x) => { setMessages(x.messages); setNote('') })}
             onAsk={() => session && action('ask', () => api.askQuestions(session.id), (x) => { setSession(x.session); setMessages(x.messages) })}
           />
@@ -462,6 +481,7 @@ function draftPrRemediation(code?: string): string {
 }
 
 const CLARIFY_GUIDANCE_FALLBACK = '还有几个问题需要你先确认，回答上面的待确认问题后就能继续 · Please answer the outstanding questions above; once answered, the AI can continue.'
+const OWNER_GUIDANCE_FALLBACK = '这一步需要 Owner 执行 · This step belongs to the owner. 你的提交和回答都已保留 · Your submissions and answers are kept.'
 const GENERIC_HUMAN_ERROR = '系统遇到问题，正在保护现场 · Something needs attention. The system paused safely; nothing was pushed or published.'
 
 /**
@@ -478,8 +498,15 @@ export function mapErrorToHuman(e: unknown): { kind: 'guidance' | 'error'; text:
   if (body && (body.humanState === 'needs_more_context' || body.blocked?.code === 'CLARIFY_GATE_BLOCKED')) {
     return { kind: 'guidance', text: body.guidance ?? CLARIFY_GUIDANCE_FALLBACK }
   }
+  // cloudhull-c5 — owner-gate refusals are calm guidance, never a raw 403.
+  if (body && body.humanState === 'waiting_for_approval') {
+    return { kind: 'guidance', text: body.guidance ?? OWNER_GUIDANCE_FALLBACK }
+  }
   if (/CLARIFY_GATE_BLOCKED|HTTP 409|\b409\b/.test(err.message)) {
     return { kind: 'guidance', text: CLARIFY_GUIDANCE_FALLBACK }
+  }
+  if (/HTTP 403|\b403\b/.test(err.message)) {
+    return { kind: 'guidance', text: OWNER_GUIDANCE_FALLBACK }
   }
   if (/Load failed|Failed to fetch|NetworkError/i.test(err.message)) {
     return { kind: 'error', text: 'Load failed. Daemon connection is down or restarting. 请确认 pnpm cockpit:dev 仍在运行，然后刷新页面。' }

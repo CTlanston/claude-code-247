@@ -152,6 +152,10 @@ export interface OperatorSession {
   title: string
   prompt: string
   status: string
+  /** cloudhull-c5 — display name of the trusted-local submitting user (NOT
+   *  auth). Rows written before the submitted_by migration read back as
+   *  'owner' (backfill-at-read rule, like Event.operatorId). */
+  submittedBy?: string
   createdAt: string
   updatedAt: string
 }

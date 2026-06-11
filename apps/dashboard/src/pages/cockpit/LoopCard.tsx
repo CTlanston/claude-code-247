@@ -279,7 +279,7 @@ function PrReadyBody({ card, onRework, prGate }: {
   )
 }
 
-export function LoopCard({ card, onRework, action, onAction, busy, prGate, lastActivityPhase }: {
+export function LoopCard({ card, onRework, action, onAction, busy, prGate, lastActivityPhase, viewerIsOwner }: {
   card: ApiLoopCard
   onRework?: () => void
   /** The operator view's primaryAction, rendered ON the card. */
@@ -289,7 +289,13 @@ export function LoopCard({ card, onRework, action, onAction, busy, prGate, lastA
   busy?: boolean | undefined
   prGate?: LoopCardPrGate | undefined
   lastActivityPhase?: string | undefined
+  /** cloudhull-c5 — false when the stored display name is not the owner; the
+   *  plan/pr_ready decision cards then show calm waiting-for-owner text.
+   *  Default true (single-user / owner viewers see no change). */
+  viewerIsOwner?: boolean | undefined
 }) {
+  // Only the two owner-gated decision cards carry the waiting note.
+  const waitingForOwner = viewerIsOwner === false && (card.type === 'plan' || card.type === 'pr_ready')
   return (
     <section
       className={`ck-loop-card type-${card.type}`}
@@ -309,6 +315,12 @@ export function LoopCard({ card, onRework, action, onAction, busy, prGate, lastA
         <span className="k">下一步 · Next</span>
         <span className="v">{card.next_step}</span>
       </div>
+      {waitingForOwner && (
+        <div className="ck-loop-next ck-loop-waiting-owner" data-testid="cockpit-waiting-for-owner">
+          <span className="k">等待 Owner · waiting for owner</span>
+          <span className="v">这一步由 Owner 在控制台确认；你的提交和回答都会保留 · The owner confirms this step in the cockpit; your submissions and answers are kept.</span>
+        </div>
+      )}
       {action && onAction && (
         <div className="ck-loop-actions">
           <button
