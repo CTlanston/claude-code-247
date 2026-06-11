@@ -381,3 +381,41 @@ describe('LoopCard — blocker card: human explanation, never raw codes', () => 
     }
   })
 })
+
+// ---- cloudhull-c5 — multi-user: non-owner viewers see "waiting for owner" ----
+// Plan + PrReady are the two owner-gated decision cards; a viewer whose stored
+// display name is not the owner sees calm bilingual waiting text instead of a
+// dead-end (raw 403s never render — mapErrorToHuman covers the action path).
+
+describe('LoopCard — non-owner viewers (cloudhull-c5)', () => {
+  it('plan card shows 等待 Owner · waiting for owner when the viewer is not the owner', () => {
+    const { container } = render(<LoopCard card={plan()} viewerIsOwner={false} />)
+    const waiting = container.querySelector('[data-testid="cockpit-waiting-for-owner"]') as HTMLElement
+    expect(waiting).toBeTruthy()
+    expect(waiting.textContent).toContain('等待 Owner · waiting for owner')
+    // next_step plain-language invariant kept
+    const next = container.querySelector('[data-testid="cockpit-loop-card-next-step"]') as HTMLElement
+    expect(next.textContent).toContain(plan().next_step)
+    expect(container.textContent).not.toMatch(/403|OWNER_REQUIRED/)
+  })
+
+  it('pr_ready card shows the waiting-for-owner note for non-owner viewers', () => {
+    const { container } = render(<LoopCard card={prReady(false)} viewerIsOwner={false} />)
+    const waiting = container.querySelector('[data-testid="cockpit-waiting-for-owner"]') as HTMLElement
+    expect(waiting).toBeTruthy()
+    expect(waiting.textContent).toContain('等待 Owner · waiting for owner')
+  })
+
+  it('owner viewers (and the default) never see the waiting-for-owner note', () => {
+    for (const el of [
+      <LoopCard key="a" card={plan()} viewerIsOwner={true} />,
+      <LoopCard key="b" card={plan()} />,
+      <LoopCard key="c" card={progress()} viewerIsOwner={false} />,
+      <LoopCard key="d" card={understanding()} viewerIsOwner={false} />,
+    ]) {
+      const { container } = render(el)
+      expect(container.querySelector('[data-testid="cockpit-waiting-for-owner"]')).toBeNull()
+      cleanup()
+    }
+  })
+})
