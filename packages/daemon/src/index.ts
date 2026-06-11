@@ -108,6 +108,25 @@ export type {
   DefaultValidatorSecretStatus,
   ValidatorSecretResolver,
 } from './validator-factory.js'
+export {
+  CYCLE_PLANNED_EVENT,
+  GAP_PRIORITY,
+  appendCycleLedger,
+  claimsSourceOfTruth,
+  detectSotAmbiguity,
+  parseSection0,
+  planNextCycle,
+  rebuildCycleLedgerFromEvents,
+} from './recursive-planner.js'
+export type {
+  AppendCycleLedgerOptions,
+  CycleLedgerEntry,
+  GapCategory,
+  PhaseGap,
+  PlanDecision,
+  PlannerInput,
+  Section0State,
+} from './recursive-planner.js'
 export { InterruptionPolicy } from './interruption-policy.js'
 export type {
   InterruptionReason,
