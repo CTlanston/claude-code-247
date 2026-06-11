@@ -10,8 +10,8 @@
  *  - the `machine` sub-object is NEVER rendered as visible text — raw codes
  *    (HOLD-*, gate codes, stage tokens) live only in data-* attributes.
  */
-import { describe, it, expect, afterEach } from 'vitest'
-import { render, cleanup } from '@testing-library/react'
+import { describe, it, expect, afterEach, vi } from 'vitest'
+import { render, cleanup, fireEvent } from '@testing-library/react'
 import { LoopCard } from './LoopCard.js'
 import type {
   ApiBlockerLoopCard,
@@ -171,6 +171,182 @@ describe('LoopCard — per-type content', () => {
     const root = renderCard(prReady(true))
     const link = root.querySelector('a')
     expect(link?.getAttribute('href')).toBe('https://github.com/o/r/pull/7')
+  })
+})
+
+// ---- overnight-p3 — operator console upgrades -------------------------------
+// The five cards must tell a new user what the system is doing and what to do
+// next WITHOUT logs: operator vocabulary titles, an agent strip, the primary
+// action ON the card, evidence entries, and PR-gate transparency.
+
+function progressAt(stage: string): ApiProgressLoopCard {
+  const card = progress()
+  card.machine = { ...card.machine, stage }
+  return card
+}
+
+function gateBlocker(code: string): ApiBlockerLoopCard {
+  const card = blocker()
+  card.machine = { user_state: 'blocked', stage: 'pr_blocked', hold_code: null, pr_gate_code: code }
+  card.human_explanation = '为了安全，PR 暂时不能开 · For safety the draft PR cannot be opened yet.'
+  return card
+}
+
+describe('LoopCard — operator vocabulary titles (理解/计划/构建/验证/合并)', () => {
+  it('maps card types to the operator stage vocabulary', () => {
+    expect(renderCard(understanding()).textContent).toContain('理解 · Understand')
+    cleanup()
+    expect(renderCard(plan()).textContent).toContain('计划 · Plan')
+    cleanup()
+    expect(renderCard(prReady(false)).textContent).toContain('合并 · PR·Merge')
+  })
+
+  it('progress splits VISUALLY into Build (running) vs Verify (evidence/validating); data-card-type stays progress', () => {
+    const build = renderCard(progressAt('running'))
+    expect(build.textContent).toContain('构建 · Build')
+    expect(build.textContent).not.toContain('验证 · Verify')
+    expect(build.getAttribute('data-card-type')).toBe('progress')
+    cleanup()
+    for (const stage of ['evidence_ready', 'validating', 'validators_missing', 'validators_ready']) {
+      const verify = renderCard(progressAt(stage))
+      expect(verify.textContent).toContain('验证 · Verify')
+      expect(verify.textContent).not.toContain('构建 · Build')
+      expect(verify.getAttribute('data-card-type')).toBe('progress')
+      cleanup()
+    }
+  })
+})
+
+describe('LoopCard — agent strip: who is working (cockpit-card-agents)', () => {
+  function strip(root: HTMLElement): HTMLElement {
+    const el = root.querySelector('[data-testid="cockpit-card-agents"]') as HTMLElement
+    expect(el).toBeTruthy()
+    return el
+  }
+
+  it('every card lists the four-agent team (Claude/Codex/Gemini/GitHub)', () => {
+    const cards: ApiLoopCard[] = [understanding(), plan(), progress(), blocker(), prReady(false)]
+    for (const card of cards) {
+      const el = strip(renderCard(card))
+      for (const name of ['Claude', 'Codex', 'Gemini', 'GitHub']) expect(el.textContent).toContain(name)
+      cleanup()
+    }
+  })
+
+  it('highlights the active agent per card type and machine stage', () => {
+    expect(strip(renderCard(understanding())).getAttribute('data-active-agent')).toBe('claude')
+    cleanup()
+    expect(strip(renderCard(plan())).getAttribute('data-active-agent')).toBe('claude')
+    cleanup()
+    expect(strip(renderCard(progressAt('running'))).getAttribute('data-active-agent')).toBe('codex')
+    cleanup()
+    expect(strip(renderCard(progressAt('validating'))).getAttribute('data-active-agent')).toBe('gemini')
+    cleanup()
+    expect(strip(renderCard(prReady(true))).getAttribute('data-active-agent')).toBe('github')
+  })
+
+  it('blocker: falls back to the last activity phase for the active agent', () => {
+    const { container } = render(<LoopCard card={blocker()} lastActivityPhase="executing" />)
+    const el = container.querySelector('[data-testid="cockpit-card-agents"]') as HTMLElement
+    expect(el.getAttribute('data-active-agent')).toBe('codex')
+  })
+})
+
+describe('LoopCard — next-step action button ON the card (cockpit-card-action)', () => {
+  const action = { id: 'approve-roadmap', label: 'Approve Roadmap · 批准路线' }
+
+  it('renders the primary action as the card action button and forwards clicks', () => {
+    const onAction = vi.fn()
+    const { container } = render(<LoopCard card={plan()} action={action} onAction={onAction} />)
+    const btn = container.querySelector('[data-testid="cockpit-card-action"]') as HTMLButtonElement
+    expect(btn).toBeTruthy()
+    expect(btn.textContent).toContain('Approve Roadmap')
+    expect(btn.getAttribute('data-action-id')).toBe('approve-roadmap')
+    fireEvent.click(btn)
+    expect(onAction).toHaveBeenCalledWith(action)
+  })
+
+  it('renders no card action button without a primary action', () => {
+    const { container } = render(<LoopCard card={plan()} />)
+    expect(container.querySelector('[data-testid="cockpit-card-action"]')).toBeNull()
+  })
+
+  it('disables the card action while busy', () => {
+    const { container } = render(<LoopCard card={plan()} action={action} onAction={() => undefined} busy />)
+    expect((container.querySelector('[data-testid="cockpit-card-action"]') as HTMLButtonElement).disabled).toBe(true)
+  })
+})
+
+describe('LoopCard — blocker recovery actions: list with the recommended one emphasized', () => {
+  it('marks the recommended recovery action', () => {
+    const root = renderCard(blocker())
+    const list = root.querySelector('[data-testid="cockpit-card-recovery"]') as HTMLElement
+    expect(list).toBeTruthy()
+    const items = Array.from(list.querySelectorAll('li'))
+    expect(items.length).toBe(2)
+    expect(items[0]?.getAttribute('data-recommended')).toBe('true')
+    expect(items[0]?.querySelector('strong')).toBeTruthy()
+    expect(items[1]?.getAttribute('data-recommended')).toBe('false')
+    expect(items[1]?.querySelector('strong')).toBeNull()
+  })
+})
+
+describe('LoopCard — evidence entries (cockpit-card-evidence)', () => {
+  it('progress: evidence links render as clickable-looking entries', () => {
+    const root = renderCard(progress())
+    const entries = root.querySelectorAll('[data-testid="cockpit-card-evidence"]')
+    expect(entries.length).toBe(1)
+    expect(entries[0]?.textContent).toContain('evidence/run-1/gate.json')
+  })
+
+  it('pr_ready: changed files render as evidence entries', () => {
+    const root = renderCard(prReady(false))
+    const entries = root.querySelectorAll('[data-testid="cockpit-card-evidence"]')
+    expect(entries.length).toBe(1)
+    expect(entries[0]?.textContent).toContain('src/a.ts')
+  })
+})
+
+describe('LoopCard — PR gate transparency: why / who / next, never raw codes', () => {
+  it('blocker via the Gemini gate shows the three lines and credits Gemini', () => {
+    const root = renderCard(gateBlocker('GEMINI_NOT_PASS'))
+    const gate = root.querySelector('[data-testid="cockpit-card-pr-gate"]') as HTMLElement
+    expect(gate).toBeTruthy()
+    expect(gate.textContent).toContain('为什么')
+    expect(gate.textContent).toContain('谁说的')
+    expect(gate.textContent).toContain('下一步')
+    expect(gate.textContent).toContain('Gemini')
+    expect(gate.textContent).toContain('For safety the draft PR cannot be opened yet')
+    expect(root.textContent).not.toContain('GEMINI_NOT_PASS')
+  })
+
+  it('blocker via the policy gate credits the safety gate (安全门), never the raw code', () => {
+    const root = renderCard(gateBlocker('REMOTE_WRITES_DISABLED'))
+    const gate = root.querySelector('[data-testid="cockpit-card-pr-gate"]') as HTMLElement
+    expect(gate.textContent).toContain('安全门')
+    expect(root.textContent).not.toContain('REMOTE_WRITES_DISABLED')
+  })
+
+  it('a HOLD blocker does not pretend to be a PR-gate decision', () => {
+    const root = renderCard(blocker()) // hold_code present → the hold, not the gate, blocks
+    expect(root.querySelector('[data-testid="cockpit-card-pr-gate"]')).toBeNull()
+  })
+
+  it('pr_ready with a checked gate explains why it can open, who said so and what is next', () => {
+    const { container } = render(
+      <LoopCard card={prReady(true)} prGate={{ status: 'created', reason: 'Draft PR URL is recorded on the mission.' }} />,
+    )
+    const gate = container.querySelector('[data-testid="cockpit-card-pr-gate"]') as HTMLElement
+    expect(gate).toBeTruthy()
+    expect(gate.textContent).toContain('为什么')
+    expect(gate.textContent).toContain('谁说的')
+    expect(gate.textContent).toContain('下一步')
+    expect(gate.textContent).toContain('Draft PR URL is recorded')
+  })
+
+  it('pr_ready without any gate info renders no gate section', () => {
+    const root = renderCard(prReady(false))
+    expect(root.querySelector('[data-testid="cockpit-card-pr-gate"]')).toBeNull()
   })
 })
 

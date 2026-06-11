@@ -173,6 +173,38 @@ describe('Draft PR gate card · GEMINI_NOT_CONFIGURED is humanized', () => {
   })
 })
 
+// overnight-p3 — the loop card is an operator console: the daemon's
+// primaryAction renders ON the card (cockpit-card-action) through the SAME
+// handler plumbing as the guidance buttons, and the agent strip shows who is
+// working — no logs needed.
+describe('CockpitPage · loop card carries the primary action + agent strip (overnight-p3)', () => {
+  it('renders primaryAction on the card and clicking it calls the existing handler', async () => {
+    const session = { id: 's1', missionId: 'm1', title: 'M', prompt: 'p', status: 'approved', createdAt: '2026-01-01', updatedAt: '2026-01-01' }
+    apiMock.getLatestOperatorSession.mockResolvedValue({ session, messages: [] })
+    const overview = makeOverview()
+    overview.operatorView!.primaryAction = { id: 'start-execution', label: 'Start Execution · 启动执行', kind: 'primary' }
+    overview.operatorView!.card = {
+      type: 'progress',
+      title: '可以开始执行 · Ready to start',
+      next_step: '点击启动执行后才会动手 · Work starts when you click start.',
+      machine: { user_state: 'ready_to_execute', stage: 'approved', hold_code: null, pr_gate_code: null },
+      current_phase: '可以开始执行 · Ready to start',
+      current_action: '等待启动 · Waiting for your start.',
+      evidence_links: [],
+      tests_run: [],
+    }
+    apiMock.getMissionOverview.mockResolvedValue(overview)
+    apiMock.startOperatorSession.mockResolvedValue({ session, overview })
+    render(<CockpitPage />)
+    const btn = await screen.findByTestId('cockpit-card-action')
+    expect(btn.textContent).toContain('Start Execution')
+    expect(btn.getAttribute('data-action-id')).toBe('start-execution')
+    expect(screen.getByTestId('cockpit-card-agents')).toBeTruthy()
+    fireEvent.click(btn)
+    await waitFor(() => expect(apiMock.startOperatorSession).toHaveBeenCalledWith('s1'))
+  })
+})
+
 describe('buildGuidance · inline decision flow (#2: no Approve/Start after Generate)', () => {
   const base = {
     overview: null,

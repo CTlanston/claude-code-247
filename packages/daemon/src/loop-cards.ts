@@ -147,6 +147,9 @@ function whyItMatters(code: string | null): string {
   if (code && code.startsWith('HOLD-REVIEW-LOOP')) {
     return '反复返工说明这条路走不通，继续自动重试只会浪费额度 · Repeated rework means this path is not converging; more automatic retries would only waste your allowance.'
   }
+  if (code && code.startsWith('HOLD-PLANNER-AUTH')) {
+    return '规划引擎的本地登录已失效，继续自动重试只会反复失败；先恢复登录是最快的恢复路径 · The planner’s local login is no longer valid; automatic retries would keep failing, so restoring the login is the fastest way back.'
+  }
   if (code && (code.startsWith('HOLD-SESSION-POOL') || code.startsWith('HOLD-TARGET-REPO'))) {
     return '在环境就绪之前动手只会产生假进度，系统选择诚实地等待 · Acting before the environment is ready would only fake progress; the system honestly waits instead.'
   }
@@ -165,6 +168,13 @@ function recoveryActions(code: string | null): string[] {
     return [
       '亲自看一眼最近的改动和检查结果 · Take a look at the latest change and check results yourself.',
       '把任务拆小或补充更明确的要求后重新开始 · Restart with a smaller task or clearer requirements.',
+    ]
+  }
+  if (code && code.startsWith('HOLD-PLANNER-AUTH')) {
+    return [
+      '在终端运行 claude login 重新登录本地 Claude · Run `claude login` in a terminal to sign the local Claude CLI back in.',
+      '在 Claude CLI 里输入 /status 检查订阅额度 · Check subscription credit with /status inside the Claude CLI.',
+      '可选：设置 AEDEV_PLANNER_FALLBACK=codex 让本地 Codex 暂代规划（永不使用付费 API） · Optional: set AEDEV_PLANNER_FALLBACK=codex to let the local Codex CLI plan instead (never a paid API).',
     ]
   }
   if (code && (code.startsWith('HOLD-SESSION-POOL') || code.startsWith('HOLD-TARGET-REPO'))) {

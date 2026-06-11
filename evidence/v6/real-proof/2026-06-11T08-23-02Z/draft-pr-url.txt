@@ -1,0 +1,1 @@
+https://github.com/CTlanston/hermus-agent/pull/4 (REAL, operator-produced; full cockpit chain still HOLD-PLANNER-AUTH)

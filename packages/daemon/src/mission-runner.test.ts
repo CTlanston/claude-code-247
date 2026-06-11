@@ -6,6 +6,7 @@ import { AedevDb, type Mission, type RunResult, type Task, type ValidatorResult 
 import { IntakeService } from './intake.js'
 import { MemoryGitClient, MissionRunner, type MissionValidator } from './mission-runner.js'
 import { DraftPrGateError, type DraftPrRequest, type DraftPrInfo } from './draft-pr-gate.js'
+import { RUN_SUMMARY_SECTIONS } from './run-summary.js'
 import { ReleasePipeline, type DeployFn } from './release-pipeline.js'
 import type { RolePipeline } from './roles/role-pipeline.js'
 import type { WorkerSession } from '@aedev/runner'
@@ -803,5 +804,85 @@ describe('MissionRunner — P2 cross-engine review loop', () => {
       validators: [fakeValidator('gemini', 'pass')],
     }).runMission(mission.id)
     expect(db.queryEvents({ type: 'review.requested', entityId: mission.id })).toHaveLength(0)
+  })
+})
+
+describe('MissionRunner — P5 run-summary.md evidence audit artifact', () => {
+  function auditTaskEvidence(changedPaths: string[], branch: string): string {
+    const dir = join(stateDir, `audit-evidence-${Math.random().toString(16).slice(2)}`)
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'diff-summary.md'), '# Diff Summary\n\nChanged files.\n')
+    writeFileSync(join(dir, 'test-summary.md'), '# Test Summary\n\nTests passed.\n')
+    writeFileSync(join(dir, 'done-report.md'), '# Done\n\nDone.\n')
+    writeFileSync(join(dir, 'changed-paths.json'), JSON.stringify({ changedPaths, forbiddenHits: [] }))
+    writeFileSync(join(dir, 'local-commit.json'), JSON.stringify({ attempted: true, created: true, sha: 'abc123', branch }))
+    return dir
+  }
+
+  it('writes run-summary.md with every required audit section on the happy path', async () => {
+    const mission = approveMission('Refactor the auth utility (no UI)')
+    const runner = new MissionRunner(db, {
+      stateDir,
+      rolePipeline: fakeRolePipeline(),
+      runner: fakeRunner({ taskEvidenceDir: auditTaskEvidence(['README.md', 'src/foo.ts'], 'v6/p5-audit') }),
+      validators: [fakeValidator('gemini', 'pass'), fakeValidator('openai', 'pass')],
+      requiresUi: false,
+    })
+
+    const result = await runner.runMission(mission.id)
+    expect(result.status).toBe('done')
+
+    const path = join(result.evidenceDir, 'run-summary.md')
+    expect(existsSync(path)).toBe(true)
+    const summary = readFileSync(path, 'utf8')
+    for (const section of RUN_SUMMARY_SECTIONS) expect(summary).toContain(section)
+    expect(summary).toContain('**Decision:** AUTO_MERGE')
+    expect(summary).toContain('- gemini: pass')
+    expect(summary).toContain('- openai: pass')
+    expect(summary).toContain('- README.md')
+    expect(summary).toContain('- src/foo.ts')
+    // honesty: the injected fake runner never touched a real worktree (mock
+    // provider) — the artifact must say simulated even with commit metadata.
+    expect(summary).toContain('Classification: simulated')
+  })
+
+  it('writes run-summary.md on a held path and records the hold honestly', async () => {
+    const mission = approveMission('Implement a safe hold path')
+    const runner = new MissionRunner(db, {
+      stateDir,
+      rolePipeline: fakeRolePipeline(),
+      workerSessions: [{ id: 'codex-1', provider: 'codex-cli', family: 'openai', healthy: false, active: 0 }],
+    })
+
+    const result = await runner.runMission(mission.id)
+    expect(result.status).toBe('waiting')
+
+    const path = join(result.evidenceDir, 'run-summary.md')
+    expect(existsSync(path)).toBe(true)
+    const summary = readFileSync(path, 'utf8')
+    for (const section of RUN_SUMMARY_SECTIONS) expect(summary).toContain(section)
+    expect(summary).toContain('**Status:** waiting')
+    expect(summary).toContain('- HOLD-SESSION-POOL:')
+    expect(summary).toContain('(absent — no validator verdict recorded)')
+    expect(summary).not.toContain('- gemini: pass')
+  })
+
+  it('never fabricates a verdict — absent validator/reviewer inputs render as absent', async () => {
+    const mission = approveMission('Run without validators or reviewer')
+    const runner = new MissionRunner(db, {
+      stateDir,
+      rolePipeline: fakeRolePipeline(),
+      runner: fakeRunner({ taskEvidenceDir: makeTaskEvidence() }),
+      requiresUi: false,
+    })
+
+    const result = await runner.runMission(mission.id)
+    expect(result.status).toBe('waiting')
+
+    const summary = readFileSync(join(result.evidenceDir, 'run-summary.md'), 'utf8')
+    expect(summary).toContain('(absent — no validator verdict recorded)')
+    expect(summary).toContain('(absent — no reviewer verdict recorded)')
+    expect(summary).toContain('(absent — runner produced no changed-paths.json)')
+    expect(summary).not.toContain(': pass')
   })
 })

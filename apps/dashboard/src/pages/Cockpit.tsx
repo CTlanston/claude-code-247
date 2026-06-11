@@ -47,6 +47,36 @@ const ACTION_TEST_IDS: Record<string, string> = {
   'start-over': 'cockpit-start-over',
 }
 
+/** The single handler set behind every primary-action surface (guidance + loop card). */
+interface PrimaryActionHandlers {
+  onBrainstorm: () => void
+  onRoadmap: () => void
+  onApprove: () => void
+  onStart: () => void
+  onPause: () => void
+  onResume: () => void
+  onDraftPr: () => void
+  onReset: () => void
+}
+
+/**
+ * overnight-p3 — ONE id→handler map shared by the guidance buttons and the
+ * on-card action button (LoopCard `onAction`), so the card never duplicates
+ * the action plumbing.
+ */
+export function resolvePrimaryActionHandler(id: string, h: PrimaryActionHandlers): (() => void) | undefined {
+  return ({
+    'generate-plan': h.onRoadmap,
+    'approve-roadmap': h.onApprove,
+    'start-execution': h.onStart,
+    'check-draft-pr-gate': h.onDraftPr,
+    resume: h.onResume,
+    pause: h.onPause,
+    'start-over': h.onReset,
+    'start-brainstorm': h.onBrainstorm,
+  } as Record<string, () => void>)[id]
+}
+
 export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void } = {}) {
   const sse = useSSE('/api/events/stream')
   const [pendingApprovals, setPendingApprovals] = useState(0)
@@ -200,14 +230,9 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
     }
   }
 
-  const guidance = buildGuidance({
-    session,
-    overview,
-    busy,
-    messages,
-    latestHold,
-    sseConnected: sse.connected,
-    operatorView: overview?.operatorView,
+  // overnight-p3 — the ONE handler set behind every action surface: the
+  // guidance buttons and the loop card's on-card action share this plumbing.
+  const actionHandlers = {
     onBrainstorm: () => action('create', () => api.createOperatorSession({ repoId, title, prompt }), (x) => { setSession(x.session); setMessages(x.messages); setOverview(null); setDraftPrStatus(null) }),
     onRoadmap: () => session && action('roadmap', () => api.generateRoadmap(session.id), (x) => { setSession(x.session); setMessages(x.messages); if (x.mission) void api.getMissionOverview(x.mission.id).then(setOverview) }),
     onApprove: () => session && action('approve', () => api.approveRoadmap(session.id), (x) => { setSession(x.session); setOverview(x.overview) }),
@@ -217,6 +242,16 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
     onDraftPr: () => session && action('draft-pr', () => api.createDraftPr(session.id), (x) => { setOverview(x.overview); setDraftPrStatus({ status: x.status, code: x.code, reason: x.reason, url: x.pr?.url, number: x.pr?.number }) }),
     onReset: resetMission,
     onStop: () => session?.missionId && action('stop', () => api.stopOperatorSession(session.id), (x) => { setSession(x.session); setOverview(x.overview) }),
+  }
+  const guidance = buildGuidance({
+    session,
+    overview,
+    busy,
+    messages,
+    latestHold,
+    sseConnected: sse.connected,
+    operatorView: overview?.operatorView,
+    ...actionHandlers,
   })
 
   const hasSession = Boolean(session)
@@ -351,7 +386,16 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
           )}
           {notice && <div className="ck-banner notice">{notice}</div>}
 
-          {loopCard && <LoopCard card={loopCard} />}
+          {loopCard && (
+            <LoopCard
+              card={loopCard}
+              action={operatorView?.primaryAction && resolvePrimaryActionHandler(operatorView.primaryAction.id, actionHandlers) ? operatorView.primaryAction : undefined}
+              onAction={(a) => resolvePrimaryActionHandler(a.id, actionHandlers)?.()}
+              busy={Boolean(busy)}
+              prGate={operatorView?.safetySummary.prGate}
+              lastActivityPhase={operatorView?.lastActivity?.phase}
+            />
+          )}
 
           <ChatThread
             messages={messages}
@@ -608,16 +652,7 @@ export function buildGuidance(opts: {
   }
   if (opts.operatorView?.primaryAction) {
     const action = opts.operatorView.primaryAction
-    const click = ({
-      'generate-plan': opts.onRoadmap,
-      'approve-roadmap': opts.onApprove,
-      'start-execution': opts.onStart,
-      'check-draft-pr-gate': opts.onDraftPr,
-      resume: opts.onResume,
-      pause: opts.onPause,
-      'start-over': opts.onReset,
-      'start-brainstorm': opts.onBrainstorm,
-    } as Record<string, () => void>)[action.id]
+    const click = resolvePrimaryActionHandler(action.id, opts)
     return {
       kicker: opts.operatorView.stageLabel,
       title: opts.operatorView.summary,
