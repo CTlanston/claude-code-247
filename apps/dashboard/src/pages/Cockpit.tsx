@@ -2,17 +2,20 @@ import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import {
   api,
   ApiError,
+  type ApiLoopCard,
   type ApiMissionOverview,
   type ApiOperatorChoice,
-  type ApiOperatorMissionView,
   type ApiOperatorMessage,
+  type ApiOperatorMissionView,
   type ApiOperatorSession,
   type ApiRepo,
+  type ApiUnderstandingLoopCard,
 } from '../api.js'
 import { useSSE } from '../hooks/useSSE.js'
 import { ChatThread } from './cockpit/ChatThread.js'
 import { Composer } from './cockpit/Composer.js'
 import { ClarificationPopup } from './cockpit/ClarificationPopup.js'
+import { LoopCard } from './cockpit/LoopCard.js'
 import './cockpit/cockpit.css'
 
 const DEFAULT_PROMPT = 'Brainstorm a low-risk improvement, produce PRD/ADR/roadmap, then execute to the draft PR/evidence gate.'
@@ -219,6 +222,14 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
   const hasSession = Boolean(session)
   const pendingCount = Math.max(pendingApprovals, sse.pendingApprovals)
   const operatorView = overview?.operatorView
+  // v6-P2 (GR#11) — the primary state surface is exactly ONE of the five loop
+  // cards. The daemon derives it on every mission overview; before a mission
+  // exists (brainstorm/clarify) a client-side understanding card keeps the
+  // same five-card mental model without inventing machine state.
+  const loopCard = useMemo<ApiLoopCard | null>(() => {
+    if (operatorView?.card) return operatorView.card
+    return buildPreMissionUnderstandingCard(session, pendingClarify)
+  }, [operatorView?.card, session, pendingClarify])
   const plannerProvider = operatorView?.providerSummary.planner
   const workerProvider = operatorView?.providerSummary.worker
   const stageForDom = operatorView?.stage ?? (session?.status === 'brainstorming' ? 'brainstorming' : session?.missionId ? 'roadmap_ready' : 'new')
@@ -340,6 +351,8 @@ export function CockpitPage({ onNavigate }: { onNavigate?: (tab: string) => void
           )}
           {notice && <div className="ck-banner notice">{notice}</div>}
 
+          {loopCard && <LoopCard card={loopCard} />}
+
           <ChatThread
             messages={messages}
             busy={busy}
@@ -435,6 +448,49 @@ export function mapErrorToHuman(e: unknown): { kind: 'guidance' | 'error'; text:
     }
   }
   return { kind: 'error', text: GENERIC_HUMAN_ERROR, detail: err.message }
+}
+
+/**
+ * v6-P2 — before a mission/overview exists (brainstorm + clarify rounds) the
+ * daemon has no card to derive, but the ordinary user must still see the same
+ * five-card surface. This builds an honest client-side UnderstandingCard from
+ * the session prompt and the pending clarification questions only; machine
+ * codes stay out of visible text (rule 1), and next_step is always non-empty
+ * (rule 3). Holds keep their dedicated banner — no card is fabricated there.
+ */
+export function buildPreMissionUnderstandingCard(
+  session: ApiOperatorSession | null,
+  pendingClarify: ApiOperatorMessage | null,
+): ApiUnderstandingLoopCard | null {
+  if (!session || session.missionId || session.status === 'hold') return null
+  const pending = pendingClarify?.questions ?? []
+  const questions = pending.map((q) => ({ id: q.id, question: q.question }))
+  const default_assumptions = pending
+    .map((q) => {
+      const recommended = q.options.find((o) => o.recommended)
+      return recommended ? `不回答时默认采用 · If unanswered, the default is "${recommended.label}".` : null
+    })
+    .filter((x): x is string => x !== null)
+  const needsInput = questions.length > 0
+  return {
+    type: 'understanding',
+    title: needsInput ? '需要你补充信息 · Needs your input' : '正在理解你的目标 · Understanding your goal',
+    next_step: needsInput
+      ? '回答下方的待确认问题，AI 才能继续生成方案 · Answer the questions below so the plan can continue.'
+      : '稍等片刻，AI 正在确认理解，随后会给出方案 · Hang on — understanding is being confirmed; a plan comes next.',
+    machine: {
+      user_state: needsInput ? 'needs_more_context' : 'understanding',
+      stage: session.status,
+      hold_code: null,
+      pr_gate_code: null,
+    },
+    user_goal: session.prompt?.trim() || '（目标待补充 · goal not provided yet）',
+    interpreted_goal: 'AI 正在阅读你的目标，还没有改任何东西 · The AI is reading your goal; nothing has been changed yet.',
+    out_of_scope: [],
+    confidence: 0,
+    questions,
+    default_assumptions,
+  }
 }
 
 function isHoldResponse(out: unknown): out is { hold: { code: string; reason: string } } {
