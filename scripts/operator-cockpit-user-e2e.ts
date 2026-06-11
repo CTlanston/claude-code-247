@@ -279,6 +279,8 @@ async function runJourney(page: Page): Promise<void> {
     await expectStage(page, ['roadmap_ready', 'pending_approval'])
     // v6-P2: at roadmap_ready the daemon-derived card is the plan card.
     await expectLoopCard(page, ['plan'], 'at roadmap_ready')
+    // overnight-p3: the plan card carries its own next-step action button.
+    await expectCardAction(page, ['generate-plan', 'approve-roadmap'], 'on the plan card')
 
     // Deferred half of step 2: the overview now exists, so cockpit-last-activity
     // must render and keep refreshing (two samples >1.5s apart).
@@ -300,6 +302,8 @@ async function runJourney(page: Page): Promise<void> {
   await step('step-5-approve-and-execute', 'Approve roadmap, start execution; execution state appears', async () => {
     await page.getByTestId('cockpit-approve-roadmap').click()
     await page.getByTestId('cockpit-start-execution').waitFor({ timeout: 20_000 })
+    // overnight-p3: after approval the card's own action button offers Start.
+    await expectCardAction(page, ['start-execution'], 'on the approved card')
     await shot(page, '05a-approved')
     await page.getByTestId('cockpit-start-execution').click()
     await waitForRootStage(page, ['running', 'evidence_ready', 'validators_missing', 'validating', 'pr_ready'], 30_000)
@@ -427,7 +431,33 @@ async function expectLoopCard(page: Page, expectedTypes: string[], where: string
       throw new Error(`Machine code "${code}" (${attr}) rendered as visible loop-card text ${where}`)
     }
   }
-  note(`loop card ${where}: type=${lastType} · next_step="${nextStepBody.slice(0, 120)}"`)
+  // overnight-p3 — every card carries the agent strip: a new user sees WHO is
+  // working (Claude/Codex/Gemini/GitHub) without reading logs.
+  const agents = page.getByTestId('cockpit-card-agents')
+  if (!(await agents.count())) throw new Error(`Agent strip (cockpit-card-agents) missing on the loop card ${where}`)
+  const activeAgent = (await agents.getAttribute('data-active-agent')) ?? 'absent'
+  const agentsText = await agents.innerText()
+  for (const name of ['Claude', 'Codex', 'Gemini', 'GitHub']) {
+    if (!agentsText.includes(name)) throw new Error(`Agent strip is missing "${name}" ${where}`)
+  }
+  note(`loop card ${where}: type=${lastType} · active-agent=${activeAgent} · next_step="${nextStepBody.slice(0, 120)}"`)
+}
+
+/**
+ * overnight-p3 — the card's next-step action button (cockpit-card-action):
+ * the daemon primaryAction is rendered ON the card, so the operator can act
+ * from the card itself without hunting for the guidance row.
+ */
+async function expectCardAction(page: Page, expectedActionIds: string[], where: string): Promise<void> {
+  const btn = page.getByTestId('cockpit-card-action')
+  await btn.waitFor({ timeout: 15_000 })
+  const actionId = (await btn.getAttribute('data-action-id')) ?? 'absent'
+  if (!expectedActionIds.includes(actionId)) {
+    throw new Error(`Expected card action in [${expectedActionIds.join(', ')}] ${where}, got: ${actionId}`)
+  }
+  const label = oneLine(await btn.innerText())
+  if (label.length < 4) throw new Error(`Card action button has no readable label ${where}`)
+  note(`card action ${where}: ${actionId} · "${label}"`)
 }
 
 async function rootStage(page: Page): Promise<string> {
