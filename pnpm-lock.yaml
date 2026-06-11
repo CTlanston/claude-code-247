@@ -17,6 +17,9 @@ importers:
       '@aedev/qa':
         specifier: workspace:*
         version: link:packages/qa
+      '@aedev/runner':
+        specifier: workspace:*
+        version: link:packages/runner
       '@aedev/validators':
         specifier: workspace:*
         version: link:packages/validators
