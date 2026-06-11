@@ -108,6 +108,8 @@ export type {
   DefaultValidatorSecretStatus,
   ValidatorSecretResolver,
 } from './validator-factory.js'
+// V6-P4: budget facts for the loop-planner shell (scripts/loop-planner.ts).
+export { checkHeadlessBudget, countHeadlessCallsToday } from './headless-budget-guard.js'
 export {
   CYCLE_PLANNED_EVENT,
   GAP_PRIORITY,

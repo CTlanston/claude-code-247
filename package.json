@@ -30,6 +30,7 @@
     "test:e2e:sandbox": "tsx scripts/e2e-sandbox.ts",
     "test:hermus:mission": "tsx scripts/hermus-mission-smoke.ts",
     "test:fleet:soak": "tsx scripts/fleet-soak.ts",
+    "loop:plan": "tsx scripts/loop-planner.ts",
     "test:mission-os:dry-soak": "node --import tsx scripts/mission-os-dry-soak.ts",
     "test:workbook": "tsx scripts/workbook-acceptance.ts",
     "typecheck": "pnpm -r typecheck",
