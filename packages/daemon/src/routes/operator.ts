@@ -39,6 +39,7 @@ import {
 } from '../headless-budget-guard.js'
 import { ClaudeReviewer, type ReviewVerdict } from '../claude-reviewer.js'
 import { deriveUserState, type UserStateView } from '../user-state.js'
+import { deriveLoopCard, type LoopCard } from '../loop-cards.js'
 
 type Stage =
   | 'Intake'
@@ -149,6 +150,8 @@ interface OperatorMissionView {
     validatorSaid: string | null
     whyStoppedOrContinuing: string
   }
+  /** v6-P1 — exactly ONE of the five ordinary-user cards (GR#11). */
+  card: LoopCard
 }
 
 interface OperatorSessionBody {
@@ -2578,7 +2581,7 @@ function buildLoopSummary(opts: {
 
 function buildOperatorMissionView(opts: {
   db: AedevDb
-  mission: { status: string; githubPrUrl?: string | null }
+  mission: { status: string; githubPrUrl?: string | null; title?: string }
   repo?: { id: string; name: string; path: string; testCommands?: string[]; forbiddenPaths?: string[] } | undefined
   session?: { status: string; prompt?: string } | undefined
   sessionId?: string | undefined
@@ -2593,6 +2596,8 @@ function buildOperatorMissionView(opts: {
   remoteWrites: 'enabled' | 'disabled'
   /** Active (unresolved) hold codes for the mission/session — drives userState=blocked. */
   activeHoldCodes?: string[]
+  /** v6-P1 — active holds with their human next actions; feeds the blocker card's machine layer. */
+  activeHolds?: Array<{ code: string; reason?: string; nextAction?: string }>
 }): OperatorMissionView {
   const stage = inferOperatorStage({
     mission: opts.mission,
@@ -2636,6 +2641,41 @@ function buildOperatorMissionView(opts: {
     prGate: prGate ? { status: prGate.status, code: 'code' in prGate ? prGate.code : undefined } : undefined,
     pendingQuestionCount: questions.length,
   })
+  const safetySummary: OperatorMissionView['safetySummary'] = {
+    remoteWrites: opts.remoteWrites,
+    ...(prGate ? { prGate } : {}),
+    ...(testMode ? { testMode: { enabled: true, reason: 'mock/template mode is active; no external model or remote write is implied.' } } : {}),
+  }
+  const summary = summaryForStage(stage, opts.validatorStatus, opts.remoteWrites)
+  const nextAction = nextActionForStage(stage, opts.remoteWrites)
+  const lastActivity = buildLastActivity(opts.runs, opts.events, userState.state)
+  const loopSummary = buildLoopSummary({
+    userState,
+    projectPulse,
+    providerSummary,
+    artifacts: opts.artifacts,
+    validators: opts.validators,
+  })
+  // v6-P1 — exactly one of the five ordinary-user cards, derived purely from view fields (GR#11).
+  const card = deriveLoopCard({
+    userState,
+    stage,
+    confidence: understanding.confidence,
+    summary,
+    nextAction,
+    prompt: opts.session?.prompt ?? null,
+    missionTitle: opts.mission.title ?? null,
+    githubPrUrl: opts.mission.githubPrUrl ?? null,
+    understanding: understanding.understanding,
+    loopSummary,
+    lastActivity,
+    safetySummary,
+    projectPulse: {
+      progress: projectPulse.progress.map((p) => ({ label: p.label })),
+      evidence: projectPulse.evidence.map((e) => ({ path: e.path })),
+    },
+    activeHolds: opts.activeHolds ?? (opts.activeHoldCodes ?? []).map((code) => ({ code })),
+  })
   return {
     stage,
     stageLabel,
@@ -2650,11 +2690,7 @@ function buildOperatorMissionView(opts: {
         ]
       : [],
     providerSummary,
-    safetySummary: {
-      remoteWrites: opts.remoteWrites,
-      ...(prGate ? { prGate } : {}),
-      ...(testMode ? { testMode: { enabled: true, reason: 'mock/template mode is active; no external model or remote write is implied.' } } : {}),
-    },
+    safetySummary,
     understanding: understanding.understanding,
     projectPulse,
     memorySummary: buildMemorySummary({
@@ -2662,18 +2698,13 @@ function buildOperatorMissionView(opts: {
       session: opts.sessionId ? { id: opts.sessionId, prompt: opts.session?.prompt ?? '' } : undefined,
       events: opts.events.map((e, index) => ({ id: String(index), type: e.type, payload: e.payload })),
     }),
-    summary: summaryForStage(stage, opts.validatorStatus, opts.remoteWrites),
-    nextAction: nextActionForStage(stage, opts.remoteWrites),
+    summary,
+    nextAction,
     testMode,
     userState,
-    lastActivity: buildLastActivity(opts.runs, opts.events, userState.state),
-    loopSummary: buildLoopSummary({
-      userState,
-      projectPulse,
-      providerSummary,
-      artifacts: opts.artifacts,
-      validators: opts.validators,
-    }),
+    lastActivity,
+    loopSummary,
+    card,
   }
 }
 
@@ -2751,6 +2782,11 @@ function buildMissionOverview(db: AedevDb, missionId: string, stateDir: string =
     cost,
     remoteWrites,
     activeHoldCodes: activeHolds.map((h) => h.code),
+    activeHolds: activeHolds.map((h) => ({
+      code: h.code,
+      ...(h.reason ? { reason: h.reason } : {}),
+      ...(h.nextAction ? { nextAction: h.nextAction } : {}),
+    })),
   })
   return {
     mission,
