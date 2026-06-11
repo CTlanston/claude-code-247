@@ -10,6 +10,10 @@ export type DaemonState = 'starting' | 'running' | 'stopping' | 'stopped'
 
 export { Daemon } from './daemon.js'
 export { createServer } from './server.js'
+// v5-P2 evidence trust anchor: exported so soak harnesses can play the
+// simulated-CI side of the forged-evidence drill (scripts/fleet-soak.ts).
+export { detectEvidenceMismatch } from './fleet/claims.js'
+export type { CiResult, EvidenceMismatchVerdict } from './fleet/claims.js'
 export { HeartbeatService } from './heartbeat.js'
 export { IntakeService } from './intake.js'
 export { DailySummaryGenerator } from './daily-summary.js'
