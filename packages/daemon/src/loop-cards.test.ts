@@ -203,6 +203,21 @@ describe('BlockerCard — human wording only; raw codes live in machine', () => 
     expect(card.human_explanation).toContain('等待你确认')
   })
 
+  it('HOLD-PLANNER-AUTH blocker: recovery actions carry the exact one-line fixes, never raw 401/codes', () => {
+    const card = deriveLoopCard(makeInput('brainstorming', {
+      activeHolds: [{ code: 'HOLD-PLANNER-AUTH', reason: 'claude-cli auth failure (matched 401)' }],
+    }))
+    if (card.type !== 'blocker') throw new Error(`expected blocker, got ${card.type}`)
+    const joined = card.recovery_actions.join('\n')
+    expect(joined).toContain('claude login')
+    expect(joined).toContain('/status')
+    expect(joined).toContain('AEDEV_PLANNER_FALLBACK=codex')
+    expect(card.recommended_action).toContain('claude login')
+    expect(visibleText(card)).not.toMatch(VISIBLE_CODE)
+    expect(visibleText(card)).not.toContain('401')
+    expect(card.machine.hold_code).toBe('HOLD-PLANNER-AUTH')
+  })
+
   it('every blocker variant in the matrix keeps visible text code-free', () => {
     const variants: DeriveLoopCardInput[] = [
       makeInput('failed'),

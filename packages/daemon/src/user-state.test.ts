@@ -88,6 +88,14 @@ describe('deriveUserState — blocked with HUMAN explanations from hold codes', 
     expect(v.explanation).toContain('本地 AI 引擎未就绪')
   })
 
+  it('HOLD-PLANNER-AUTH → calm re-login wording with the exact one-line fix, never raw 401', () => {
+    const v = derive('brainstorming', { activeHoldCodes: ['HOLD-PLANNER-AUTH'] })
+    expect(v.state).toBe('blocked')
+    expect(v.explanation).toContain('本地 Claude 登录已过期或额度用尽')
+    expect(v.explanation).toContain('claude login')
+    expect(v.explanation).not.toMatch(/401|unauthorized|HOLD-/i)
+  })
+
   it('any other active HOLD-* → blocked with a calm generic fallback, never the raw code', () => {
     const v = derive('running', { activeHoldCodes: ['HOLD-ROADMAP-PLANNER'] })
     expect(v.state).toBe('blocked')
