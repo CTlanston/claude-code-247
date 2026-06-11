@@ -1,0 +1,286 @@
+{
+  "mission": {
+    "id": "01KTVKJ7KVY55MS79JBWEB6AAR",
+    "status": "paused",
+    "githubPrUrl": null
+  },
+  "operatorView": {
+    "stage": "pr_blocked",
+    "stageLabel": "PR blocked by policy · PR 被安全门拦截",
+    "confidence": 96,
+    "progressPercent": 95,
+    "headlessCallsToday": 0,
+    "primaryAction": {
+      "id": "check-draft-pr-gate",
+      "label": "Re-check Draft PR Gate · 重新检查 PR 安全门",
+      "kind": "primary"
+    },
+    "secondaryActions": [],
+    "providerSummary": {
+      "planner": {
+        "name": "test-synthetic",
+        "mode": "mock",
+        "status": "Planner finished",
+        "tokens": null
+      },
+      "worker": {
+        "name": "mock",
+        "mode": "mock",
+        "status": "done",
+        "tokens": null
+      },
+      "validators": [
+        {
+          "name": "gemini",
+          "mode": "not_configured",
+          "status": "not_configured"
+        }
+      ]
+    },
+    "safetySummary": {
+      "remoteWrites": "disabled",
+      "prGate": {
+        "status": "blocked",
+        "code": "GEMINI_NOT_CONFIGURED",
+        "reason": "Gemini hard gate has no evidence-only PASS verdict for this mission.",
+        "remediation": "Remote writes are disabled for safety. Enable repo-scoped allow_remote_writes only when you want the worker to push a branch and open a Draft PR; until then no push, PR, or merge occurs."
+      },
+      "testMode": {
+        "enabled": true,
+        "reason": "mock/template mode is active; no external model or remote write is implied."
+      }
+    },
+    "understanding": {
+      "roundsCompleted": 0,
+      "questions": [],
+      "readyReason": "Planner confidence is at least 95% and no clarification questions are pending."
+    },
+    "projectPulse": {
+      "progress": [
+        {
+          "id": "understand",
+          "label": "Understand · 理解需求",
+          "status": "done"
+        },
+        {
+          "id": "roadmap",
+          "label": "Roadmap · 路线图",
+          "status": "done"
+        },
+        {
+          "id": "execute",
+          "label": "Execute · 本地执行",
+          "status": "done"
+        },
+        {
+          "id": "validate",
+          "label": "Validate · 独立验证",
+          "status": "done",
+          "detail": "Gemini key is not configured; this is visible and not counted as pass."
+        },
+        {
+          "id": "pr-gate",
+          "label": "PR Gate · PR 安全门",
+          "status": "active"
+        },
+        {
+          "id": "learn",
+          "label": "Learn · 沉淀记忆",
+          "status": "pending"
+        }
+      ],
+      "workingFolder": "/tmp/aedev-cockpit-quality-aYFshS/operator-evidence/01KTVKJ82NKZ4BFJ5ES98VVQYD",
+      "touchedFiles": [],
+      "evidence": [
+        {
+          "id": "01KTVKJ82Y5EVPTQCZ0RWYDC19",
+          "title": "Done report",
+          "path": "/tmp/aedev-cockpit-quality-aYFshS/evidence/01KTVKJ7KVY55MS79JBWEB6AAR/done-report.md",
+          "type": "report"
+        },
+        {
+          "id": "01KTVKJ82XER7Z1F5Z3JNJ8M97",
+          "title": "ADR draft",
+          "path": "/tmp/aedev-cockpit-quality-aYFshS/evidence/01KTVKJ7KVY55MS79JBWEB6AAR/adr-mission.md",
+          "type": "adr"
+        },
+        {
+          "id": "01KTVKJ82XER7Z1F5Z3JNJ8M95",
+          "title": "Evidence directory",
+          "path": "/tmp/aedev-cockpit-quality-aYFshS/evidence/01KTVKJ7KVY55MS79JBWEB6AAR",
+          "type": "evidence"
+        },
+        {
+          "id": "01KTVKJ82XER7Z1F5Z3JNJ8M96",
+          "title": "PRD",
+          "path": "/tmp/aedev-cockpit-quality-aYFshS/evidence/01KTVKJ7KVY55MS79JBWEB6AAR/prd.md",
+          "type": "prd"
+        },
+        {
+          "id": "01KTVKJ82XER7Z1F5Z3JNJ8M99",
+          "title": "Workbook summary",
+          "path": "/tmp/aedev-cockpit-quality-aYFshS/evidence/01KTVKJ7KVY55MS79JBWEB6AAR/workbook-summary.md",
+          "type": "report"
+        },
+        {
+          "id": "01KTVKJ82XER7Z1F5Z3JNJ8M9A",
+          "title": "Test summary",
+          "path": "/tmp/aedev-cockpit-quality-aYFshS/evidence/01KTVKJ7KVY55MS79JBWEB6AAR/test-summary.md",
+          "type": "report"
+        },
+        {
+          "id": "01KTVKJ82XER7Z1F5Z3JNJ8M9B",
+          "title": "Risk report",
+          "path": "/tmp/aedev-cockpit-quality-aYFshS/evidence/01KTVKJ7KVY55MS79JBWEB6AAR/risk-report.md",
+          "type": "report"
+        },
+        {
+          "id": "01KTVKJ82Y5EVPTQCZ0RWYDC18",
+          "title": "Worker diff",
+          "path": "/tmp/aedev-cockpit-quality-aYFshS/evidence/01KTVKJ7KVY55MS79JBWEB6AAR/diff-summary.md",
+          "type": "report"
+        },
+        {
+          "id": "01KTVKJ82XER7Z1F5Z3JNJ8M98",
+          "title": "Roadmap",
+          "path": "/tmp/aedev-cockpit-quality-aYFshS/evidence/01KTVKJ7KVY55MS79JBWEB6AAR/roadmap.md",
+          "type": "roadmap"
+        },
+        {
+          "id": "01KTVKJ7KZFCXZR11ECY4ER1G5",
+          "title": "ADR draft in mission design",
+          "path": "/tmp/aedev-cockpit-quality-aYFshS/prd/01KTVKJ7KVY55MS79JBWEB6AAR.design.json",
+          "type": "adr"
+        },
+        {
+          "id": "01KTVKJ7KZFCXZR11ECY4ER1G3",
+          "title": "PRD",
+          "path": "/tmp/aedev-cockpit-quality-aYFshS/prd/01KTVKJ7KVY55MS79JBWEB6AAR.md",
+          "type": "prd"
+        },
+        {
+          "id": "01KTVKJ7KZFCXZR11ECY4ER1G4",
+          "title": "Mission design JSON",
+          "path": "/tmp/aedev-cockpit-quality-aYFshS/prd/01KTVKJ7KVY55MS79JBWEB6AAR.design.json",
+          "type": "roadmap"
+        }
+      ],
+      "validatorReviews": [
+        {
+          "id": "validators-not-configured",
+          "validator": "validators",
+          "verdict": "not_configured",
+          "summary": "Independent validation did not run because the Gemini key is not configured.",
+          "checkedEvidence": [
+            "Done report",
+            "ADR draft",
+            "Evidence directory",
+            "PRD",
+            "Workbook summary",
+            "Test summary",
+            "Risk report",
+            "Worker diff"
+          ],
+          "blockingIssues": [],
+          "evidenceGaps": [
+            "No Gemini validator verdict exists for this mission."
+          ],
+          "recommendedNextAction": "Configure validator keys for live verification, or continue reviewing evidence manually."
+        }
+      ]
+    },
+    "memorySummary": {
+      "projectFacts": [
+        {
+          "id": "repo-01KTVKJ3W6G86H1PB3SBKKP61F",
+          "kind": "project",
+          "text": "Target repo is cockpit-quality at /tmp/aedev-cockpit-quality-aYFshS.",
+          "provenance": "repo registry",
+          "ttlDays": 90,
+          "superseded": false
+        },
+        {
+          "id": "repo-forbidden-01KTVKJ3W6G86H1PB3SBKKP61F",
+          "kind": "safety",
+          "text": "Forbidden paths stay protected: .env*, secrets/**, .github/**, AGENTS.md",
+          "provenance": "repo policy",
+          "ttlDays": 365,
+          "superseded": false
+        }
+      ],
+      "userPreferences": [
+        {
+          "id": "pref-understand-first",
+          "kind": "user_preference",
+          "text": "Ask goal-specific questions and confirm understanding before starting worker execution.",
+          "provenance": "operator product directive",
+          "ttlDays": 365,
+          "superseded": false
+        },
+        {
+          "id": "prompt-01KTVKJ55WJPEZY4061HPSZ7XK",
+          "kind": "mission_intent",
+          "text": "Current mission intent: In the dashboard Cockpit page, verify the existing conversation UI quality smoke keeps the single conversation layout, status strip, and safe Draft PR gate visible without changing product behavior. Acceptance: browser smoke passes and evid",
+          "provenance": "operator prompt",
+          "ttlDays": 30,
+          "superseded": false
+        }
+      ],
+      "recentLessons": [
+        {
+          "id": "lesson-0",
+          "kind": "run_lesson",
+          "text": "Draft PR blocked: GEMINI_NOT_CONFIGURED",
+          "provenance": "event:operator.draft_pr_blocked",
+          "ttlDays": 30,
+          "superseded": false
+        }
+      ]
+    },
+    "summary": "Worker done, evidence ready, and the Draft PR gate was blocked by policy. No branch push, PR, or merge occurred.",
+    "nextAction": "Continue reviewing evidence, or explicitly enable repo-scoped remote writes before re-checking the gate.",
+    "testMode": true,
+    "userState": {
+      "state": "blocked",
+      "label": "Needs your attention",
+      "labelZh": "需要你处理",
+      "explanation": "系统在这一步暂停，等你看一眼后再继续 · The system paused here and will continue once you take a look."
+    },
+    "lastActivity": {
+      "atIso": "2026-06-11T15:07:16.729Z",
+      "agoMs": 183,
+      "phase": "blocked"
+    },
+    "loopSummary": {
+      "whatChanged": [],
+      "testsRan": [
+        "Test summary"
+      ],
+      "agents": [
+        "planner · test-synthetic",
+        "worker · mock",
+        "validator · gemini"
+      ],
+      "validatorSaid": null,
+      "whyStoppedOrContinuing": "系统在这一步暂停，等你看一眼后再继续 · The system paused here and will continue once you take a look."
+    },
+    "card": {
+      "type": "blocker",
+      "title": "需要你处理 · Needs your attention",
+      "human_explanation": "系统在这一步暂停，等你看一眼后再继续 · The system paused here and will continue once you take a look.",
+      "why_it_matters": "在不确定的时候暂停，比悄悄做错更安全；没有你的确认，任何东西都不会对外发布 · Pausing when unsure is safer than quietly doing the wrong thing; nothing is published without your confirmation.",
+      "recovery_actions": [
+        "查看这张卡的说明，确认是否继续 · Read this card’s explanation and confirm whether to continue.",
+        "随时可以重新开始或调整目标 · You can restart or adjust the goal at any time."
+      ],
+      "recommended_action": "查看这张卡的说明，确认是否继续 · Read this card’s explanation and confirm whether to continue.",
+      "next_step": "查看这张卡的说明，确认是否继续 · Read this card’s explanation and confirm whether to continue.",
+      "machine": {
+        "user_state": "blocked",
+        "stage": "pr_blocked",
+        "hold_code": null,
+        "pr_gate_code": "GEMINI_NOT_CONFIGURED"
+      }
+    }
+  }
+}
