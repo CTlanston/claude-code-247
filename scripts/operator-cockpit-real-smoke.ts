@@ -22,11 +22,14 @@
  *   - Gemini must reach a TERMINAL state (pass / fail / not_configured) within
  *     AEDEV_COCKPIT_REAL_SMOKE_VALIDATOR_TIMEOUT_MS (default 180000), else the
  *     run fails with GEMINI_TIMEOUT. validator-summary.json is always written.
+ *   - Regression evidence is required: the evidence bundle must show >=1
+ *     executed test command with PASS, else REGRESSION_EVIDENCE_MISSING (the
+ *     sandbox fixture ships a real `npm test` node assertion target).
  *
  * An evidence report is written to evidence/launch/.
  */
 import { execFileSync } from 'child_process'
-import { cpSync, mkdtempSync, mkdirSync, rmSync, writeFileSync, readdirSync, readFileSync, existsSync } from 'fs'
+import { cpSync, mkdtempSync, mkdirSync, rmSync, statSync, writeFileSync, readdirSync, readFileSync, existsSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { AedevDb } from '@aedev/core'
@@ -36,6 +39,7 @@ import {
   evaluateProviderPolicy,
   expectedPrBlockCode,
   finalResultLabel,
+  parseRegressionEvidence,
   resolveRealSmokeMode,
   resolveValidatorTerminal,
   validatorFailure,
@@ -83,7 +87,9 @@ async function main(): Promise<void> {
   log(`requested mode: ${MODE} (strict requires planner=claude-cli + coder=codex-cli; fallback-proof accepts planner=codex-cli (fallback) as DEGRADED)`)
 
   // Isolated git repo so the live planner runs against scratch, never the real
-  // tree. It must have a commit: the worker runs in a `git worktree add` of HEAD.
+  // tree. It must have a commit (the worker runs in a `git worktree add` of
+  // HEAD) and a REAL test target: package.json with a tiny `npm test` node
+  // assertion script, so the worker has a verifiable regression command (c3).
   buildSandboxFixture(sandboxRepo)
   process.chdir(sandboxRepo)
 
@@ -92,7 +98,7 @@ async function main(): Promise<void> {
     path: sandboxRepo,
     defaultBranch: 'main',
     enabled: true,
-    testCommands: [],
+    testCommands: ['npm test'],
     forbiddenPaths: ['.env*', 'secrets/**', '.github/**', 'AGENTS.md'],
     riskRules: {},
     mergePolicy: 'WAITING',
@@ -103,7 +109,8 @@ async function main(): Promise<void> {
   log(`daemon up on ${base}; sandbox repo ${sandboxRepo}`)
 
   const prompt = 'Planning only: propose a single low-risk one-line clarification to add to README.md. '
-    + 'Keep the roadmap to one coder task that writes a short note file as evidence. Do not modify other code.'
+    + 'Keep the roadmap to one coder task that makes the README change, then runs the repository test command '
+    + '(`npm test`) and records the exact command with its pass/fail result in the report. Do not modify other code.'
   const created = await postJson('/operator/sessions', { repoId: repo.id, title: 'Real cockpit smoke', prompt })
   const sessionId = (created as { session: { id: string } }).session.id
   log(`session ${sessionId} created; waiting for live brainstorm…`)
@@ -188,6 +195,16 @@ async function main(): Promise<void> {
     log(`mode verdict: requested=${modeVerdict.requestedMode} achieved=${modeVerdict.achievedMode} → ${modeVerdict.resultLabel}`)
     failures.push(...modeVerdict.failures)
 
+    // --- c3: required regression evidence (>=1 executed test command, PASS).
+    const evidenceTexts = readEvidenceTexts(overview.evidenceDir)
+    const regression = parseRegressionEvidence(evidenceTexts)
+    if (regression.ok) {
+      log(`regression evidence: ${regression.commands.filter((c) => c.passed).map((c) => `\`${c.command}\` PASS [${c.source}]`).join('; ')}`)
+    } else {
+      log(regression.reason ?? 'regression evidence missing')
+      failures.push(regression.reason ?? 'REGRESSION_EVIDENCE_MISSING')
+    }
+
     // Repo-bound worker invariant (the P0 trust fix): if a worker ran, it MUST
     // have executed inside a git worktree of the registered mission repo —
     // never a scratch dir.
@@ -222,16 +239,44 @@ async function main(): Promise<void> {
   }
 }
 
-/** Disposable git fixture repo for the planner cwd + worker worktree. */
+/** c3 fixture: disposable git repo with a REAL verifiable test target. */
 function buildSandboxFixture(dir: string): void {
   execFileSync('git', ['init', '-q'], { cwd: dir })
   execFileSync('git', ['config', 'user.email', 'real-smoke@example.invalid'], { cwd: dir })
   execFileSync('git', ['config', 'user.name', 'real-smoke'], { cwd: dir })
   // Disposable fixture commits must not depend on the host's signing setup.
   execFileSync('git', ['config', 'commit.gpgsign', 'false'], { cwd: dir })
-  writeFileSync(join(dir, 'README.md'), '# Sandbox\n\nDisposable repo for the Operator Cockpit real smoke.\n')
+  writeFileSync(join(dir, 'README.md'), '# Sandbox\n\nDisposable repo for the Operator Cockpit real smoke.\n\nRun `npm test` for the regression check.\n')
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({
+    name: 'real-smoke-fixture',
+    version: '0.0.0',
+    private: true,
+    scripts: { test: 'node test/run-tests.cjs' },
+  }, null, 2) + '\n')
+  mkdirSync(join(dir, 'test'), { recursive: true })
+  writeFileSync(join(dir, 'test', 'run-tests.cjs'), [
+    "const assert = require('node:assert')",
+    'assert.strictEqual(1 + 1, 2)',
+    "assert.ok(require('node:fs').existsSync(require('node:path').join(__dirname, '..', 'README.md')), 'README.md must exist')",
+    "console.log('fixture regression: 2 passed, 0 failed')",
+    '',
+  ].join('\n'))
   execFileSync('git', ['add', '.'], { cwd: dir })
-  execFileSync('git', ['commit', '-q', '-m', 'initial fixture commit'], { cwd: dir })
+  execFileSync('git', ['commit', '-q', '-m', 'initial fixture commit (real npm test target)'], { cwd: dir })
+}
+
+function readEvidenceTexts(evidenceDir?: string): Record<string, string> {
+  if (!evidenceDir || !existsSync(evidenceDir)) return {}
+  const out: Record<string, string> = {}
+  for (const name of readdirSync(evidenceDir)) {
+    if (!/\.(md|log|txt|json)$/i.test(name)) continue
+    try {
+      const path = join(evidenceDir, name)
+      const stat = statSync(path)
+      if (stat.isFile() && stat.size <= 4 * 1024 * 1024) out[name] = readFileSync(path, 'utf8')
+    } catch { /* unreadable file: skip, parser reports honestly on what it saw */ }
+  }
+  return out
 }
 
 function summarizeProviders(events: Array<{ type: string; payload: Record<string, unknown> }>): void {
@@ -313,12 +358,12 @@ async function driveClarificationToReady(id: string, timeoutMs: number): Promise
 function answerForQuestion(q: { field?: string; question?: string }): string {
   const text = `${q.field ?? ''}\n${q.question ?? ''}`.toLowerCase()
   if (/target|file|where|which.*repo|readme/.test(text)) return 'Target: README.md only, in the repo registered for this smoke run.'
-  if (/scope|how much|boundary|allowed|touch|change/.test(text)) return 'Scope: smallest viable README-only change; do not touch package files, source code, tests, .env, secrets, .github, AGENTS.md, or remote branches.'
-  if (/accept|success|criteria|pass|verify|test/.test(text)) return 'Acceptance: README.md gains exactly one short note, changed-paths.json lists only README.md, and the worker writes plan.md, diff-summary.md, test-summary.md, and done-report.md evidence.'
-  if (/done|evidence|finish|complete|definition/.test(text)) return 'Done: evidence files exist, Gemini validates the evidence bundle with PASS, and Draft PR creation remains blocked by remote writes being disabled.'
+  if (/scope|how much|boundary|allowed|touch|change/.test(text)) return 'Scope: smallest viable README-only change; do not touch package files, source code, tests, .env, secrets, .github, AGENTS.md, or remote branches. Running the existing test command is allowed and required.'
+  if (/accept|success|criteria|pass|verify|test/.test(text)) return 'Acceptance: README.md gains exactly one short note, changed-paths.json lists only README.md, the coder runs `npm test` and records the exact command with its pass/fail result and exit code in the Tests/checks section, and the worker writes plan.md, diff-summary.md, test-summary.md, and done-report.md evidence.'
+  if (/done|evidence|finish|complete|definition/.test(text)) return 'Done: evidence files exist including the recorded `npm test` PASS, Gemini validates the evidence bundle with PASS, and Draft PR creation remains blocked by remote writes being disabled.'
   if (/content|note|write|wording|message/.test(text)) return 'Content: add one sentence saying this sandbox validates the gated cockpit flow; keep it short and non-promotional.'
   if (/risk|rollback|safety|remote|pr|push/.test(text)) return 'Safety: no remote writes, no push, no PR creation unless the safety gate allows it; rollback is deleting the one README sentence in the isolated worktree.'
-  return 'Use one README-only change with explicit evidence, Gemini validation, and no remote writes.'
+  return 'Use one README-only change with explicit evidence, an executed `npm test` PASS recorded in the report, Gemini validation, and no remote writes.'
 }
 
 async function pollMission(id: string, timeoutMs: number): Promise<string | undefined> {
@@ -406,13 +451,14 @@ function finish(): void {
     ...report,
     '',
     '## Violations / failures',
-    failures.length ? failures.map((f) => `- VIOLATION: ${f}`).join('\n') : '- None: draft PR blocked as expected, no PR URL created, validators not faked, provider policy satisfied.',
+    failures.length ? failures.map((f) => `- VIOLATION: ${f}`).join('\n') : '- None: draft PR blocked as expected, no PR URL created, validators not faked, provider policy satisfied, regression evidence present.',
     '',
     '## Notes',
     '- Live local CLI planner/worker path (no mock/template). Remote writes were disabled.',
     '- Planner ran in an isolated temp git repo; worker ran in an isolated repo-bound git worktree.',
     '- STRICT mode fails on planner fallback; fallback-proof mode labels such runs DEGRADED (planner fallback), never a strict PASS.',
     `- Gemini terminal state is awaited up to ${VALIDATOR_TIMEOUT_MS}ms (${VALIDATOR_TIMEOUT_ENV}); a timeout is reported as GEMINI_TIMEOUT, never as vague "pending".`,
+    '- Strict success requires >=1 executed test command with PASS in the evidence (REGRESSION_EVIDENCE_MISSING otherwise).',
     `- Durable worker evidence (if any) copied alongside this report under operator-cockpit-real-smoke-${STAMP}-evidence/.`,
   ].join('\n'))
   console.log(`[real-smoke] evidence report: ${reportPath}`)
