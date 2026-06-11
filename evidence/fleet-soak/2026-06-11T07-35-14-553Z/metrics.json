@@ -1,0 +1,57 @@
+{
+  "overall": "PASS",
+  "soakMs": 1800000,
+  "intervalMs": 200,
+  "durationMs": 1800054,
+  "tasksSeeded": 1000,
+  "executions": 1000,
+  "executionsPerWorker": {
+    "w-alice-1": 246,
+    "w-bob-1": 245,
+    "w-carol-1": 251,
+    "w-dave-1": 253,
+    "w-eve-1": 5
+  },
+  "drill": {
+    "taskId": "01KTTSQ2M71BX6CQRMYNDH6KHF",
+    "workerId": "w-eve-1",
+    "verdict": {
+      "mismatch": true,
+      "workerId": "w-eve-1",
+      "mismatchedGates": [
+        "test"
+      ]
+    },
+    "freezeAtMs": 1781163330412
+  },
+  "idle": {
+    "idlePollsOk": true,
+    "idleWindowMs": 614,
+    "headlessAtIdleStart": 0,
+    "headlessAtIdleEnd": 0,
+    "headlessTotal": 0
+  },
+  "criteria": [
+    {
+      "id": "provisioning",
+      "pass": true
+    },
+    {
+      "id": "no-double-execution",
+      "pass": true
+    },
+    {
+      "id": "forged-evidence-drill",
+      "pass": true
+    },
+    {
+      "id": "idle-zero-credit",
+      "pass": true
+    },
+    {
+      "id": "operator-attribution",
+      "pass": true
+    }
+  ],
+  "harnessError": null
+}
