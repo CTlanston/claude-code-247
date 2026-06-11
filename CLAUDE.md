@@ -1,12 +1,14 @@
 # CLAUDE.md — repository-level guidance for `claude-code-247`
 
-> **v4 banner — Simple Cowork · TS-only · event-first.**
-> `WORKBOOK_v4.md` is the current source of truth (v3 / P0–P7 is complete and
-> superseded). The product is a conversational coding cockpit evolving into a
-> 24/7 standby team: Claude Code clarifies, plans and reviews through the
-> local subscription CLI, Codex implements through the local subscription CLI,
-> and Gemini validates from evidence only. Every session must read
-> [WORKBOOK_v4.md §0](WORKBOOK_v4.md) before any write.
+> **v6 banner — Ordinary-User Loop OS · TS-only · event-first.**
+> `WORKBOOK_v6.md` is the current source of truth (v4 / P0–P4 is complete and
+> superseded). The product is a 24/7 standby team translated for ordinary
+> users: Claude Code clarifies, plans and reviews through the local
+> subscription CLI, Codex implements through the local subscription CLI, and
+> Gemini validates from evidence only. The ordinary user sees only five card
+> types (understanding / plan / progress / blocker / pr_ready), and merge is
+> human-only — the system never merges; auto-merge is disabled this cycle.
+> Every session must read [WORKBOOK_v6.md §0](WORKBOOK_v6.md) before any write.
 
 > This file is auto-loaded by Claude Code when it operates inside this repo.
 > It is **not** an instruction from a user; treat it as repository policy.

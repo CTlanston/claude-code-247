@@ -1,6 +1,12 @@
 # WORKBOOK v4 · Simple Cowork — 24/7 待命工程团队（v1 → v1.5）
 
-> **本文件是新的唯一事实源 (SoT)。** 取代 `WORKBOOK_v3.md`（v1 已完成；由本计划 P0 归档进 `archive/`）。
+> ⚠️ **SUPERSEDED（2026-06-11）。本文件不再是事实源。**
+> 当前唯一 SoT 是 [WORKBOOK_v6.md](WORKBOOK_v6.md)（Ordinary-User Loop OS）。
+> v4 的 P0–P4 已完成合入 main；其"真实 Draft PR 出口"残留收口并入 v6 的 V6-P3。
+> 本文件原地保留仅作历史参考；不要按本文件的 §0 / phase 状态行动。
+
+> **本文件是新的唯一事实源 (SoT)。**（已失效，见上方 SUPERSEDED 头）
+> 取代 `WORKBOOK_v3.md`（v1 已完成；由本计划 P0 归档进 `archive/`）。
 > 叙事一律进 `docs/SESSION_LOG_v3.md`（沿用同一日志，倒序）；本文件 §0 保持机器可读小状态块。
 >
 > **产品论点（一句话）：** 在 v1 已验证的对话式座舱（Claude 澄清/规划 · Codex 编码 · 隔离 Gemini

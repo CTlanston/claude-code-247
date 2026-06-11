@@ -121,6 +121,43 @@ export interface ApiLoopSummary {
   whatChanged: string[]; testsRan: string[]; agents: string[]
   validatorSaid: string | null; whyStoppedOrContinuing: string
 }
+/** v6-P1 — five-card loop protocol, mirrored from packages/daemon/src/loop-cards.ts.
+ *  Machine codes live ONLY in `machine`; visible text is calm + bilingual;
+ *  every card answers "what happens next" via `next_step`. */
+export interface ApiLoopCardMachine {
+  user_state: string; stage: string; hold_code: string | null; pr_gate_code: string | null
+}
+export interface ApiUnderstandingLoopCard {
+  type: 'understanding'; title: string; next_step: string; machine: ApiLoopCardMachine
+  user_goal: string; interpreted_goal: string; out_of_scope: string[]
+  confidence: number; questions: Array<{ id: string; question: string }>; default_assumptions: string[]
+}
+export interface ApiPlanLoopCard {
+  type: 'plan'; title: string; next_step: string; machine: ApiLoopCardMachine
+  objective: string; phases: string[]; acceptance_criteria: string[]
+  risk_level: 'low' | 'medium' | 'high'; estimated_calls: number; requires_approval: boolean
+}
+export interface ApiProgressLoopCard {
+  type: 'progress'; title: string; next_step: string; machine: ApiLoopCardMachine
+  current_phase: string; current_action: string; evidence_links: string[]; tests_run: string[]
+}
+export interface ApiBlockerLoopCard {
+  type: 'blocker'; title: string; next_step: string; machine: ApiLoopCardMachine
+  human_explanation: string; why_it_matters: string
+  recovery_actions: string[]; recommended_action: string
+}
+export interface ApiPrReadyLoopCard {
+  type: 'pr_ready'; title: string; next_step: string; machine: ApiLoopCardMachine
+  pr_url: string | null; summary: string; files_changed: string[]; tests: string[]
+  validator_verdict: string | null; risk: 'low' | 'medium' | 'high'
+  merge_policy: string; rework_button: { enabled: boolean; label: string }
+}
+export type ApiLoopCard =
+  | ApiUnderstandingLoopCard
+  | ApiPlanLoopCard
+  | ApiProgressLoopCard
+  | ApiBlockerLoopCard
+  | ApiPrReadyLoopCard
 export interface ApiOperatorMissionView {
   stage: ApiOperatorMissionStage
   stageLabel: string
@@ -173,6 +210,8 @@ export interface ApiOperatorMissionView {
   userState?: ApiUserStateView
   lastActivity?: ApiLastActivity
   loopSummary?: ApiLoopSummary
+  /** v6-P1 — exactly one of the five ordinary-user cards (optional for older daemons). */
+  card?: ApiLoopCard
 }
 export interface ApiMissionOverview {
   mission: ApiMission
