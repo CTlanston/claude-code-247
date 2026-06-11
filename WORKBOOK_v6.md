@@ -17,17 +17,17 @@
 schema_version: 6
 product: ordinary-user-loop-os
 version_target: loop-os-v1
-current_phase: V6-P3          # V6-P0..P6，见 §3；P2 卡片化座舱随本 PR 落地
-current_substep: p3_real_proof_closeout_pending
-last_session_id: s_v6_0002
+current_phase: V6-P6          # V6-P0..P6，见 §3；P4/P5 代码随本 PR 落地
+current_substep: p3_real_proof_still_operator_gated   # P3 真证明仍待操作员（真 Draft PR + 真判词）
+last_session_id: s_v6_0003
 open_holds: 0
 blocked_on: none
-test_baseline: 864            # main 基线，0 fail；本周期任何回归即闸红
+test_baseline: 889            # main 基线，0 fail；本周期任何回归即闸红
 merge_policy: human_only      # 系统永不 merge；auto-merge 本周期禁用
 # next_action 硬上限 2 行：
 next_action: |
-  V6-P2 已交付：LoopCard 五卡主表面 + 浏览器 E2E 每步断言卡型与 next_step（证据入库）。
-  下一步 V6-P3：真实证明收口——真 Draft PR、库内真实 Gemini 判词、fail-closed 回归。
+  V6-P4/P5 代码完成：递归 planner+cycle ledger（loop:plan）、soak 运营化（SOAK_OPERATIONS+soak:status）。
+  下一步 V6-P6 普通用户验收；V6-P3 真证明仍操作员闸（cycle-1 提案即此 gap）。
 ```
 
 ---
