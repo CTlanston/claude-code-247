@@ -1,0 +1,119 @@
+[
+  {
+    "type": "operator.draft_pr_blocked",
+    "payload": {
+      "code": "GEMINI_NOT_CONFIGURED",
+      "reason": "Gemini hard gate has no evidence-only PASS verdict for this mission.",
+      "validator": "gemini"
+    },
+    "createdAt": "2026-06-11T01:53:18.134Z"
+  },
+  {
+    "type": "operator.gemini_pr_blocked",
+    "payload": {
+      "code": "GEMINI_NOT_CONFIGURED",
+      "reason": "Gemini hard gate has no evidence-only PASS verdict for this mission.",
+      "verdict": "not_configured",
+      "summary": null
+    },
+    "createdAt": "2026-06-11T01:53:18.134Z"
+  },
+  {
+    "type": "operator.evidence_written",
+    "payload": {
+      "sessionId": "01KTT64B82AYBJ6M976ZHGPSAW",
+      "evidenceDir": "/tmp/aedev-cockpit-quality-BEYx80/evidence/01KTT64DP0JWA5A7A9R0M0VMXJ"
+    },
+    "createdAt": "2026-06-11T01:53:16.362Z"
+  },
+  {
+    "type": "operator.stage_changed",
+    "payload": {
+      "stage": "PR/Waiting/Blocked",
+      "sessionId": "01KTT64B82AYBJ6M976ZHGPSAW",
+      "status": "waiting"
+    },
+    "createdAt": "2026-06-11T01:53:16.362Z"
+  },
+  {
+    "type": "mission.run_completed",
+    "payload": {
+      "taskId": "01KTT64E24GGCQ2YWX6V7VYQCW",
+      "runId": "01KTT64E24GGCQ2YWX6V7VYQCY",
+      "exitCode": 0,
+      "status": "waiting",
+      "decision": "WAITING",
+      "riskScore": 0,
+      "validatorCount": 0,
+      "releaseDeployUrl": null,
+      "releaseReverted": false,
+      "draftPrUrl": null,
+      "draftPrNumber": null
+    },
+    "createdAt": "2026-06-11T01:53:16.361Z"
+  },
+  {
+    "type": "operator.worker_started",
+    "payload": {
+      "taskId": "01KTT64E24GGCQ2YWX6V7VYQCW",
+      "runId": "01KTT64E24GGCQ2YWX6V7VYQCY",
+      "provider": "mock",
+      "evidenceDir": "/tmp/aedev-cockpit-quality-BEYx80/operator-evidence/01KTT64E24GGCQ2YWX6V7VYQCW"
+    },
+    "createdAt": "2026-06-11T01:53:16.357Z"
+  },
+  {
+    "type": "operator.worker_log",
+    "payload": {
+      "taskId": "01KTT64E24GGCQ2YWX6V7VYQCW",
+      "runId": "01KTT64E24GGCQ2YWX6V7VYQCY",
+      "stream": "stdout",
+      "chunk": "mock worker completed evidence gate"
+    },
+    "createdAt": "2026-06-11T01:53:16.357Z"
+  },
+  {
+    "type": "mission.route_selected",
+    "payload": {
+      "role": "coder",
+      "provider": "mock",
+      "sessionId": null,
+      "concurrency": 1,
+      "holdCode": null,
+      "reason": "worker router not configured"
+    },
+    "createdAt": "2026-06-11T01:53:16.356Z"
+  },
+  {
+    "type": "mission.run_started",
+    "payload": {
+      "evidenceDir": "/tmp/aedev-cockpit-quality-BEYx80/evidence/01KTT64DP0JWA5A7A9R0M0VMXJ"
+    },
+    "createdAt": "2026-06-11T01:53:16.352Z"
+  },
+  {
+    "type": "operator.validators_not_configured",
+    "payload": {
+      "status": "not_configured",
+      "note": "Gemini validator key is not configured; Draft PR remains blocked until Gemini returns PASS."
+    },
+    "createdAt": "2026-06-11T01:53:16.350Z"
+  },
+  {
+    "type": "operator.worker_assigned",
+    "payload": {
+      "sessionId": "01KTT64B82AYBJ6M976ZHGPSAW",
+      "mode": "mock",
+      "availableSessions": 0,
+      "paidApiKeysStripped": true
+    },
+    "createdAt": "2026-06-11T01:53:16.350Z"
+  },
+  {
+    "type": "operator.run_starting",
+    "payload": {
+      "sessionId": "01KTT64B82AYBJ6M976ZHGPSAW"
+    },
+    "createdAt": "2026-06-11T01:53:16.349Z"
+  }
+]

@@ -104,6 +104,8 @@ const PLANNED_STEPS: Array<[string, string]> = [
   ['step-6-loop-summary', 'cockpit-loop-summary renders with non-empty whyStoppedOrContinuing'],
   ['step-7-draft-pr-gate', 'Draft PR gate BLOCKED is calm human text; no raw codes visible'],
 ]
+// v6-P2 — at every journey step the five-card loop surface (GR#11) must show
+// the EXPECTED card type with a non-empty, log-free next_step in visible text.
 const steps: StepResult[] = []
 let current: StepResult | undefined
 let harnessError: string | undefined
@@ -208,6 +210,9 @@ async function runJourney(page: Page): Promise<void> {
     // …and WITHOUT any further clicks the planner's brainstorm result must
     // arrive in the conversation (polling keeps the UI alive, not frozen).
     await page.getByText('Initial brainstorm (user e2e fixture)', { exact: false }).first().waitFor({ timeout: 20_000 })
+    // v6-P2: while the system is still understanding/clarifying, the loop card
+    // is the understanding card and its next_step is readable without logs.
+    await expectLoopCard(page, ['understanding'], 'during planning/clarify')
     const stripB = await page.getByTestId('cockpit-status-strip').innerText()
     if (stripA === stripB) {
       // The strip may legitimately settle fast; the brainstorm arrival above
@@ -256,6 +261,8 @@ async function runJourney(page: Page): Promise<void> {
     await page.getByRole('button', { name: /Ask Until Clear/ }).click()
     await page.getByText('your answers are enough to plan safely', { exact: false }).first().waitFor({ timeout: 20_000 })
     note('follow-up round confirmed confidence ≥95; plan unlocked')
+    // v6-P2: still pre-plan — the loop card stays the understanding card.
+    await expectLoopCard(page, ['understanding'], 'after clarification answers')
     await shot(page, '03c-clarify-unlocked')
   })
 
@@ -270,6 +277,8 @@ async function runJourney(page: Page): Promise<void> {
     if (artifacts.length === 0) throw new Error('No roadmap/PRD artifacts registered for the mission')
     note(`mission ${mission.id} created with ${artifacts.length} design artifacts (${artifacts.slice(0, 3).map((a) => a.type).join(', ')}…)`)
     await expectStage(page, ['roadmap_ready', 'pending_approval'])
+    // v6-P2: at roadmap_ready the daemon-derived card is the plan card.
+    await expectLoopCard(page, ['plan'], 'at roadmap_ready')
 
     // Deferred half of step 2: the overview now exists, so cockpit-last-activity
     // must render and keep refreshing (two samples >1.5s apart).
@@ -295,6 +304,8 @@ async function runJourney(page: Page): Promise<void> {
     await page.getByTestId('cockpit-start-execution').click()
     await waitForRootStage(page, ['running', 'evidence_ready', 'validators_missing', 'validating', 'pr_ready'], 30_000)
     note(`execution state appeared (stage=${await rootStage(page)})`)
+    // v6-P2: during execution/checking the loop card is the progress card.
+    await expectLoopCard(page, ['progress'], 'during execution')
     await waitForRootStage(page, ['evidence_ready', 'validators_missing', 'validators_ready', 'pr_ready'], 60_000)
     const mission = db.listMissions()[0]
     if (!mission) throw new Error('Mission disappeared')
@@ -336,6 +347,9 @@ async function runJourney(page: Page): Promise<void> {
     }
     note('calm safety phrasing visible (安全门 / no push, no PR, no merge reassurance)')
     await assertNoForbiddenVisibleText(page, 'on the blocked Draft PR gate screen')
+    // v6-P2: at the gate the loop card is blocker (or pr_ready when a real PR
+    // exists); with remote writes disabled the safe expectation is blocker.
+    await expectLoopCard(page, ['blocker', 'pr_ready'], 'at the Draft PR gate')
     const mission = db.listMissions()[0]
     if (mission?.githubPrUrl) throw new Error(`Unexpected PR URL recorded: ${mission.githubPrUrl}`)
     if (!db.queryEvents({ entityId: mission!.id, limit: 20 }).some((e) => e.type === 'operator.draft_pr_blocked')) {
@@ -372,6 +386,48 @@ async function assertNoForbiddenVisibleText(page: Page, where: string): Promise<
       throw new Error(`Raw machine code ${re} leaked into visible text ${where}: …${oneLine(around)}…`)
     }
   }
+}
+
+/**
+ * v6-P2 (GR#11) — assert that the loop card is present with one of the
+ * expected card types, that an ordinary user can read a non-empty next_step
+ * in visible text (no logs needed), and that the card's machine codes stay in
+ * data-* attributes only — never inside its visible text.
+ */
+async function expectLoopCard(page: Page, expectedTypes: string[], where: string, timeoutMs = 20_000): Promise<void> {
+  const card = page.getByTestId('cockpit-loop-card')
+  const deadline = Date.now() + timeoutMs
+  let lastType = 'absent'
+  while (Date.now() < deadline) {
+    if (await card.count()) {
+      lastType = (await card.getAttribute('data-card-type')) ?? 'unknown'
+      if (expectedTypes.includes(lastType)) break
+    }
+    await page.waitForTimeout(200)
+  }
+  if (!expectedTypes.includes(lastType)) {
+    throw new Error(`Expected loop card type in [${expectedTypes.join(', ')}] ${where}, got: ${lastType}`)
+  }
+  const nextStep = oneLine(await page.getByTestId('cockpit-loop-card-next-step').innerText())
+  const nextStepBody = nextStep.replace(/下一步 · Next/g, '').trim()
+  if (nextStepBody.length < 8) {
+    throw new Error(`Loop card next_step is empty/too short ${where}: "${nextStep}"`)
+  }
+  const cardText = await card.innerText()
+  for (const re of FORBIDDEN_VISIBLE) {
+    if (re.test(cardText)) throw new Error(`Raw machine code ${re} leaked into the loop card ${where}`)
+  }
+  for (const attr of ['data-hold-code', 'data-pr-gate-code', 'data-machine-stage'] as const) {
+    const code = await card.getAttribute(attr)
+    // Stage tokens that are plain words (e.g. "running") can legitimately occur
+    // in calm prose; only machine-looking tokens (underscored / HOLD-*) are
+    // forbidden from visible text.
+    const machineLooking = Boolean(code) && (code!.includes('_') || code!.startsWith('HOLD-'))
+    if (code && machineLooking && cardText.includes(code)) {
+      throw new Error(`Machine code "${code}" (${attr}) rendered as visible loop-card text ${where}`)
+    }
+  }
+  note(`loop card ${where}: type=${lastType} · next_step="${nextStepBody.slice(0, 120)}"`)
 }
 
 async function rootStage(page: Page): Promise<string> {
