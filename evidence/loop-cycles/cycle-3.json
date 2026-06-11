@@ -1,0 +1,11 @@
+{
+  "cycle": 3,
+  "decision": {
+    "action": "refuse",
+    "reason": "Working tree is dirty — the planner refuses to plan on top of uncommitted state.",
+    "recovery": "Human: review `git status`, then commit or stash the changes before re-running loop:plan."
+  },
+  "timestamp": "2026-06-11T04:36:32.674Z",
+  "workbook_phase": "V6-P6",
+  "chosen_gap": null
+}
