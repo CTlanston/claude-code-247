@@ -18,10 +18,10 @@ schema_version: 6
 product: ordinary-user-loop-os
 version_target: loop-os-v1
 current_phase: V6-P6          # V6-P0..P6，见 §3；P4/P5 代码随本 PR 落地
-current_substep: p3_real_proof_still_operator_gated   # P3 真证明仍待操作员（真 Draft PR + 真判词）
+current_substep: v6p3_hold_real_proof_credentials   # P3 真证明仍待操作员（真 Draft PR + 真判词）
 last_session_id: s_v6_0003
 open_holds: 0
-blocked_on: none
+blocked_on: operator_real_proof
 test_baseline: 889            # main 基线，0 fail；本周期任何回归即闸红
 merge_policy: human_only      # 系统永不 merge；auto-merge 本周期禁用
 # next_action 硬上限 2 行：

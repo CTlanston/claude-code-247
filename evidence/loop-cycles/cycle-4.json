@@ -1,0 +1,15 @@
+{
+  "cycle": 4,
+  "decision": {
+    "action": "propose",
+    "cycle": {
+      "gapId": "v6-p3-real-proof-closeout",
+      "phase": "V6-P3",
+      "rationale": "Highest-priority open gap by the fixed v6 order (safety_evidence > user_ux > automation > fleet > polish): category=safety_evidence, phase=V6-P3, workbook current_phase=V6-P6.",
+      "expectedDeliverable": "One bounded cycle toward: Operator-gated real-proof closeout: real Draft PR URL + real in-repo Gemini verdict artifact (operator Mac, runbook docs/operations/P4-first-real-draft-pr.md). Output stops at evidence + at most a Draft PR — the system never merges (GR#10)."
+    }
+  },
+  "timestamp": "2026-06-11T04:37:19.155Z",
+  "workbook_phase": "V6-P6",
+  "chosen_gap": "v6-p3-real-proof-closeout"
+}

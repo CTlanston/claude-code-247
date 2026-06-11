@@ -1,0 +1,11 @@
+{
+  "cycle": 2,
+  "decision": {
+    "action": "refuse",
+    "reason": "Test suite is not green — planning forward on a red baseline would bury the regression.",
+    "recovery": "Human: run `GIT_CONFIG_GLOBAL=/tmp/test-gitconfig pnpm test`, fix the failures (or hold the offending change), then re-run loop:plan."
+  },
+  "timestamp": "2026-06-11T04:35:36.715Z",
+  "workbook_phase": "V6-P6",
+  "chosen_gap": null
+}
