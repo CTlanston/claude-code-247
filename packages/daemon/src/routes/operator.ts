@@ -38,6 +38,7 @@ import {
   recordHeadlessCall,
 } from '../headless-budget-guard.js'
 import { ClaudeReviewer, type ReviewVerdict } from '../claude-reviewer.js'
+import { PLANNER_AUTH_HOLD_CODE, detectPlannerAuthFailure, plannerFallbackProvider } from '../planner-auth.js'
 import { deriveUserState, type UserStateView } from '../user-state.js'
 import { deriveLoopCard, type LoopCard } from '../loop-cards.js'
 
@@ -393,17 +394,28 @@ export function registerOperatorRoutes(app: FastifyInstance, db: AedevDb, stateD
     db.insertEvent('operator.roadmap_generation_started', 'operator_session', session.id, { repoId })
     const generated = await generateRoadmapDesign(db, stateDir, intake, repoId, session)
     if (!generated.ok) {
+      // HOLD-PLANNER-AUTH propagates so the cockpit shows the re-login fix
+      // instead of a confusing generic planner hold (overnight-p1).
+      const holdCode = generated.holdCode ?? 'HOLD-ROADMAP-PLANNER'
       db.updateOperatorSession(session.id, { status: 'hold' })
       db.insertOperatorMessage({ sessionId: session.id, role: 'assistant', content: generated.message })
       db.insertEvent('operator.hold_created', 'operator_session', session.id, {
-        holdCode: 'HOLD-ROADMAP-PLANNER',
+        holdCode,
         reason: generated.reason,
       })
-      db.insertHold({ entityType: 'operator_session', entityId: session.id, code: 'HOLD-ROADMAP-PLANNER', reason: generated.reason })
+      db.insertHold({
+        entityType: 'operator_session',
+        entityId: session.id,
+        code: holdCode,
+        reason: generated.reason,
+        ...(holdCode === PLANNER_AUTH_HOLD_CODE
+          ? { nextAction: 'Run `claude login` (or check /status credit), or set AEDEV_PLANNER_FALLBACK=codex for an honest local fallback.' }
+          : {}),
+      })
       return {
         session: db.getOperatorSession(session.id),
         messages: db.listOperatorMessages(session.id),
-        hold: { code: 'HOLD-ROADMAP-PLANNER', reason: generated.reason },
+        hold: { code: holdCode, reason: generated.reason },
       }
     }
     const mission = intake.requestApproval(generated.mission.id)
@@ -1042,6 +1054,7 @@ async function completePlannerBrainstorm(
       ? undefined
       : recordClarifyRound(db, sessionId, 'planner', parsed, questions)
     db.updateOperatorSession(sessionId, { status: isHold || missingStructuredQuestions ? 'hold' : gateState?.unlocked ? 'brainstorm_ready' : 'clarifying' })
+    if (isHold) recordPlannerAuthHold(db, sessionId, brainstorm.event)
     if (missingStructuredQuestions) {
       db.insertEvent('operator.hold_created', 'operator_session', sessionId, {
         holdCode: 'HOLD-CLARIFY-STRUCTURE',
@@ -1080,6 +1093,26 @@ async function completePlannerBrainstorm(
     })
     db.insertHold({ entityType: 'operator_session', entityId: sessionId, code: 'HOLD-PLANNER-CLI', reason: (e as Error).message })
   }
+}
+
+/** overnight-p1 — persist a real HOLD row for a planner AUTH failure so the
+ *  user-state / blocker card surface the calm re-login fix instead of a
+ *  generic stuck session. Idempotent enough for the cockpit: one row per
+ *  failed planner round; a later success resolves it via resolveSessionHolds. */
+function recordPlannerAuthHold(db: AedevDb, sessionId: string, event: Record<string, unknown>): void {
+  if (event['holdCode'] !== PLANNER_AUTH_HOLD_CODE) return
+  const failures = event['failures']
+  const reason = Array.isArray(failures) && failures.length
+    ? failures.map(String).join('; ')
+    : 'local Claude CLI auth failure'
+  db.insertEvent('operator.hold_created', 'operator_session', sessionId, { holdCode: PLANNER_AUTH_HOLD_CODE, reason })
+  db.insertHold({
+    entityType: 'operator_session',
+    entityId: sessionId,
+    code: PLANNER_AUTH_HOLD_CODE,
+    reason,
+    nextAction: 'Run `claude login` (or check /status credit), or set AEDEV_PLANNER_FALLBACK=codex for an honest local fallback.',
+  })
 }
 
 /** Resolve any active session HOLDs and announce it so the UI clears stale banners (PRD §D). */
@@ -1160,7 +1193,15 @@ async function runPlannerFollowup(requestPrompt: string, title: string, repoId: 
   return runLocalPlannerText(systemPrompt, plannerPrompt, 'planner-followup', requestPrompt, budget)
 }
 
-async function runLocalPlannerText(systemPrompt: string, plannerPrompt: string, role: string, holdContextPrompt: string, budget?: HeadlessBudgetCtx): Promise<{ content: string; event: Record<string, unknown> }> {
+/** Injectable planner adapters (overnight-p1). Tests pass fakes; production
+ *  uses the real local CLIs from @aedev/runner (GR#8: the daemon itself never
+ *  forks child processes — the spawning lives in the runner package). */
+export interface PlannerAdapterDeps {
+  claude?: Pick<ClaudeCodeAdapter, 'isAvailable' | 'run'>
+  codex?: Pick<CodexCliAdapter, 'isAvailable' | 'run'>
+}
+
+export async function runLocalPlannerText(systemPrompt: string, plannerPrompt: string, role: string, holdContextPrompt: string, budget?: HeadlessBudgetCtx, adapters?: PlannerAdapterDeps): Promise<{ content: string; event: Record<string, unknown> }> {
   const timeoutMs = Number(process.env['AEDEV_COCKPIT_AI_TIMEOUT_MS'] ?? '300000')
   const failures: string[] = []
   const plannerProvider = process.env['AEDEV_COCKPIT_PLANNER_PROVIDER'] ?? 'claude'
@@ -1177,7 +1218,9 @@ async function runLocalPlannerText(systemPrompt: string, plannerPrompt: string, 
     }
   }
 
-  const claude = new ClaudeCodeAdapter()
+  const claude = adapters?.claude ?? new ClaudeCodeAdapter()
+  let claudeFailed = false
+  let authHint: string | undefined
   if (plannerProvider === 'claude' && await claude.isAvailable()) {
     const result = await claude.run(plannerPrompt, process.cwd(), {
       systemPrompt,
@@ -1207,16 +1250,72 @@ async function runLocalPlannerText(systemPrompt: string, plannerPrompt: string, 
         },
       }
     }
-    failures.push(`claude-cli: ${result.error ?? `exit ${result.exitCode}`}`)
+    claudeFailed = true
+    // Distinct, honest auth classification (overnight-p1): a 401/credit/login
+    // failure is the operator's problem to fix, not a broken CLI install.
+    const auth = detectPlannerAuthFailure(result)
+    if (auth) {
+      authHint = auth.matched
+      failures.push(`claude-cli auth failure (matched '${auth.matched}'): ${result.error ?? `exit ${result.exitCode}`}`)
+    } else {
+      failures.push(`claude-cli: ${result.error ?? `exit ${result.exitCode}`}`)
+    }
+  } else if (plannerProvider === 'claude') {
+    claudeFailed = true
   }
 
   if (plannerProvider !== 'claude') {
     failures.push(`unsupported planner provider '${plannerProvider}'; P1 requires claude-cli`)
   }
 
+  // Honest opt-in fallback (overnight-p1, operator policy): when
+  // AEDEV_PLANNER_FALLBACK=codex is set AND claude failed for ANY reason,
+  // retry ONCE via the local codex CLI in read-only exec mode (the same
+  // contract as the worker-session probe). NEVER a paid API. The event always
+  // records planner_provider 'codex-cli (fallback)' — never pretending claude.
+  if (plannerProvider === 'claude' && claudeFailed && plannerFallbackProvider() === 'codex') {
+    const codex = adapters?.codex ?? new CodexCliAdapter()
+    if (await codex.isAvailable()) {
+      const result = await codex.run([systemPrompt, '', plannerPrompt].join('\n'), process.cwd(), {
+        timeoutMs,
+        sandbox: 'read-only',
+        approvalPolicy: 'never',
+      })
+      if (budget) {
+        recordHeadlessCall(budget.db, budget.sessionId, {
+          role,
+          provider: 'codex-cli',
+          authMode: result.authMode,
+          inputTokens: result.inputTokens,
+          outputTokens: result.outputTokens,
+          exitCode: result.exitCode,
+        })
+      }
+      if (result.exitCode === 0 && result.transcript.trim()) {
+        return {
+          content: result.transcript.trim(),
+          event: {
+            role,
+            provider: 'codex-cli',
+            planner_provider: 'codex-cli (fallback)',
+            fallbackFrom: 'claude-cli',
+            authMode: result.authMode,
+            inputTokens: result.inputTokens,
+            outputTokens: result.outputTokens,
+            costUsd: result.costUsd,
+          },
+        }
+      }
+      failures.push(`codex-cli (fallback): ${result.error ?? `exit ${result.exitCode}`}`)
+    } else {
+      failures.push('codex-cli (fallback): codex CLI not found on PATH')
+    }
+  }
+
+  const holdCode = authHint ? PLANNER_AUTH_HOLD_CODE : failures.length ? 'HOLD-PLANNER-CLI' : 'HOLD-NO-LOCAL-CLI'
   return {
-    content: renderPlannerHold('claude-cli planner', failures.length ? failures.join('; ') : 'No healthy Claude CLI was found on PATH.', holdContextPrompt),
-    event: { role, provider: null, holdCode: failures.length ? 'HOLD-PLANNER-CLI' : 'HOLD-NO-LOCAL-CLI', failures },
+    content: renderPlannerHold('claude-cli planner', failures.length ? failures.join('; ') : 'No healthy Claude CLI was found on PATH.', holdContextPrompt, holdCode),
+    event: { role, provider: null, holdCode, failures, ...(authHint ? { authHint } : {}) },
   }
 }
 
@@ -1277,6 +1376,7 @@ async function completePlannerFollowup(
       ? undefined
       : recordClarifyRound(db, sessionId, 'planner-followup', parsed, questions)
     db.updateOperatorSession(sessionId, { status: isHold || missingStructuredQuestions ? 'hold' : gateState?.unlocked ? 'brainstorm_ready' : 'clarifying' })
+    if (isHold) recordPlannerAuthHold(db, sessionId, followup.event)
     if (missingStructuredQuestions) {
       db.insertEvent('operator.hold_created', 'operator_session', sessionId, {
         holdCode: 'HOLD-CLARIFY-STRUCTURE',
@@ -1317,13 +1417,16 @@ async function completePlannerFollowup(
   }
 }
 
-function renderPlannerHold(provider: string, reason: string, prompt: string): string {
+function renderPlannerHold(provider: string, reason: string, prompt: string, holdCode = 'HOLD-PLANNER-CLI'): string {
+  const recovery = holdCode === PLANNER_AUTH_HOLD_CODE
+    ? 'No synthetic brainstorm was substituted. Local Claude auth failed — run `claude login` in a terminal (or check subscription credit with /status). Optional honest fallback: set AEDEV_PLANNER_FALLBACK=codex to retry once via the local Codex CLI. No paid API is ever used.'
+    : 'No synthetic brainstorm was substituted. Fix the local CLI/session and click New Brainstorm again.'
   return [
-    `HOLD-PLANNER-CLI: ${provider} could not produce a real brainstorm.`,
+    `${holdCode}: ${provider} could not produce a real brainstorm.`,
     '',
     `Reason: ${reason}`,
     '',
-    'No synthetic brainstorm was substituted. Fix the local CLI/session and click New Brainstorm again.',
+    recovery,
     '',
     `Original prompt: ${prompt}`,
   ].join('\n')
@@ -1359,7 +1462,7 @@ async function generateRoadmapDesign(
   intake: IntakeService,
   repoId: string,
   session: { id: string; title: string; prompt: string },
-): Promise<{ ok: true; mission: NonNullable<ReturnType<AedevDb['getMission']>>; design: MissionDesign } | { ok: false; reason: string; message: string }> {
+): Promise<{ ok: true; mission: NonNullable<ReturnType<AedevDb['getMission']>>; design: MissionDesign } | { ok: false; reason: string; message: string; holdCode?: string }> {
   if (isTemplateRoadmapEnabled()) {
     const mission = intake.createMissionCandidate(repoId, session.prompt, session.title)
     registerDesignArtifacts(db, stateDir, mission.id)
@@ -1375,15 +1478,19 @@ async function generateRoadmapDesign(
 
   const output = await runPlannerMissionDesign(session.prompt, session.title, repoId, mission.id, buildClarifications(db, session.id), { db, sessionId: session.id })
   if (!output.ok) {
+    const holdCode = output.holdCode ?? 'HOLD-ROADMAP-PLANNER'
     return {
       ok: false,
       reason: output.reason,
+      holdCode,
       message: [
-        'HOLD-ROADMAP-PLANNER: local planner CLI could not produce a valid PRD/ADR/Roadmap design.',
+        `${holdCode}: local planner CLI could not produce a valid PRD/ADR/Roadmap design.`,
         '',
         `Reason: ${output.reason}`,
         '',
-        'No deterministic template was substituted. Fix the planner CLI/session or set AEDEV_COCKPIT_FORCE_TEMPLATE=1 for explicit test fallback.',
+        holdCode === PLANNER_AUTH_HOLD_CODE
+          ? 'No deterministic template was substituted. Local Claude auth failed — run `claude login` (or check subscription credit with /status), or set AEDEV_PLANNER_FALLBACK=codex for an honest local fallback. No paid API is ever used.'
+          : 'No deterministic template was substituted. Fix the planner CLI/session or set AEDEV_COCKPIT_FORCE_TEMPLATE=1 for explicit test fallback.',
       ].join('\n'),
     }
   }
@@ -1405,6 +1512,8 @@ async function generateRoadmapDesign(
     db.insertEvent('operator.cost_updated', 'operator_session', session.id, {
       scope: 'planner',
       provider: output.provider,
+      // Honest provenance: 'codex-cli (fallback)' when the opt-in fallback planned.
+      ...(output.plannerProvider ? { planner_provider: output.plannerProvider } : {}),
       authMode: output.authMode,
       inputTokens: output.inputTokens,
       outputTokens: output.outputTokens,
@@ -1441,22 +1550,25 @@ function buildClarifications(db: AedevDb, sessionId: string): string {
   return lines.join('\n')
 }
 
-async function runPlannerMissionDesign(
+export async function runPlannerMissionDesign(
   prompt: string,
   title: string,
   repoId: string,
   missionId: string,
   clarifications = '',
   budget?: HeadlessBudgetCtx,
+  adapters?: PlannerAdapterDeps,
 ): Promise<{
   ok: true
   design: unknown
   provider: string
+  /** Honest provenance — 'codex-cli (fallback)' when the opt-in fallback produced the design. */
+  plannerProvider?: string
   authMode?: string
   inputTokens: number
   outputTokens: number
   costUsd: number | null
-} | { ok: false; reason: string }> {
+} | { ok: false; reason: string; holdCode?: string }> {
   const fixture = process.env['AEDEV_COCKPIT_PLANNER_FIXTURE_JSON']
   if (fixture) {
     try {
@@ -1507,7 +1619,9 @@ async function runPlannerMissionDesign(
     }
   }
 
-  const claude = new ClaudeCodeAdapter()
+  const claude = adapters?.claude ?? new ClaudeCodeAdapter()
+  let claudeFailed = false
+  let authHint: string | undefined
   if (provider === 'claude' && await claude.isAvailable()) {
     const result = await claude.run(plannerPrompt, process.cwd(), { timeoutMs, permissionMode: 'bypassPermissions' })
     if (budget) {
@@ -1531,17 +1645,69 @@ async function runPlannerMissionDesign(
         outputTokens: result.outputTokens,
         costUsd: result.costUsd,
       }
+      claudeFailed = true
       failures.push(`claude-cli invalid JSON: ${parsed.reason}`)
     } else {
-      failures.push(`claude-cli: ${result.error ?? `exit ${result.exitCode}`}`)
+      claudeFailed = true
+      const auth = detectPlannerAuthFailure(result)
+      if (auth) {
+        authHint = auth.matched
+        failures.push(`claude-cli auth failure (matched '${auth.matched}'): ${result.error ?? `exit ${result.exitCode}`}`)
+      } else {
+        failures.push(`claude-cli: ${result.error ?? `exit ${result.exitCode}`}`)
+      }
     }
+  } else if (provider === 'claude') {
+    claudeFailed = true
   }
 
   if (provider !== 'claude') {
     failures.push(`unsupported planner provider '${provider}'; P1 requires claude-cli`)
   }
 
-  return { ok: false, reason: failures.length ? failures.join('; ') : 'No healthy local Claude planner CLI found.' }
+  // Honest opt-in fallback (overnight-p1): AEDEV_PLANNER_FALLBACK=codex retries
+  // ONCE via the local codex CLI (read-only exec, same fenced-JSON contract).
+  // NEVER a paid API; provenance is recorded as 'codex-cli (fallback)'.
+  if (provider === 'claude' && claudeFailed && plannerFallbackProvider() === 'codex') {
+    const codex = adapters?.codex ?? new CodexCliAdapter()
+    if (await codex.isAvailable()) {
+      const result = await codex.run(plannerPrompt, process.cwd(), { timeoutMs, sandbox: 'read-only', approvalPolicy: 'never' })
+      if (budget) {
+        recordHeadlessCall(budget.db, budget.sessionId, {
+          role: 'mission-design',
+          provider: 'codex-cli',
+          authMode: result.authMode,
+          inputTokens: result.inputTokens,
+          outputTokens: result.outputTokens,
+          exitCode: result.exitCode,
+        })
+      }
+      if (result.exitCode === 0 && result.transcript.trim()) {
+        const parsed = extractJsonObject(result.transcript)
+        if (parsed.ok) return {
+          ok: true,
+          design: parsed.value,
+          provider: 'codex-cli',
+          plannerProvider: 'codex-cli (fallback)',
+          authMode: result.authMode,
+          inputTokens: result.inputTokens,
+          outputTokens: result.outputTokens,
+          costUsd: result.costUsd,
+        }
+        failures.push(`codex-cli (fallback) invalid JSON: ${parsed.reason}`)
+      } else {
+        failures.push(`codex-cli (fallback): ${result.error ?? `exit ${result.exitCode}`}`)
+      }
+    } else {
+      failures.push('codex-cli (fallback): codex CLI not found on PATH')
+    }
+  }
+
+  return {
+    ok: false,
+    reason: failures.length ? failures.join('; ') : 'No healthy local Claude planner CLI found.',
+    ...(authHint ? { holdCode: PLANNER_AUTH_HOLD_CODE } : {}),
+  }
 }
 
 function extractJsonObject(text: string): { ok: true; value: unknown } | { ok: false; reason: string } {

@@ -61,6 +61,9 @@ export function explainBlockingCode(code: string | undefined): string {
   if (code && code.startsWith('HOLD-REVIEW-LOOP')) {
     return '自动修复多次未通过，需要人看一眼 · Automatic repair did not pass after several tries; a person should take a look.'
   }
+  if (code && code.startsWith('HOLD-PLANNER-AUTH')) {
+    return '本地 Claude 登录已过期或额度用尽：在终端运行 claude login 重新登录，或检查订阅额度 · The local Claude session needs re-login or has run out of credit — run "claude login" in a terminal, or check your subscription credit.'
+  }
   if (code && code.startsWith('HOLD-SESSION-POOL')) {
     return '本地 AI 引擎未就绪 · The local AI engine is not ready yet.'
   }
