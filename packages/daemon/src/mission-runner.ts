@@ -21,6 +21,8 @@ import {
 } from './claude-reviewer.js'
 import { ReleasePipeline, type GitClient, type DeployFn, type DeployRequest, type ReleaseResult } from './release-pipeline.js'
 import { DraftPrGateError, type DraftPrRequest, type DraftPrInfo } from './draft-pr-gate.js'
+import { HEADLESS_CALL_EVENT } from './headless-budget-guard.js'
+import { listEvidenceArtifacts, writeRunSummary, type RunSummaryInput } from './run-summary.js'
 
 /**
  * Mission validator contract.  Production wires real Gemini + OpenAI; tests
@@ -173,6 +175,12 @@ export class MissionRunner {
           writeFileSync(join(evidenceDir, 'dag-summary.md'), renderDagSummary(dag, 'failed'))
           this.db.updateMissionStatus(mission.id, 'failed')
           this.db.insertEvent('mission.dag_failed', 'mission', mission.id, { taskId: task.id, runId: run.runId, nodeCount: dag.length })
+          this.emitRunSummary(mission, evidenceDir, {
+            status: 'failed',
+            summary: `DAG execution failed at task ${task.id} (run ${run.runId}, exit ${run.exitCode}) after ${dag.length} planned node(s).`,
+            mergeDecision: 'BLOCKED',
+            ...(routeDecision?.provider ? { provider: routeDecision.provider } : {}),
+          })
           return {
             missionId: mission.id,
             taskId: task.id,
@@ -232,6 +240,7 @@ export class MissionRunner {
       // (diff + PRD + logs, never the coder conversation). `rework` sends the
       // coder through capped repair rounds; over the cap or a blocked/
       // unstructured review → held mission, never a silent approve (GR#7).
+      let lastReview: { verdict: ReviewVerdict; cycle: number } | undefined
       if (this.opts.reviewer) {
         const maxCycles = maxReviewCyclesFromEnv()
         let reworks = 0
@@ -250,6 +259,7 @@ export class MissionRunner {
             }
             throw e
           }
+          lastReview = { verdict, cycle }
           writeFileSync(join(evidenceDir, `claude-review-${cycle}.json`), JSON.stringify({ cycle, ...verdict }, null, 2))
           this.db.insertEvent('review.verdict', 'mission', mission.id, {
             cycle, taskId: task.id, verdict: verdict.verdict, findings: verdict.findings, confidence: verdict.confidence,
@@ -288,6 +298,7 @@ export class MissionRunner {
       // evidence; we gate on those paths, not on regexing evidence prose.  Feeds
       // both risk scoring and the merge gate's hard BLOCK.
       const changedPaths = readChangedPaths(evidenceDir)
+      const changedPathsFilePresent = existsSync(join(evidenceDir, 'changed-paths.json'))
       const repoForGate = this.db.getRepo(mission.repoId)
       const forbiddenPatterns = repoForGate?.forbiddenPaths?.length ? repoForGate.forbiddenPaths : DEFAULT_FORBIDDEN_PATHS
       const forbiddenPathTouched = changedPaths.some((p) => forbiddenPatterns.some((pat) => forbiddenMatch(pat, p)))
@@ -396,6 +407,7 @@ export class MissionRunner {
       // we attempt only when the coder produced a real branch + changed files.
       const localCommit = readLocalCommit(evidenceDir)
       let draftPr: DraftPrInfo | undefined
+      let draftPrGateOutcome: string | undefined
       if (decision === 'AUTO_MERGE' && this.opts.draftPrExecutor && repoForGate && localCommit?.branch && changedPaths.length > 0) {
         const worktreeBaseDir = this.opts.runnerConfig?.worktreeBaseDir ?? join(this.opts.stateDir, 'worktrees')
         const request: DraftPrRequest = {
@@ -420,6 +432,7 @@ export class MissionRunner {
           })
         } catch (e) {
           const code = e instanceof DraftPrGateError ? e.code : 'DRAFT_PR_BLOCKED'
+          draftPrGateOutcome = `${code}: ${(e as Error).message}`
           this.db.insertEvent('mission.draft_pr_blocked', 'mission', mission.id, {
             code, reason: (e as Error).message, branch: localCommit.branch,
           })
@@ -451,6 +464,29 @@ export class MissionRunner {
       writeFileSync(join(evidenceDir, 'workbook-summary.md'), renderWorkbookSummary({
         mission, run, risk, validatorResults, decision, browserQAResult, releaseResult, status: summaryStatus,
       }))
+
+      // 9b. P5 evidence audit — run-summary.md, the one-stop audit artifact.
+      // Built only from data already in scope; absent inputs render as absent.
+      this.emitRunSummary(mission, evidenceDir, {
+        status: summaryStatus,
+        summary: `Run ${run.runId} exited ${run.exitCode}; merge decision ${decision}; risk ${risk.score} (${risk.level}).`,
+        ...(changedPathsFilePresent ? { changedPaths } : {}),
+        ...(bundle['diff-summary.md'] !== undefined ? { diffSummary: bundle['diff-summary.md'] } : {}),
+        validatorResults: validatorResults.map((v) => ({
+          validator: v.validator,
+          verdict: v.verdict,
+          ...(v.summary ? { summary: v.summary } : {}),
+        })),
+        ...(lastReview !== undefined
+          ? { reviewerVerdict: { verdict: lastReview.verdict.verdict, cycle: lastReview.cycle, findings: lastReview.verdict.findings } }
+          : {}),
+        mergeDecision: decision,
+        ...(draftPr !== undefined
+          ? { prUrl: draftPr.url }
+          : { prGateOutcome: draftPrGateOutcome ?? `no draft PR attempted (decision ${decision})` }),
+        ...(routeDecision.provider ? { provider: routeDecision.provider } : {}),
+        ...(localCommit?.sha !== undefined ? { localCommitSha: localCommit.sha } : {}),
+      })
 
       // 10. State machine — but never clobber an operator cancel (Stop fence).
       const dbStatus = summaryStatus === 'done' ? 'done' : summaryStatus === 'failed' ? 'failed' : 'paused'
@@ -493,7 +529,35 @@ export class MissionRunner {
       }
       this.db.insertEvent('mission.run_failed', 'mission', mission.id, { error: (e as Error).message })
       writeFileSync(join(evidenceDir, 'run-error.txt'), `${(e as Error).message}\n`)
+      this.emitRunSummary(mission, evidenceDir, {
+        status: 'failed',
+        summary: `Mission run threw: ${(e as Error).message}`,
+      })
       throw e
+    }
+  }
+
+  /** P5 evidence audit: write run-summary.md from data already in scope.
+   *  Cost/headless tallies come straight from the event store (GR#5) and the
+   *  artifact list from the evidence dir; the audit write itself must never
+   *  take down a mission run. */
+  private emitRunSummary(
+    mission: Mission,
+    evidenceDir: string,
+    seed: Partial<RunSummaryInput> & Pick<RunSummaryInput, 'status'>,
+  ): void {
+    try {
+      writeRunSummary(evidenceDir, {
+        missionId: mission.id,
+        missionTitle: mission.title,
+        costEvents: this.db.queryEvents({ type: 'model.usage.recorded', entityId: mission.id }).length,
+        headlessCalls: this.db.queryEvents({ type: HEADLESS_CALL_EVENT, entityId: mission.id }).length,
+        holds: this.db.listHolds(mission.id).map((h) => ({ code: h.code, reason: h.reason })),
+        ...seed,
+        artifacts: listEvidenceArtifacts(evidenceDir),
+      })
+    } catch {
+      /* never let the audit artifact break the run */
     }
   }
 
@@ -670,6 +734,13 @@ export class MissionRunner {
       taskId: params.task.id,
       holdCode: params.holdCode,
       reason: params.reason,
+    })
+    this.emitRunSummary(params.mission, params.evidenceDir, {
+      status: 'waiting',
+      summary: `Mission held (${params.holdCode}): ${params.reason}`,
+      mergeDecision: 'WAITING',
+      holds: [{ code: params.holdCode, reason: params.reason }],
+      ...(params.routeDecision?.provider ? { provider: params.routeDecision.provider } : {}),
     })
     return {
       missionId: params.mission.id,
