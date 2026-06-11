@@ -108,6 +108,30 @@ export type {
   DefaultValidatorSecretStatus,
   ValidatorSecretResolver,
 } from './validator-factory.js'
+// V6-P4: budget facts for the loop-planner shell (scripts/loop-planner.ts).
+export { checkHeadlessBudget, countHeadlessCallsToday } from './headless-budget-guard.js'
+export {
+  CYCLE_PLANNED_EVENT,
+  GAP_PRIORITY,
+  appendCycleLedger,
+  claimsSourceOfTruth,
+  detectSotAmbiguity,
+  parseSection0,
+  planNextCycle,
+  rebuildCycleLedgerFromEvents,
+} from './recursive-planner.js'
+export type {
+  AppendCycleLedgerOptions,
+  CycleLedgerEntry,
+  GapCategory,
+  PhaseGap,
+  PlanDecision,
+  PlannerInput,
+  Section0State,
+} from './recursive-planner.js'
+// V6-P5: soak-pending status artifact (shell: scripts/soak-status.ts).
+export { WEEK_MS, buildSoakPending, deriveSoakStatus, readSoakPending, writeSoakPending } from './soak-status.js'
+export type { SoakPending, SoakStatus } from './soak-status.js'
 export { InterruptionPolicy } from './interruption-policy.js'
 export type {
   InterruptionReason,

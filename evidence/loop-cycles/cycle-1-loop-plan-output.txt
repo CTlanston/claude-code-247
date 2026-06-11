@@ -1,0 +1,59 @@
+
+> aedev@2.4.0-patch1 loop:plan /home/user/claude-code-247
+> tsx scripts/loop-planner.ts
+
+[loop-planner] running the full test suite (set AEDEV_LOOP_TESTS_GREEN=1|0 to assert instead)…
+
+=== loop-planner inputs (real, gathered by this run) ===
+- repoDirty = false
+    via git status --porcelain → empty
+- workbook §0 = current_phase=V6-P3
+    via extracted yaml block from /home/user/claude-code-247/WORKBOOK_v6.md
+- sotAmbiguous = false
+    via root workbooks scanned: WORKBOOK_v4.md, WORKBOOK_v6.md · live SoT claimants: WORKBOOK_v6.md
+- testsGreen = true
+    via ran `pnpm test` in this invocation and used its exit code
+- budgetVerdict = {"allowed":true,"reason":"no-db"}
+    via no /root/.aedev/state.db in this environment — nothing has spent headless credit (default-allow with no-db note)
+- openHolds = 0
+    via max(state.db active holds=0, WORKBOOK §0 open_holds=0)
+- prevCyclePrMerged = true
+    via no previous proposal in evidence/loop-cycles — first cycle
+
+=== PlanCard (decision) ===
+{
+  "type": "plan",
+  "title": "Planner proposal · 递归 planner 提案",
+  "next_step": "Human decision: accept this proposal by starting a session on it, or ignore it. The planner stops here — it never implements, never pushes, never merges.",
+  "machine": {
+    "user_state": "planner_proposal",
+    "stage": "loop-planner",
+    "hold_code": null,
+    "pr_gate_code": null
+  },
+  "objective": "One bounded cycle toward: Operator-gated real-proof closeout: real Draft PR URL + real in-repo Gemini verdict artifact (operator Mac, runbook docs/operations/P4-first-real-draft-pr.md). Output stops at evidence + at most a Draft PR — the system never merges (GR#10).",
+  "phases": [
+    "V6-P3"
+  ],
+  "acceptance_criteria": [
+    "The chosen gap moves with in-repo evidence (GR#7)",
+    "Output stops at evidence + at most a Draft PR; merge stays human-only (GR#10)"
+  ],
+  "risk_level": "low",
+  "estimated_calls": 0,
+  "requires_approval": true,
+  "proposal": {
+    "gapId": "v6-p3-real-proof-closeout",
+    "phase": "V6-P3",
+    "rationale": "Highest-priority open gap by the fixed v6 order (safety_evidence > user_ux > automation > fleet > polish): category=safety_evidence, phase=V6-P3, workbook current_phase=V6-P3.",
+    "expectedDeliverable": "One bounded cycle toward: Operator-gated real-proof closeout: real Draft PR URL + real in-repo Gemini verdict artifact (operator Mac, runbook docs/operations/P4-first-real-draft-pr.md). Output stops at evidence + at most a Draft PR — the system never merges (GR#10)."
+  }
+}
+
+=== human text ===
+PROPOSE cycle 1: gap "v6-p3-real-proof-closeout" (phase V6-P3)
+  why: Highest-priority open gap by the fixed v6 order (safety_evidence > user_ux > automation > fleet > polish): category=safety_evidence, phase=V6-P3, workbook current_phase=V6-P3.
+  deliverable: One bounded cycle toward: Operator-gated real-proof closeout: real Draft PR URL + real in-repo Gemini verdict artifact (operator Mac, runbook docs/operations/P4-first-real-draft-pr.md). Output stops at evidence + at most a Draft PR — the system never merges (GR#10).
+
+Ledger entry written: /home/user/claude-code-247/evidence/loop-cycles/cycle-1.json
+loop-planner stops here. A human (or a human-started session) acts on this — never this script.
