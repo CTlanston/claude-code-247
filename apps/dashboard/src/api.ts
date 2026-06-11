@@ -304,6 +304,20 @@ export interface ApiFleetOperator {
 export interface ApiFleetOverview {
   workers: ApiFleetWorker[]; operators: ApiFleetOperator[]
 }
+/** cloudhull-c6 — read-only owner Operations view. Derived from events/config
+ *  only; the daemon never probes engines for this payload (probes cost credit). */
+export type ApiEngineStatus = 'unknown' | 'ready' | 'needs_login' | 'not_configured'
+export interface ApiOpsHold {
+  code: string; text: string; entityType: string; entityId: string; createdAt: string
+}
+export interface ApiOpsOverview {
+  activeHolds: ApiOpsHold[]
+  activeMissions: Array<{ id: string; title: string; status: string; submittedBy: string }>
+  lastValidator: { status: string; verdict: string | null; atIso: string } | null
+  remoteWrites: { enabled: boolean; whitelist: string[] }
+  engines: { claude: ApiEngineStatus; codex: ApiEngineStatus; gemini: ApiEngineStatus }
+  suggestedRecovery: string[]
+}
 
 /**
  * v-ux-1 — HTTP failure that keeps the parsed response body, so the UI can
@@ -379,5 +393,6 @@ export const api = {
     post<{ status: string; code?: string; reason?: string; pr?: { url: string; number: number }; overview: ApiMissionOverview }>(`/operator/sessions/${id}/create-pr`, {}),
   getMissionOverview: (id: string) => get<ApiMissionOverview>(`/missions/${id}/overview`),
   getFleetOverview: () => get<ApiFleetOverview>('/fleet/overview'),
+  getOpsOverview: () => get<ApiOpsOverview>('/ops/overview'),
   getRunLog: (missionId: string, runId: string) => get<{ text: string; logPath: string }>(`/missions/${missionId}/runs/${runId}/log`),
 }
