@@ -1,5 +1,14 @@
 # SESSION LOG v3
 
+## s_v6_0002 · 2026-06-11 · V6-P2 complete · card cockpit (UI renders the five loop cards)
+
+- New `apps/dashboard/src/pages/cockpit/LoopCard.tsx` (TDD: 13 component tests first): renders exactly the five GR#11 card types from `overview.operatorView.card`; calm bilingual copy; `next_step` is always the prominent first row (`cockpit-loop-card-next-step`); the `machine` sub-object is never visible text — raw codes live only in `data-card-type` / `data-user-state` / `data-machine-stage` / `data-hold-code` / `data-pr-gate-code`. Blocker card shows `human_explanation` + `why_it_matters` + recovery actions, zero raw codes.
+- Mounted in `Cockpit.tsx` above the chat as the primary state surface. Before a mission exists (brainstorm/clarify), an honest client-side UnderstandingCard keeps the same five-card mental model (questions + recommended defaults from the pending clarification; no fabricated machine state; session holds keep their dedicated banner). All pre-existing testids unchanged.
+- `scripts/operator-cockpit-user-e2e.ts` extended: every journey step now also asserts the loop card is present with the EXPECTED type — understanding during clarify (steps 2–3), plan at roadmap_ready (step 4), progress during execution (step 5), blocker at the Draft PR gate (step 7) — plus non-empty `next_step` visible without logs and no machine token inside the card's visible text. All previous assertions kept.
+- Browser evidence (real chromium, mock/template env — simulated planner/worker, real UI): user-journey E2E PASS 7/7 at `evidence/browser-cockpit-user-e2e/2026-06-11T01-52-49-157Z/`; quality smoke PASS at `evidence/browser-cockpit-quality/2026-06-11T01-53-12-152Z/`.
+- Gates: `pnpm typecheck` PASS; `pnpm lint` PASS; `pnpm test` PASS with 864 passed, 6 skipped (128 files; +13 over the 851 baseline, zero regressions).
+- §0 → `current_phase: V6-P3`（真实证明收口）。L1 of V6-P2 met: "不读日志即知下一步" now has browser-level evidence; the old loop summary stays as a read-only evidence detail in the thread footer, no longer the primary state surface.
+
 ## s_0013 · 2026-06-10 · operator-reported real-chain regression PASS (closed-gate) · P4 still pending open-gate run
 
 - Operator ran a real Mac E2E against `hermus-agent` (temp clone): planner=`claude-cli/local_claude_code`, coder=`codex-cli/local_codex`, **Gemini verdict `pass`** persisted to `validator-summary.json`, Draft-PR gate blocked with `REMOTE_WRITES_DISABLED`; no push, no PR URL, no merge; hermus-agent itself untouched. Report (operator machine): `evidence/launch/operator-cockpit-real-smoke-2026-06-10T07-06-36-411Z.md`. Operator gates green locally.

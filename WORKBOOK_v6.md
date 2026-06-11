@@ -17,17 +17,17 @@
 schema_version: 6
 product: ordinary-user-loop-os
 version_target: loop-os-v1
-current_phase: V6-P2          # V6-P0..P6，见 §3；P0 文档部分 + P1 协议随本 PR 落地
-current_substep: p2_card_cockpit_ui_pending
-last_session_id: s_v6_0001
+current_phase: V6-P3          # V6-P0..P6，见 §3；P2 卡片化座舱随本 PR 落地
+current_substep: p3_real_proof_closeout_pending
+last_session_id: s_v6_0002
 open_holds: 0
 blocked_on: none
-test_baseline: 818            # main 基线，0 fail；本周期任何回归即闸红
+test_baseline: 864            # main 基线，0 fail；本周期任何回归即闸红
 merge_policy: human_only      # 系统永不 merge；auto-merge 本周期禁用
 # next_action 硬上限 2 行：
 next_action: |
-  V6-P0 文档收口 + V6-P1 通信协议（5 卡契约 + daemon 卡片派生）已随本 PR 交付。
-  下一步 V6-P2：座舱 UI 只渲染 5 卡，浏览器 E2E 证明"不读日志即知下一步"。
+  V6-P2 已交付：LoopCard 五卡主表面 + 浏览器 E2E 每步断言卡型与 next_step（证据入库）。
+  下一步 V6-P3：真实证明收口——真 Draft PR、库内真实 Gemini 判词、fail-closed 回归。
 ```
 
 ---
