@@ -1,5 +1,9 @@
 # SESSION LOG v3
 
+## s_v6_0007 · 2026-06-11 · CloudHull alpha hardening c0–c7 complete
+
+- c0 truth check 3 suites PASS; c1–c4 real-smoke strict/DEGRADED semantics + GEMINI_TIMEOUT + regression-evidence gate + registered-repo path (38 tests); c5 multi-user local alpha (submittedBy, owner-gate, grouped missions, audit; +34); c6 /ops/overview + Ops page (+14); c7 alpha report with six-dimension scores. Suite 1036 passed / 0 failed. Live strict real-smoke + real Gemini verdict remain operator-gated (claude login on Mac).
+
 ## s_v6_0006 · 2026-06-11 · [reconcile-e2e] deterministic cockpit E2E reconciled to the current conversation+five-card contract
 
 - Root cause: `scripts/operator-cockpit-e2e.ts` was pinned to the superseded inline clarification-option contract (`getByRole('button', { name: 'A specific test/command must pass ★' })`) and timed out — clarification answering moved into `ClarificationPopup` and the primary surface is conversation + LoopCard (WORKBOOK_v6 GR#11). Second stale expectation found and fixed: the Draft-PR gate now evaluates the Gemini evidence gate before remote-writes, so the deterministic blocked code is `GEMINI_NOT_CONFIGURED` (as quality-smoke already asserts), not `REMOTE_WRITES_DISABLED`.
