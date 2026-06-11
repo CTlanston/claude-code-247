@@ -1,5 +1,11 @@
 # SESSION LOG v3
 
+## s_v6_0005 · 2026-06-11 · Overnight harness loop — P1/P3/P4/P5/P6 done · P2 honest HOLD
+
+- P1: HOLD-PLANNER-AUTH detection + opt-in AEDEV_PLANNER_FALLBACK=codex (events record codex-cli (fallback), never impersonation) (+18). P3: operator-vocabulary cards + agent strip + on-card actions + PR-gate transparency, user-E2E 7/7 (+17). P4: merge-policy pure function, 864-combination sweep proves GR#10 (auto-merge off) (+14). P5: run-summary.md audit artifact on all four mission exits, absent-means-absent (+12). P6: full uninterrupted 30-min soak 5/5 PASS.
+- P2 honest conclusion: REAL Draft PR exists (hermus-agent#4, operator-produced — remote-write gate truly proven); full cockpit chain + real Gemini verdict still HOLD-PLANNER-AUTH (operator claude login 401); recovery incl. the new fallback documented in evidence/v6/real-proof/.
+- Suite: 950 passed / 0 failed.
+
 ## s_v6_0004 · 2026-06-11 · V6-P3 cycle-4 attempt → honest HOLD-REAL-PROOF-CREDENTIALS
 
 - Planner chain (real, committed): env false-red REFUSE (cycle-2) → dirty-tree honest REFUSE (cycle-3) → clean PROPOSE cycle-4 = v6-p3-real-proof-closeout.
