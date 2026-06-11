@@ -129,6 +129,9 @@ export type {
   PlannerInput,
   Section0State,
 } from './recursive-planner.js'
+// V6-P5: soak-pending status artifact (shell: scripts/soak-status.ts).
+export { WEEK_MS, buildSoakPending, deriveSoakStatus, readSoakPending, writeSoakPending } from './soak-status.js'
+export type { SoakPending, SoakStatus } from './soak-status.js'
 export { InterruptionPolicy } from './interruption-policy.js'
 export type {
   InterruptionReason,
