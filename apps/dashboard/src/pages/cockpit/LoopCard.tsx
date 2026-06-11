@@ -313,7 +313,10 @@ export function LoopCard({ card, onRework, action, onAction, busy, prGate, lastA
         <div className="ck-loop-actions">
           <button
             type="button"
-            className="ck-btn primary ck-loop-action"
+            // Primary LOOK via .ck-loop-action, but NOT the .primary class:
+            // the quality smoke pins "exactly one .ck-btn.primary per stage"
+            // (the guidance row); the card mirrors that same single action.
+            className="ck-btn ck-loop-action"
             data-testid="cockpit-card-action"
             data-action-id={action.id}
             disabled={Boolean(action.disabled) || Boolean(busy)}

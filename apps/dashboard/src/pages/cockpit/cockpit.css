@@ -305,7 +305,9 @@ button.ck-stat:hover { background: var(--bg-sub); }
 .ck-loop-agents { display: flex; flex-wrap: wrap; gap: 6px; }
 .ck-loop-agent { border: 1px solid #e2e8f0; border-radius: 999px; padding: 1px 8px; font-size: 10.5px; color: var(--fg-muted); background: var(--bg-sub); }
 .ck-loop-agent.active { border-color: #93c5fd; background: var(--accent-soft); color: #1d4ed8; font-weight: 700; }
-.ck-loop-action { font-size: 12.5px; }
+/* Primary look without the .primary class — the quality smoke pins exactly
+   one .ck-btn.primary per stage (the guidance row); the card mirrors it. */
+.ck-loop-action { font-size: 12.5px; background: var(--accent); color: #fff; }
 .ck-loop-recovery li.recommended { color: var(--fg); }
 .ck-loop-recommended-tag { margin-left: 6px; font-size: 10px; color: #1d4ed8; background: var(--accent-soft); border-radius: 999px; padding: 0 6px; white-space: nowrap; }
 .ck-evidence-link { color: #1d4ed8; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; overflow-wrap: anywhere; }
