@@ -1,5 +1,11 @@
 # SESSION LOG v3
 
+## s_v6_0008 · 2026-06-12 · REAL Gemini verdicts achieved (operator Mac) · alpha workbook ingested
+
+- F0 Gemini gate with the REAL API (gemini-2.5-pro): good diff → pass, bad diff → fail (plan deviation + forbidden paths caught). Verdict summary ingested to evidence/f0-gemini-gate/; full bundles remain on the operator Mac (push pending). The validator leg of V6-P3 is now REAL.
+- Operator real-smoke 2026-06-12: safety invariants held (REMOTE_WRITES_DISABLED, no PR, validators not faked); strict mode honest FAIL — claude -p 401 → alpha gate A0 (claude /login) is the single blocking HOLD before A1 strict PASS.
+- docs/execution-workbooks/cloudhull-alpha-loop-workbook-2026-06-12.md ingested (gates A0→A3; no auto-merge of PR #54 or successors).
+
 ## s_v6_0006 · 2026-06-11 · [reconcile-e2e] deterministic cockpit E2E reconciled to the current conversation+five-card contract
 
 - Root cause: `scripts/operator-cockpit-e2e.ts` was pinned to the superseded inline clarification-option contract (`getByRole('button', { name: 'A specific test/command must pass ★' })`) and timed out — clarification answering moved into `ClarificationPopup` and the primary surface is conversation + LoopCard (WORKBOOK_v6 GR#11). Second stale expectation found and fixed: the Draft-PR gate now evaluates the Gemini evidence gate before remote-writes, so the deterministic blocked code is `GEMINI_NOT_CONFIGURED` (as quality-smoke already asserts), not `REMOTE_WRITES_DISABLED`.
