@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
 import {
   appendFileSync,
+  copyFileSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -255,6 +256,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
     if (badClaudePaths.length > 0) {
       return await hold(config, cycle, 'CLAUDE_SCOPE_VIOLATION', `Claude touched non-workbook paths: ${badClaudePaths.join(', ')}`, cycleDir, state)
     }
+    persistWorkbookSeed(config, cycleDir)
 
     let codex: CommandResult | undefined
     let gates: GateResult[] = []
@@ -602,6 +604,20 @@ function seedWorkbook(config: AutoflowConfig): void {
   const source = readFileSync(config.workbookPath, 'utf8')
   const target = join(config.worktreePath, 'WORKBOOK_v4.md')
   writeFileSync(target, source)
+}
+
+function persistWorkbookSeed(config: AutoflowConfig, cycleDir: string): void {
+  const source = join(config.worktreePath, 'WORKBOOK_v4.md')
+  if (!existsSync(source)) return
+  const before = existsSync(config.workbookPath) ? readFileSync(config.workbookPath, 'utf8') : ''
+  const after = readFileSync(source, 'utf8')
+  const changed = before !== after
+  if (changed) copyFileSync(source, config.workbookPath)
+  writeFileSync(join(cycleDir, 'workbook-sync.json'), JSON.stringify({
+    source,
+    target: config.workbookPath,
+    changed,
+  }, null, 2) + '\n')
 }
 
 async function runClaude(config: AutoflowConfig, runner: CommandRunner, prompt: string): Promise<CommandResult> {

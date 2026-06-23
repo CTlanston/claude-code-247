@@ -31,6 +31,7 @@ class FakeRunner implements CommandRunner {
     changedPaths?: string[]
     remoteChangedPaths?: string[]
     failRemoteWrite?: boolean
+    claudeWorkbookContent?: string
   } = {}) {}
 
   async run(command: string, args: string[], callOpts: { cwd: string; timeoutMs: number; stdin?: string }): Promise<CommandResult> {
@@ -50,6 +51,9 @@ class FakeRunner implements CommandRunner {
     }
     if (command === 'claude') {
       this.claudeDone = true
+      if (this.opts.claudeWorkbookContent) {
+        writeFileSync(join(callOpts.cwd, 'WORKBOOK_v4.md'), this.opts.claudeWorkbookContent)
+      }
       return result(command, args, callOpts.cwd, '{"result":"implement the next workbook step"}\n')
     }
     if (command === 'codex') {
@@ -219,6 +223,21 @@ describe('autoflow cycle controls', () => {
     expect(result.status).toBe('completed')
     expect(gitAdd?.args).toContain('src/example.ts')
     expect(gitAdd?.args).not.toContain('WORKBOOK_v4.md')
+  })
+
+  it('persists Claude workbook updates back to the seed workbook', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-workbook-sync-'))
+    const config = seededConfig(dir)
+    const nextWorkbook = '# workbook\n\nnext_action: keep moving\n'
+    const result = await runOneCycle(
+      config,
+      new FakeRunner({ changedPaths: ['WORKBOOK_v4.md', 'src/example.ts'], claudeWorkbookContent: nextWorkbook }),
+      loadState(config),
+    )
+    const syncEvidence = JSON.parse(readFileSync(join(config.evidenceDir, 'cycle-000001', 'workbook-sync.json'), 'utf8')) as { changed: boolean }
+    expect(result.status).toBe('completed')
+    expect(readFileSync(config.workbookPath, 'utf8')).toBe(nextWorkbook)
+    expect(syncEvidence.changed).toBe(true)
   })
 
   it('merges the PR only when pr-merge mode is enabled', async () => {
