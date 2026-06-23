@@ -21,6 +21,7 @@ export interface AutoflowConfig {
   worktreePath: string
   branch: string
   statePath: string
+  summaryPath: string
   logPath: string
   evidenceDir: string
   claudeBin: string
@@ -102,6 +103,34 @@ export interface CycleResult {
   hold?: HoldRecord
 }
 
+export interface AutoflowSummary {
+  version: 1
+  updatedAt: string
+  status: 'completed' | 'hold'
+  cycle: number
+  nextCycle: number
+  branch: string
+  worktreePath: string
+  evidenceDir: string
+  commitSha?: string
+  hold?: HoldRecord
+  changedPaths: string[]
+  productivePaths: string[]
+  gates: Array<{ command: string; exitCode: number }>
+  stageDurationsMs: {
+    claude?: number
+    codex?: number
+    remoteWrite?: number
+  }
+  repetition: {
+    windowSize: number
+    sameProductivePathStreak: number
+    repeatedProductivePaths: string[]
+    categoryCounts: Record<string, number>
+  }
+  plannerSignals: string[]
+}
+
 export interface CommandRunner {
   run(command: string, args: string[], opts: { cwd: string; timeoutMs: number; stdin?: string }): Promise<CommandResult>
 }
@@ -127,6 +156,7 @@ export function defaultConfig(env: NodeJS.ProcessEnv = process.env, argv: string
     worktreePath,
     branch: env['AEDEV_AUTOFLOW_BRANCH'] ?? DEFAULT_BRANCH,
     statePath: resolve(env['AEDEV_AUTOFLOW_STATE'] ?? join(homeDir, 'state.json')),
+    summaryPath: resolve(env['AEDEV_AUTOFLOW_SUMMARY'] ?? join(homeDir, 'autoflow-summary.json')),
     logPath: resolve(env['AEDEV_AUTOFLOW_LOG'] ?? join(homeDir, 'logs', 'autoflow.jsonl')),
     evidenceDir,
     claudeBin: env['AEDEV_CLAUDE_BIN'] ?? 'claude',
@@ -296,7 +326,12 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
     writeFileSync(join(cycleDir, 'changed-paths.json'), JSON.stringify({ baseSha, changedPaths, productivePaths, workingBefore }, null, 2) + '\n')
     const forbiddenHits = changedPaths.filter((path) => config.forbiddenPatterns.some((pattern) => pathMatches(pattern, path)))
     if (forbiddenHits.length > 0) {
-      return await hold(config, cycle, 'FORBIDDEN_PATH_TOUCHED', `Forbidden path touched: ${forbiddenHits.join(', ')}`, cycleDir, state)
+      return await hold(config, cycle, 'FORBIDDEN_PATH_TOUCHED', `Forbidden path touched: ${forbiddenHits.join(', ')}`, cycleDir, state, {
+        changedPaths,
+        productivePaths,
+        gates,
+        stageDurationsMs: { claude: claude.durationMs, codex: codex.durationMs },
+      })
     }
     if (changedPaths.length === 0) {
       const emptyState = {
@@ -308,7 +343,18 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
       if (emptyState.consecutiveEmptyDiffs >= config.holdAfterConsecutiveEmptyDiffs) {
         return await hold(config, cycle, 'EMPTY_DIFF_STREAK', `No changed paths for ${emptyState.consecutiveEmptyDiffs} consecutive cycle(s)`, cycleDir, emptyState)
       }
-      saveState(config, { ...emptyState, nextCycle: cycle + 1, currentCycle: undefined, lastCompletedAt: new Date().toISOString() })
+      const completedEmpty = { ...emptyState, nextCycle: cycle + 1, currentCycle: undefined, lastCompletedAt: new Date().toISOString() }
+      saveState(config, completedEmpty)
+      writeAutoflowSummary(config, {
+        status: 'completed',
+        cycle,
+        state: completedEmpty,
+        cycleDir,
+        changedPaths,
+        productivePaths,
+        gates,
+        stageDurationsMs: { claude: claude.durationMs, codex: codex.durationMs },
+      })
       logEvent(config, { type: 'autoflow.cycle_empty_diff', cycle, streak: emptyState.consecutiveEmptyDiffs })
       return { cycle, status: 'completed', evidenceDir: cycleDir }
     }
@@ -329,7 +375,18 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
           noProductiveState,
         )
       }
-      saveState(config, { ...noProductiveState, nextCycle: cycle + 1, currentCycle: undefined, lastCompletedAt: new Date().toISOString() })
+      const completedNoProductive = { ...noProductiveState, nextCycle: cycle + 1, currentCycle: undefined, lastCompletedAt: new Date().toISOString() }
+      saveState(config, completedNoProductive)
+      writeAutoflowSummary(config, {
+        status: 'completed',
+        cycle,
+        state: completedNoProductive,
+        cycleDir,
+        changedPaths,
+        productivePaths,
+        gates,
+        stageDurationsMs: { claude: claude.durationMs, codex: codex.durationMs },
+      })
       logEvent(config, {
         type: 'autoflow.cycle_no_productive_change',
         cycle,
@@ -349,17 +406,29 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
     }
     const remotePlan = planRemoteWriteStage(config, remoteCandidatePaths, gates)
     if (!remotePlan.allowed && remotePlan.mode !== 'off') {
-      return await hold(config, cycle, 'REMOTE_WRITE_POLICY_BLOCKED', remotePlan.reason, cycleDir, state)
+      return await hold(config, cycle, 'REMOTE_WRITE_POLICY_BLOCKED', remotePlan.reason, cycleDir, state, {
+        changedPaths,
+        productivePaths,
+        gates,
+        stageDurationsMs: { claude: claude.durationMs, codex: codex.durationMs },
+      })
     }
 
     const pathsToCommit = remotePlan.allowed ? productivePaths : changedPaths
     const commitSha = await commitCycle(config, runner, cycle, pathsToCommit)
+    let remoteWriteDurationMs: number | undefined
     if (remotePlan.allowed) {
       logEvent(config, { type: 'autoflow.remote_write_started', cycle, mode: remotePlan.mode, commitSha })
       const remoteWrite = await runRemoteWriteStage(config, runner, cycle, cycleDir, commitSha)
+      remoteWriteDurationMs = remoteWrite.durationMs
       logEvent(config, { type: 'autoflow.remote_write_completed', cycle, exitCode: remoteWrite.exitCode, durationMs: remoteWrite.durationMs })
       if (remoteWrite.exitCode !== 0) {
-        return await hold(config, cycle, 'REMOTE_WRITE_FAILED', remoteWrite.stderr || remoteWrite.stdout || `Remote write failed: ${remoteWrite.command}`, cycleDir, state)
+        return await hold(config, cycle, 'REMOTE_WRITE_FAILED', remoteWrite.stderr || remoteWrite.stdout || `Remote write failed: ${remoteWrite.command}`, cycleDir, state, {
+          changedPaths,
+          productivePaths,
+          gates,
+          stageDurationsMs: { claude: claude.durationMs, codex: codex.durationMs, remoteWrite: remoteWrite.durationMs },
+        })
       }
     }
 
@@ -382,6 +451,17 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
     } satisfies AutoflowState
     writeFileSync(join(cycleDir, 'commit-sha.txt'), commitSha + '\n')
     saveState(config, completed)
+    writeAutoflowSummary(config, {
+      status: 'completed',
+      cycle,
+      state: completed,
+      cycleDir,
+      commitSha,
+      changedPaths,
+      productivePaths,
+      gates,
+      stageDurationsMs: { claude: claude.durationMs, codex: codex.durationMs, remoteWrite: remoteWriteDurationMs },
+    })
     logEvent(config, { type: 'autoflow.cycle_completed', cycle, commitSha, changedPaths })
     return { cycle, status: 'completed', evidenceDir: cycleDir, commitSha }
   } catch (error) {
@@ -827,11 +907,24 @@ async function hold(
   reason: string,
   cycleDir: string,
   state: AutoflowState,
+  summaryInput: Partial<Pick<WriteSummaryInput, 'changedPaths' | 'productivePaths' | 'gates' | 'stageDurationsMs'>> = {},
 ): Promise<CycleResult> {
   const record: HoldRecord = { code, reason, cycle, createdAt: new Date().toISOString() }
   writeFileSync(join(cycleDir, 'HOLD.json'), JSON.stringify(record, null, 2) + '\n')
   writeFileSync(join(cycleDir, 'HOLD.md'), [`# HOLD ${code}`, '', reason, ''].join('\n'))
-  saveState(config, { ...state, status: 'hold', currentCycle: undefined, hold: record })
+  const heldState = { ...state, status: 'hold' as const, currentCycle: undefined, hold: record }
+  saveState(config, heldState)
+  writeAutoflowSummary(config, {
+    status: 'hold',
+    cycle,
+    state: heldState,
+    cycleDir,
+    hold: record,
+    changedPaths: summaryInput.changedPaths ?? [],
+    productivePaths: summaryInput.productivePaths ?? [],
+    gates: summaryInput.gates ?? [],
+    stageDurationsMs: summaryInput.stageDurationsMs ?? {},
+  })
   logEvent(config, { type: 'autoflow.hold', hold: record })
   return { cycle, status: 'hold', evidenceDir: cycleDir, hold: record }
 }
@@ -846,9 +939,11 @@ function buildClaudePrompt(config: AutoflowConfig, state: AutoflowState, cycleDi
     `Worktree workbook: ${join(config.worktreePath, 'WORKBOOK_v4.md')}`,
     `Cycle: ${state.nextCycle}`,
     `Evidence dir for this cycle: ${cycleDir}`,
+    `Latest autoflow summary: ${config.summaryPath}`,
     previousEvidenceDir ? `Previous cycle evidence dir: ${previousEvidenceDir}` : 'Previous cycle evidence dir: none',
     state.lastCommitSha ? `Previous cycle commit: ${state.lastCommitSha}` : 'Previous cycle commit: none',
     state.lastCompletedAt ? `Previous cycle completed at: ${state.lastCompletedAt}` : 'Previous cycle completed at: none',
+    renderPlannerSignalLine(config),
     '',
     'Allowed writes: WORKBOOK_v4.md and local autoflow planning/review artifacts only.',
     'Forbidden: git push, PR creation, merge, editing .env*, secrets/**, .github/**, AGENTS.md.',
@@ -858,9 +953,10 @@ function buildClaudePrompt(config: AutoflowConfig, state: AutoflowState, cycleDi
     'Task:',
     '1. Read WORKBOOK_v4.md, especially §0 next_action.',
     '2. Review the previous cycle evidence dir when present and record the result in WORKBOOK_v4.md.',
-    '3. Choose the next bounded product/harness slice from the current workbook state.',
-    '4. Update WORKBOOK_v4.md only when it improves machine-readable next_action/state.',
-    '5. Emit concise JSON-compatible guidance for Codex: goal, constraints, acceptance checks, and risks.',
+    '3. Read the latest autoflow summary when present; if it reports repeated productive paths, choose a different product/harness slice or record a HOLD rationale instead of continuing the same narrow pattern.',
+    '4. Choose the next bounded product/harness slice from the current workbook state.',
+    '5. Update WORKBOOK_v4.md only when it improves machine-readable next_action/state.',
+    '6. Emit concise JSON-compatible guidance for Codex: goal, constraints, acceptance checks, and risks.',
   ].join('\n')
 }
 
@@ -909,6 +1005,148 @@ function renderRetryContext(codex: CommandResult, gates: GateResult[]): string {
     codex.stderr.trim() ? `Codex stderr:\n${codex.stderr.slice(0, 4000)}` : '',
     gateSummary,
   ].filter(Boolean).join('\n\n')
+}
+
+interface WriteSummaryInput {
+  status: 'completed' | 'hold'
+  cycle: number
+  state: AutoflowState
+  cycleDir: string
+  commitSha?: string
+  hold?: HoldRecord
+  changedPaths: string[]
+  productivePaths: string[]
+  gates: GateResult[]
+  stageDurationsMs: AutoflowSummary['stageDurationsMs']
+}
+
+function writeAutoflowSummary(config: AutoflowConfig, input: WriteSummaryInput): void {
+  const repetition = analyzeRepetition(config, input.cycle, input.productivePaths)
+  const plannerSignals = buildPlannerSignals(input, repetition)
+  const summary: AutoflowSummary = {
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    status: input.status,
+    cycle: input.cycle,
+    nextCycle: input.state.nextCycle,
+    branch: input.state.branch,
+    worktreePath: input.state.worktreePath,
+    evidenceDir: input.cycleDir,
+    commitSha: input.commitSha,
+    hold: input.hold,
+    changedPaths: input.changedPaths,
+    productivePaths: input.productivePaths,
+    gates: input.gates.map((gate) => ({ command: gate.command, exitCode: gate.exitCode })),
+    stageDurationsMs: input.stageDurationsMs,
+    repetition,
+    plannerSignals,
+  }
+  const rendered = JSON.stringify(summary, null, 2) + '\n'
+  writeFileSync(join(input.cycleDir, 'autoflow-summary.json'), rendered)
+  ensureDir(dirname(config.summaryPath))
+  writeFileSync(config.summaryPath, rendered)
+  logEvent(config, {
+    type: 'autoflow.summary_written',
+    cycle: input.cycle,
+    summaryPath: config.summaryPath,
+    plannerSignals,
+  })
+}
+
+function analyzeRepetition(
+  config: Pick<AutoflowConfig, 'evidenceDir'>,
+  cycle: number,
+  currentProductivePaths: string[],
+): AutoflowSummary['repetition'] {
+  const windowSize = 6
+  const start = Math.max(1, cycle - windowSize + 1)
+  const sets: string[][] = []
+  for (let item = start; item <= cycle; item++) {
+    if (item === cycle) {
+      sets.push([...currentProductivePaths].sort())
+      continue
+    }
+    sets.push(readProductivePathsForCycle(config, item))
+  }
+
+  const currentKey = pathSetKey(currentProductivePaths)
+  let sameProductivePathStreak = 0
+  for (let index = sets.length - 1; index >= 0; index--) {
+    if (pathSetKey(sets[index]) !== currentKey || !currentKey) break
+    sameProductivePathStreak++
+  }
+
+  const categoryCounts: Record<string, number> = {}
+  for (const paths of sets) {
+    for (const path of paths) {
+      const category = categorizePath(path)
+      categoryCounts[category] = (categoryCounts[category] ?? 0) + 1
+    }
+  }
+
+  return {
+    windowSize: sets.length,
+    sameProductivePathStreak,
+    repeatedProductivePaths: sameProductivePathStreak >= 2 ? [...currentProductivePaths].sort() : [],
+    categoryCounts,
+  }
+}
+
+function readProductivePathsForCycle(config: Pick<AutoflowConfig, 'evidenceDir'>, cycle: number): string[] {
+  const file = join(config.evidenceDir, cycleIdFor(cycle), 'changed-paths.json')
+  if (!existsSync(file)) return []
+  try {
+    const parsed = JSON.parse(readFileSync(file, 'utf8')) as { productivePaths?: string[] }
+    return [...(parsed.productivePaths ?? [])].sort()
+  } catch {
+    return []
+  }
+}
+
+function buildPlannerSignals(
+  input: Pick<WriteSummaryInput, 'status' | 'hold' | 'productivePaths'>,
+  repetition: AutoflowSummary['repetition'],
+): string[] {
+  const signals: string[] = []
+  if (input.status === 'hold' && input.hold) {
+    signals.push(`hold:${input.hold.code}`)
+  }
+  if (input.productivePaths.length === 0) {
+    signals.push('no_productive_paths')
+  }
+  if (repetition.sameProductivePathStreak >= 3) {
+    signals.push(`repeated_productive_paths:${repetition.sameProductivePathStreak}`)
+  }
+  if ((repetition.categoryCounts.test ?? 0) >= 4 && Object.keys(repetition.categoryCounts).length === 1) {
+    signals.push('test_only_window')
+  }
+  return signals
+}
+
+function renderPlannerSignalLine(config: Pick<AutoflowConfig, 'summaryPath'>): string {
+  if (!existsSync(config.summaryPath)) return 'Latest planner signals: none'
+  try {
+    const summary = JSON.parse(readFileSync(config.summaryPath, 'utf8')) as Pick<AutoflowSummary, 'plannerSignals'>
+    return summary.plannerSignals.length > 0
+      ? `Latest planner signals: ${summary.plannerSignals.join(', ')}`
+      : 'Latest planner signals: none'
+  } catch {
+    return 'Latest planner signals: unavailable; summary could not be parsed'
+  }
+}
+
+function pathSetKey(paths: string[]): string {
+  return [...paths].sort().join('\0')
+}
+
+function categorizePath(path: string): string {
+  if (path.includes('.test.') || path.startsWith('test/') || path.startsWith('tests/')) return 'test'
+  if (path.startsWith('src/') || path.startsWith('app/') || path.startsWith('lib/')) return 'source'
+  if (path.startsWith('docs/')) return 'docs'
+  if (path.startsWith('scripts/')) return 'scripts'
+  if (path === 'package.json' || path.endsWith('/package.json') || path.endsWith('lock.yaml') || path.endsWith('lock.json')) return 'package'
+  if (path === 'WORKBOOK_v4.md' || path.startsWith('.aedev/')) return 'workbook'
+  return 'other'
 }
 
 function writeCommandEvidence(dir: string, filename: string, result: CommandResult): void {
