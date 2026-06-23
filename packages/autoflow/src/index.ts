@@ -5,6 +5,7 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   renameSync,
   writeFileSync,
@@ -44,6 +45,7 @@ export interface AutoflowConfig {
   holdAfterConsecutiveEmptyDiffs: number
   commandTimeoutMs: number
   worktreeFetchTimeoutMs: number
+  retainedCycleWorktrees: number
   stageHeartbeatIntervalMs: number
   cycleSleepMs: number
   allowRemoteWrites: boolean
@@ -152,6 +154,7 @@ const DEFAULT_HOME = join(homedir(), '.claude-code-247', 'autoflow')
 const DEFAULT_GATES = ['pnpm typecheck', 'pnpm lint', 'pnpm test']
 const DEFAULT_FORBIDDEN = ['.env*', 'secrets/**', '.github/**', 'AGENTS.md']
 const WORKTREE_FETCH_TIMEOUT_MS = 60_000
+const DEFAULT_RETAINED_CYCLE_WORKTREES = 12
 const DEFAULT_TIMEOUT_KILL_GRACE_MS = 2_000
 const DEFAULT_STAGE_HEARTBEAT_INTERVAL_MS = 60_000
 const TRANSIENT_SETUP_RESUME_DELAY_MS = 5 * 60_000
@@ -193,6 +196,7 @@ export function defaultConfig(env: NodeJS.ProcessEnv = process.env, argv: string
     holdAfterConsecutiveEmptyDiffs: Number(env['AEDEV_AUTOFLOW_HOLD_AFTER_EMPTY_DIFFS'] ?? '3'),
     commandTimeoutMs: Number(env['AEDEV_AUTOFLOW_COMMAND_TIMEOUT_MS'] ?? '1800000'),
     worktreeFetchTimeoutMs: Number(env['AEDEV_AUTOFLOW_WORKTREE_FETCH_TIMEOUT_MS'] ?? WORKTREE_FETCH_TIMEOUT_MS),
+    retainedCycleWorktrees: Number(env['AEDEV_AUTOFLOW_RETAIN_CYCLE_WORKTREES'] ?? DEFAULT_RETAINED_CYCLE_WORKTREES),
     stageHeartbeatIntervalMs: Number(env['AEDEV_AUTOFLOW_STAGE_HEARTBEAT_MS'] ?? DEFAULT_STAGE_HEARTBEAT_INTERVAL_MS),
     cycleSleepMs: Number(env['AEDEV_AUTOFLOW_CYCLE_SLEEP_MS'] ?? '0'),
     allowRemoteWrites: parseBoolean(env['AEDEV_AUTOFLOW_ALLOW_REMOTE_WRITES']),
@@ -537,6 +541,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
       stageDurationsMs: coderStageDurations(config, claude.durationMs, coder.durationMs, remoteWriteDurationMs),
     })
     logEvent(config, { type: 'autoflow.cycle_completed', cycle, commitSha, changedPaths })
+    await pruneOldCycleWorktrees(config, runner, cycle)
     return { cycle, status: 'completed', evidenceDir: cycleDir, commitSha }
   } catch (error) {
     return await recordFailureOrHold(config, cycle, 'CYCLE_ERROR', (error as Error).message, cycleDir, state)
@@ -1003,6 +1008,76 @@ function rotatedRemoteCycleLocation(config: Pick<AutoflowConfig, 'branch' | 'wor
   return {
     branch: `${branchBase}-${suffix}`,
     worktreePath: `${worktreeBase}-${suffix}`,
+  }
+}
+
+async function pruneOldCycleWorktrees(
+  config: Pick<AutoflowConfig, 'repoRoot' | 'worktreePath' | 'retainedCycleWorktrees' | 'commandTimeoutMs' | 'logPath'>,
+  runner: CommandRunner,
+  completedCycle: number,
+): Promise<void> {
+  try {
+    const retain = Math.floor(config.retainedCycleWorktrees)
+    if (!Number.isFinite(retain) || retain <= 0) return
+    const worktreeBase = config.worktreePath.replace(/-cycle-\d{6}$/, '')
+    const parent = dirname(worktreeBase)
+    if (!existsSync(parent)) return
+    const baseName = worktreeBase.slice(parent.length + 1)
+    const candidates = readdirSync(parent, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => {
+        const match = entry.name.match(new RegExp(`^${escapeRegExp(baseName)}-cycle-(\\d{6})$`))
+        if (!match) return null
+        return {
+          cycle: Number(match[1]),
+          path: join(parent, entry.name),
+        }
+      })
+      .filter((entry): entry is { cycle: number; path: string } => entry !== null && Number.isFinite(entry.cycle))
+      .filter((entry) => entry.cycle <= completedCycle && entry.path !== config.worktreePath)
+      .sort((a, b) => a.cycle - b.cycle)
+    const removeCount = candidates.length - retain
+    if (removeCount <= 0) return
+    const stale = candidates.slice(0, removeCount)
+    logEvent(config, {
+      type: 'autoflow.cycle_worktree_prune_started',
+      completedCycle,
+      retain,
+      candidates: candidates.length,
+      removing: stale.length,
+    })
+    let removed = 0
+    for (const entry of stale) {
+      const result = await runner.run('git', ['worktree', 'remove', '--force', entry.path], {
+        cwd: config.repoRoot,
+        timeoutMs: config.commandTimeoutMs,
+      })
+      if (result.exitCode === 0) {
+        removed++
+        continue
+      }
+      logEvent(config, {
+        type: 'autoflow.cycle_worktree_prune_failed',
+        completedCycle,
+        path: entry.path,
+        exitCode: result.exitCode,
+        stderr: summarizeCommandOutput(result.stderr),
+        stdout: summarizeCommandOutput(result.stdout),
+      })
+    }
+    logEvent(config, {
+      type: 'autoflow.cycle_worktree_prune_completed',
+      completedCycle,
+      retain,
+      removed,
+      attempted: stale.length,
+    })
+  } catch (error) {
+    logEvent(config, {
+      type: 'autoflow.cycle_worktree_prune_error',
+      completedCycle,
+      reason: (error as Error).message,
+    })
   }
 }
 
@@ -1532,6 +1607,10 @@ function summarizeCommandOutput(output: string, maxLength = 500): string | undef
   const trimmed = output.trim()
   if (!trimmed) return undefined
   return trimmed.length > maxLength ? `${trimmed.slice(0, maxLength)}...` : trimmed
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 function parseList(raw: string | undefined, fallback: string[] = []): string[] {
