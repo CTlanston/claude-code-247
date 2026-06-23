@@ -290,6 +290,88 @@ describe('autoflow doctor', () => {
     expect(parsed.checks.map((check) => check.code)).toContain('state_readable')
     expect(existsSync(config.logPath)).toBe(false)
   })
+
+  it('loads doctor config from a registered launchd label', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-doctor-launchd-'))
+    const home = join(dir, 'home')
+    const label = 'com.claude247.autoflow.test'
+    const config = {
+      ...testConfig(dir),
+      coderProvider: 'claude' as const,
+      allowRemoteWrites: true,
+      remoteMode: 'pr-merge' as const,
+      setupCommands: ['npm install'],
+      gateCommands: ['npm test', 'npm run build'],
+      maxCycles: 1,
+    }
+    saveState(config, { ...loadState(config), nextCycle: 4, lastCompletedAt: '2026-06-23T21:41:47.817Z' })
+    writeFileSync(config.summaryPath, JSON.stringify({
+      version: 1,
+      updatedAt: '2026-06-23T21:41:47.817Z',
+      status: 'completed',
+      cycle: 3,
+      nextCycle: 4,
+      branch: config.branch,
+      worktreePath: config.worktreePath,
+      evidenceDir: join(config.evidenceDir, 'cycle-000003'),
+      changedPaths: ['src/example.ts'],
+      productivePaths: ['src/example.ts'],
+      gates: [{ command: 'npm test', exitCode: 0 }],
+      coderProvider: 'claude',
+      stageDurationsMs: { claude: 1, coder: 2 },
+      repetition: { windowSize: 1, sameProductivePathStreak: 1, repeatedProductivePaths: [], categoryCounts: { source: 1 } },
+      plannerSignals: [],
+    } satisfies AutoflowSummary) + '\n')
+    mkdirSync(join(home, 'Library', 'LaunchAgents'), { recursive: true })
+    writeFileSync(join(home, 'Library', 'LaunchAgents', `${label}.plist`), `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0">
+<dict>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>AEDEV_AUTOFLOW_ALLOW_REMOTE_WRITES</key><string>1</string>
+    <key>AEDEV_AUTOFLOW_CODER_PROVIDER</key><string>claude</string>
+    <key>AEDEV_AUTOFLOW_GATES</key><string>npm test||npm run build</string>
+    <key>AEDEV_AUTOFLOW_HOME</key><string>${config.homeDir}</string>
+    <key>AEDEV_AUTOFLOW_LOG</key><string>${config.logPath}</string>
+    <key>AEDEV_AUTOFLOW_REMOTE_MODE</key><string>pr-merge</string>
+    <key>AEDEV_AUTOFLOW_REPO_ROOT</key><string>${config.repoRoot}</string>
+    <key>AEDEV_AUTOFLOW_SETUP_COMMANDS</key><string>npm install</string>
+    <key>AEDEV_AUTOFLOW_STATE</key><string>${config.statePath}</string>
+    <key>AEDEV_AUTOFLOW_WORKBOOK</key><string>${config.workbookPath}</string>
+    <key>AEDEV_AUTOFLOW_WORKTREE</key><string>${config.worktreePath}</string>
+  </dict>
+  <key>ProgramArguments</key>
+  <array>
+    <string>pnpm</string>
+    <string>tsx</string>
+    <string>scripts/autoflow-loop.ts</string>
+    <string>--max-cycles</string>
+    <string>1</string>
+  </array>
+  <key>StartInterval</key><integer>123</integer>
+  <key>WorkingDirectory</key><string>${config.repoRoot}</string>
+</dict>
+</plist>
+`)
+    const lines: string[] = []
+    const originalLog = console.log
+    console.log = (line?: unknown) => { lines.push(String(line)) }
+    try {
+      await runAutoflowCli({ HOME: home }, ['doctor', '--launchd-label', label, '--json'])
+    } finally {
+      console.log = originalLog
+    }
+
+    const parsed = JSON.parse(lines.join('\n')) as AutoflowDoctorReport
+    expect(parsed.status).toBe('pass')
+    expect(parsed.launchd).toMatchObject({ label, exists: true, startInterval: 123 })
+    expect(parsed.config.coderProvider).toBe('claude')
+    expect(parsed.config.remoteMode).toBe('pr-merge')
+    expect(parsed.config.maxCycles).toBe(1)
+    expect(parsed.config.setupCommands).toEqual(['npm install'])
+    expect(parsed.config.gateCommands).toEqual(['npm test', 'npm run build'])
+    expect(parsed.checks).toContainEqual(expect.objectContaining({ code: 'launchd_plist_found', status: 'pass' }))
+  })
 })
 
 describe('spawn command runner', () => {
