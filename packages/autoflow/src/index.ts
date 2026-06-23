@@ -304,6 +304,15 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
       logEvent(config, { type: 'autoflow.codex_completed', cycle, attempt, exitCode: codex.exitCode, durationMs: codex.durationMs })
       writeCommandEvidence(cycleDir, `codex-result-${attempt}.json`, codex)
       writeFileSync(join(cycleDir, `codex-output-${attempt}.txt`), codex.stdout || codex.stderr || '')
+      if (codex.exitCode !== 0) {
+        if (isCodexUsageLimit(codex)) {
+          return await hold(config, cycle, 'CODEX_USAGE_LIMIT', codex.stdout || codex.stderr || 'Codex usage limit reached', cycleDir, state, {
+            stageDurationsMs: { claude: claude.durationMs, codex: codex.durationMs },
+          })
+        }
+        retryContext = renderRetryContext(codex, [])
+        continue
+      }
       logEvent(config, { type: 'autoflow.gates_started', cycle, attempt, commands: config.gateCommands })
       gates = await runGates(config, runner, cycleDir, attempt)
       logEvent(config, {
@@ -1025,6 +1034,10 @@ function renderRetryContext(codex: CommandResult, gates: GateResult[]): string {
     codex.stderr.trim() ? `Codex stderr:\n${codex.stderr.slice(0, 4000)}` : '',
     gateSummary,
   ].filter(Boolean).join('\n\n')
+}
+
+function isCodexUsageLimit(codex: CommandResult): boolean {
+  return /usage limit/i.test(`${codex.stdout}\n${codex.stderr}`)
 }
 
 interface WriteSummaryInput {
