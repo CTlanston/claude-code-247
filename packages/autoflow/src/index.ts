@@ -47,6 +47,7 @@ export interface AutoflowConfig {
   worktreeFetchTimeoutMs: number
   setupFetchAttempts: number
   retainedCycleWorktrees: number
+  runningStateTtlMs: number
   stageHeartbeatIntervalMs: number
   cycleSleepMs: number
   allowRemoteWrites: boolean
@@ -158,6 +159,7 @@ const WORKTREE_FETCH_TIMEOUT_MS = 60_000
 const DEFAULT_RETAINED_CYCLE_WORKTREES = 12
 const DEFAULT_TIMEOUT_KILL_GRACE_MS = 2_000
 const DEFAULT_STAGE_HEARTBEAT_INTERVAL_MS = 60_000
+const DEFAULT_RUNNING_STATE_TTL_MS = 6 * 60 * 60_000
 const TRANSIENT_SETUP_RESUME_DELAY_MS = 5 * 60_000
 const MAX_TRANSIENT_SETUP_RESUME_DELAY_MS = 60 * 60_000
 
@@ -199,6 +201,7 @@ export function defaultConfig(env: NodeJS.ProcessEnv = process.env, argv: string
     worktreeFetchTimeoutMs: Number(env['AEDEV_AUTOFLOW_WORKTREE_FETCH_TIMEOUT_MS'] ?? WORKTREE_FETCH_TIMEOUT_MS),
     setupFetchAttempts: Number(env['AEDEV_AUTOFLOW_SETUP_FETCH_ATTEMPTS'] ?? '2'),
     retainedCycleWorktrees: Number(env['AEDEV_AUTOFLOW_RETAIN_CYCLE_WORKTREES'] ?? DEFAULT_RETAINED_CYCLE_WORKTREES),
+    runningStateTtlMs: Number(env['AEDEV_AUTOFLOW_RUNNING_STATE_TTL_MS'] ?? DEFAULT_RUNNING_STATE_TTL_MS),
     stageHeartbeatIntervalMs: Number(env['AEDEV_AUTOFLOW_STAGE_HEARTBEAT_MS'] ?? DEFAULT_STAGE_HEARTBEAT_INTERVAL_MS),
     cycleSleepMs: Number(env['AEDEV_AUTOFLOW_CYCLE_SLEEP_MS'] ?? '0'),
     allowRemoteWrites: parseBoolean(env['AEDEV_AUTOFLOW_ALLOW_REMOTE_WRITES']),
@@ -235,9 +238,29 @@ export async function runAutoflow(config: AutoflowConfig, runner: CommandRunner 
     if (resumed) {
       state = resumed
     } else {
-    logEvent(config, { type: 'autoflow.already_on_hold', hold: state.hold ?? null })
-    return []
+      logEvent(config, { type: 'autoflow.already_on_hold', hold: state.hold ?? null })
+      return []
     }
+  }
+  if (state.status === 'running') {
+    const stale = isRunningStateStale(config, state)
+    if (!stale) {
+      logEvent(config, {
+        type: 'autoflow.already_running',
+        cycle: state.currentCycle ?? state.nextCycle,
+        lastStartedAt: state.lastStartedAt,
+      })
+      return []
+    }
+    const recovered = { ...state, status: 'idle' as const, currentCycle: undefined }
+    saveState(config, recovered)
+    logEvent(config, {
+      type: 'autoflow.stale_running_recovered',
+      cycle: state.currentCycle ?? state.nextCycle,
+      lastStartedAt: state.lastStartedAt,
+      ttlMs: config.runningStateTtlMs,
+    })
+    state = recovered
   }
 
   try {
@@ -1303,6 +1326,15 @@ function autoResumeHoldIfReady(config: AutoflowConfig, state: AutoflowState): Au
   saveState(config, resumed)
   logEvent(config, { type: 'autoflow.hold_auto_resumed', hold, resumeAfter: hold.resumeAfter })
   return resumed
+}
+
+function isRunningStateStale(config: Pick<AutoflowConfig, 'runningStateTtlMs'>, state: Pick<AutoflowState, 'lastStartedAt'>): boolean {
+  if (!state.lastStartedAt) return false
+  const startedAtMs = Date.parse(state.lastStartedAt)
+  if (Number.isNaN(startedAtMs)) return false
+  const ttlMs = Math.floor(config.runningStateTtlMs)
+  if (!Number.isFinite(ttlMs) || ttlMs <= 0) return false
+  return Date.now() - startedAtMs > ttlMs
 }
 
 function isAutoResumableHold(hold: HoldRecord): boolean {

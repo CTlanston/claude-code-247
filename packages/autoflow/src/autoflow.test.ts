@@ -158,6 +158,7 @@ describe('autoflow command builders', () => {
     expect(defaultConfig({ AEDEV_AUTOFLOW_WORKTREE_FETCH_TIMEOUT_MS: '120000' }, []).worktreeFetchTimeoutMs).toBe(120000)
     expect(defaultConfig({ AEDEV_AUTOFLOW_SETUP_FETCH_ATTEMPTS: '3' }, []).setupFetchAttempts).toBe(3)
     expect(defaultConfig({ AEDEV_AUTOFLOW_RETAIN_CYCLE_WORKTREES: '4' }, []).retainedCycleWorktrees).toBe(4)
+    expect(defaultConfig({ AEDEV_AUTOFLOW_RUNNING_STATE_TTL_MS: '1000' }, []).runningStateTtlMs).toBe(1000)
   })
 
   it('builds Claude and Codex commands without remote-write operations', () => {
@@ -262,6 +263,56 @@ describe('autoflow remote-write policy', () => {
 })
 
 describe('autoflow cycle controls', () => {
+  it('does not start a second run while the state is already running', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-running-lock-'))
+    const config = seededConfig(dir)
+    saveState(config, {
+      ...loadState(config),
+      status: 'running',
+      currentCycle: 1,
+      lastStartedAt: new Date().toISOString(),
+    })
+    const runner = new FakeRunner({ changedPaths: ['src/example.ts'] })
+
+    const results = await runAutoflow(config, runner)
+    const events = readFileSync(config.logPath, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as { type: string; cycle?: number })
+
+    expect(results).toEqual([])
+    expect(runner.calls).toHaveLength(0)
+    expect(events).toContainEqual(expect.objectContaining({
+      type: 'autoflow.already_running',
+      cycle: 1,
+    }))
+  })
+
+  it('recovers stale running state after the configured ttl', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-running-stale-'))
+    const config = { ...seededConfig(dir), runningStateTtlMs: 1 }
+    saveState(config, {
+      ...loadState(config),
+      status: 'running',
+      currentCycle: 1,
+      lastStartedAt: '1970-01-01T00:00:00.000Z',
+    })
+    const runner = new FakeRunner({ changedPaths: ['src/example.ts'] })
+
+    const results = await runAutoflow(config, runner)
+    const events = readFileSync(config.logPath, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as { type: string; cycle?: number })
+
+    expect(results).not.toEqual([])
+    expect(runner.calls.length).toBeGreaterThan(0)
+    expect(events).toContainEqual(expect.objectContaining({
+      type: 'autoflow.stale_running_recovered',
+      cycle: 1,
+    }))
+  })
+
   it('writes HOLD instead of crash-looping when setup fails', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'autoflow-setup-'))
     const config = testConfig(dir)
@@ -1129,6 +1180,7 @@ function testConfig(dir: string): AutoflowConfig {
     worktreeFetchTimeoutMs: 60_000,
     setupFetchAttempts: 2,
     retainedCycleWorktrees: 12,
+    runningStateTtlMs: 6 * 60 * 60_000,
     stageHeartbeatIntervalMs: 60_000,
     cycleSleepMs: 0,
     allowRemoteWrites: false,
