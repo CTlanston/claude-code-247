@@ -35,13 +35,19 @@ class FakeRunner implements CommandRunner {
     failRemoteWrite?: boolean
     claudeWorkbookContent?: string
     codexFailureStdout?: string
+    fetchTimeouts?: number
   } = {}) {}
 
   async run(command: string, args: string[], callOpts: { cwd: string; timeoutMs: number; stdin?: string }): Promise<CommandResult> {
     this.calls.push({ command, args, stdin: callOpts.stdin })
     const rendered = [command, ...args].join(' ')
     if (rendered.includes('rev-parse HEAD')) return result(command, args, callOpts.cwd, 'base-sha\n')
-    if (rendered.includes('fetch origin main')) return result(command, args, callOpts.cwd)
+    if (rendered.includes('fetch origin main')) {
+      const fetchCalls = this.calls.filter((call) => [call.command, ...call.args].join(' ').includes('fetch origin main')).length
+      return fetchCalls <= (this.opts.fetchTimeouts ?? 0)
+        ? result(command, args, callOpts.cwd, '', 'fetch timed out\n', 124)
+        : result(command, args, callOpts.cwd)
+    }
     if (rendered.includes('diff --name-only origin/main...HEAD')) {
       return result(command, args, callOpts.cwd, (this.opts.remoteChangedPaths ?? []).join('\n') + '\n')
     }
@@ -261,6 +267,7 @@ describe('autoflow cycle controls', () => {
     const config = {
       ...testConfig(dir),
       worktreePath: join(dir, 'new-worktree'),
+      allowRemoteWrites: true,
       remoteMode: 'pr' as const,
     }
     mkdirSync(join(config.repoRoot, '.git', 'refs', 'remotes', 'origin'), { recursive: true })
@@ -274,6 +281,54 @@ describe('autoflow cycle controls', () => {
     expect(commands).toContain('git fetch origin main')
     expect(commands).toContain('git branch codex/autoflow-workbook origin/main')
     expect(commands).toContain(`git worktree add ${config.worktreePath} codex/autoflow-workbook`)
+  })
+
+  it('holds transiently when remote base fetch times out during worktree preparation', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-worktree-fetch-timeout-'))
+    const config = {
+      ...testConfig(dir),
+      worktreePath: join(dir, 'new-worktree'),
+      allowRemoteWrites: true,
+      remoteMode: 'pr' as const,
+    }
+    const runner = new WorktreeCreateRunner({ fetchTimeouts: 1, changedPaths: ['src/example.ts'] })
+
+    const results = await runAutoflow(config, runner)
+    const state = loadState(config)
+
+    expect(results[0]?.status).toBe('hold')
+    expect(state.hold?.code).toBe('SETUP_FETCH_TIMEOUT')
+    expect(state.hold?.resumeAfter).toBeTruthy()
+    expect(runner.calls.some((call) => call.command === 'claude')).toBe(false)
+  })
+
+  it('auto-resumes an expired setup fetch timeout hold on the next tick', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-worktree-fetch-resume-'))
+    const config = {
+      ...testConfig(dir),
+      worktreePath: join(dir, 'new-worktree'),
+      allowRemoteWrites: true,
+      remoteMode: 'pr' as const,
+    }
+    saveState(config, {
+      ...loadState(config),
+      status: 'hold',
+      hold: {
+        code: 'SETUP_FETCH_TIMEOUT',
+        reason: 'git fetch timed out while preparing base origin/main',
+        cycle: 1,
+        createdAt: '2026-06-23T07:29:48.162Z',
+        resumeAfter: '1970-01-01T00:00:00.000Z',
+      },
+    })
+    const runner = new WorktreeCreateRunner({ changedPaths: ['src/example.ts'] })
+
+    const results = await runAutoflow(config, runner)
+
+    expect(results[0]?.status).toBe('completed')
+    expect(loadState(config).status).toBe('running')
+    expect(loadState(config).hold).toBeUndefined()
+    expect(runner.calls.map((call) => [call.command, ...call.args].join(' '))).toContain('git fetch origin main')
   })
 
   it('retries Codex up to the configured limit before committing', async () => {
