@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.claude247.autoflow</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>@@PNPM@@</string>
+    <string>tsx</string>
+    <string>scripts/autoflow-loop.ts</string>
+    <string>--max-cycles</string>
+    <string>1</string>
+  </array>
+  <key>WorkingDirectory</key><string>@@REPO_ROOT@@</string>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key><false/>
+  </dict>
+  <key>StartInterval</key><integer>900</integer>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>@@LOG_DIR@@/autoflow.out.log</string>
+  <key>StandardErrorPath</key><string>@@LOG_DIR@@/autoflow.err.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key><string>@@HOME@@</string>
+    <key>PATH</key><string>@@PATH@@</string>
+    <key>AEDEV_AUTOFLOW_REPO_ROOT</key><string>@@REPO_ROOT@@</string>
+    <key>AEDEV_AUTOFLOW_WORKBOOK</key><string>@@REPO_ROOT@@/WORKBOOK_v4.md</string>
+    <key>AEDEV_AUTOFLOW_HOME</key><string>@@AUTOFLOW_HOME@@</string>
+    <key>AEDEV_AUTOFLOW_BRANCH</key><string>codex/autoflow-workbook</string>
+  </dict>
+</dict>
+</plist>

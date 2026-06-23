@@ -95,6 +95,8 @@ importers:
         specifier: workspace:*
         version: link:../event-log
 
+  packages/autoflow: {}
+
   packages/chaos:
     dependencies:
       '@aedev/event-log':
