@@ -480,7 +480,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
     }
 
     const pathsToCommit = remotePlan.allowed ? productivePaths : changedPaths
-    const commitSha = await commitCycle(config, runner, cycle, pathsToCommit)
+    const commitSha = await commitCycle(config, runner, cycle, pathsToCommit, baseSha)
     let remoteWriteDurationMs: number | undefined
     if (remotePlan.allowed) {
       logEvent(config, { type: 'autoflow.remote_write_started', cycle, mode: remotePlan.mode, commitSha })
@@ -889,9 +889,9 @@ async function listRemoteWriteCandidatePaths(config: AutoflowConfig, runner: Com
   return [...new Set([...changedPaths, ...remotePaths])].sort()
 }
 
-async function commitCycle(config: AutoflowConfig, runner: CommandRunner, cycle: number, changedPaths: string[]): Promise<string> {
+async function commitCycle(config: AutoflowConfig, runner: CommandRunner, cycle: number, changedPaths: string[], baseSha: string): Promise<string> {
   await git(config, runner, ['add', '--', ...changedPaths])
-  const commit = await git(config, runner, [
+  const commit = await runner.run('git', [
     '-c',
     'user.name=claude-code-247-autoflow',
     '-c',
@@ -899,9 +899,14 @@ async function commitCycle(config: AutoflowConfig, runner: CommandRunner, cycle:
     'commit',
     '-m',
     `[autoflow] cycle ${cycle}: workbook-guided update`,
-  ])
-  if (commit.exitCode !== 0) throw new Error(`git commit failed: ${commit.stderr || commit.stdout}`)
-  return (await git(config, runner, ['rev-parse', 'HEAD'])).stdout.trim()
+  ], { cwd: config.worktreePath, timeoutMs: config.commandTimeoutMs })
+  const head = (await git(config, runner, ['rev-parse', 'HEAD'])).stdout.trim()
+  if (commit.exitCode !== 0) {
+    const text = `${commit.stderr}\n${commit.stdout}`
+    if (/nothing to commit/i.test(text) && head && head !== baseSha) return head
+    throw new Error(`git commit failed: ${commit.stderr || commit.stdout}`)
+  }
+  return head
 }
 
 async function runRemoteWriteStage(
