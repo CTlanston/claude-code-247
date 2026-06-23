@@ -12,7 +12,7 @@ import {
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
-export type AutoflowStatus = 'running' | 'hold'
+export type AutoflowStatus = 'idle' | 'running' | 'hold'
 export type RemoteWriteMode = 'off' | 'pr' | 'pr-merge'
 
 export interface AutoflowConfig {
@@ -366,7 +366,13 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
       if (emptyState.consecutiveEmptyDiffs >= config.holdAfterConsecutiveEmptyDiffs) {
         return await hold(config, cycle, 'EMPTY_DIFF_STREAK', `No changed paths for ${emptyState.consecutiveEmptyDiffs} consecutive cycle(s)`, cycleDir, emptyState)
       }
-      const completedEmpty = { ...emptyState, nextCycle: cycle + 1, currentCycle: undefined, lastCompletedAt: new Date().toISOString() }
+      const completedEmpty = {
+        ...emptyState,
+        status: 'idle' as const,
+        nextCycle: cycle + 1,
+        currentCycle: undefined,
+        lastCompletedAt: new Date().toISOString(),
+      }
       saveState(config, completedEmpty)
       writeAutoflowSummary(config, {
         status: 'completed',
@@ -398,7 +404,13 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
           noProductiveState,
         )
       }
-      const completedNoProductive = { ...noProductiveState, nextCycle: cycle + 1, currentCycle: undefined, lastCompletedAt: new Date().toISOString() }
+      const completedNoProductive = {
+        ...noProductiveState,
+        status: 'idle' as const,
+        nextCycle: cycle + 1,
+        currentCycle: undefined,
+        lastCompletedAt: new Date().toISOString(),
+      }
       saveState(config, completedNoProductive)
       writeAutoflowSummary(config, {
         status: 'completed',
@@ -461,6 +473,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
       : { branch: state.branch, worktreePath: state.worktreePath }
     const completed = {
       ...state,
+      status: 'idle' as const,
       nextCycle,
       currentCycle: undefined,
       consecutiveFailures: 0,
@@ -496,7 +509,7 @@ export function loadState(config: Pick<AutoflowConfig, 'statePath' | 'branch' | 
   if (!existsSync(config.statePath)) {
     return {
       version: 1,
-      status: 'running',
+      status: 'idle',
       nextCycle: 1,
       branch: config.branch,
       worktreePath: config.worktreePath,
@@ -507,8 +520,12 @@ export function loadState(config: Pick<AutoflowConfig, 'statePath' | 'branch' | 
     }
   }
   const parsed = JSON.parse(readFileSync(config.statePath, 'utf8')) as AutoflowState
+  const normalizedStatus = parsed.status === 'running' && parsed.currentCycle === undefined && !parsed.hold
+    ? 'idle'
+    : parsed.status
   return {
     ...parsed,
+    status: normalizedStatus,
     branch: parsed.branch || config.branch,
     worktreePath: parsed.worktreePath || config.worktreePath,
     consecutiveNoProductiveChanges: parsed.consecutiveNoProductiveChanges ?? 0,
@@ -935,7 +952,13 @@ async function recordFailureOrHold(
   if (failed.consecutiveFailures >= config.holdAfterConsecutiveFailures) {
     return hold(config, cycle, code, `${reason}; failure streak=${failed.consecutiveFailures}`, cycleDir, failed)
   }
-  saveState(config, { ...failed, nextCycle: cycle + 1, currentCycle: undefined, lastCompletedAt: new Date().toISOString() })
+  saveState(config, {
+    ...failed,
+    status: 'idle',
+    nextCycle: cycle + 1,
+    currentCycle: undefined,
+    lastCompletedAt: new Date().toISOString(),
+  })
   logEvent(config, { type: 'autoflow.cycle_failed_non_terminal', cycle, code, reason, streak: failed.consecutiveFailures })
   return { cycle, status: 'completed', evidenceDir: cycleDir }
 }
@@ -1093,7 +1116,7 @@ function autoResumeHoldIfReady(config: AutoflowConfig, state: AutoflowState): Au
   if (Number.isNaN(resumeAfterMs) || resumeAfterMs > Date.now()) return null
   const resumed = {
     ...state,
-    status: 'running' as const,
+    status: 'idle' as const,
     hold: undefined,
     consecutiveFailures: 0,
   }
