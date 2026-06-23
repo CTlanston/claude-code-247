@@ -371,7 +371,7 @@ gui/501/com.claude247.autoflow.test = {
     <string>--max-cycles</string>
     <string>1</string>
   </array>
-  <key>StartInterval</key><integer>123</integer>
+  <key>StartInterval</key><integer>3600</integer>
   <key>WorkingDirectory</key><string>${config.repoRoot}</string>
 </dict>
 </plist>
@@ -387,13 +387,52 @@ gui/501/com.claude247.autoflow.test = {
 
     const parsed = JSON.parse(lines.join('\n')) as AutoflowDoctorReport
     expect(parsed.status).toBe('pass')
-    expect(parsed.launchd).toMatchObject({ label, exists: true, startInterval: 123 })
+    expect(parsed.launchd).toMatchObject({ label, exists: true, startInterval: 3600 })
+    expect(parsed.cadence).toMatchObject({
+      checked: true,
+      intervalSeconds: 3600,
+      lastCompletedAt: '2026-06-23T21:41:47.817Z',
+      overdue: false,
+    })
     expect(parsed.config.coderProvider).toBe('claude')
     expect(parsed.config.remoteMode).toBe('pr-merge')
     expect(parsed.config.maxCycles).toBe(1)
     expect(parsed.config.setupCommands).toEqual(['npm install'])
     expect(parsed.config.gateCommands).toEqual(['npm test', 'npm run build'])
     expect(parsed.checks).toContainEqual(expect.objectContaining({ code: 'launchd_plist_found', status: 'pass' }))
+    expect(parsed.checks).toContainEqual(expect.objectContaining({ code: 'launchd_cadence_recent', status: 'pass' }))
+  })
+
+  it('warns when launchd cadence is overdue', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-doctor-cadence-overdue-'))
+    const config = testConfig(dir)
+    saveState(config, {
+      ...loadState(config),
+      lastCompletedAt: '2026-06-23T21:00:00.000Z',
+    })
+
+    const report = buildAutoflowDoctorReport(
+      config,
+      new Date('2026-06-23T21:31:00.000Z'),
+      {
+        label: 'com.claude247.autoflow.test',
+        plistPath: join(dir, 'home', 'Library', 'LaunchAgents', 'com.claude247.autoflow.test.plist'),
+        exists: true,
+        environment: {},
+        programArguments: [],
+        startInterval: 900,
+        runtime: { checked: true, loaded: true, state: 'not running' },
+      },
+    )
+
+    expect(report.status).toBe('warn')
+    expect(report.cadence).toMatchObject({
+      checked: true,
+      intervalSeconds: 900,
+      overdue: true,
+      overdueMs: 60_000,
+    })
+    expect(report.checks).toContainEqual(expect.objectContaining({ code: 'launchd_cadence_recent', status: 'warn' }))
   })
 })
 

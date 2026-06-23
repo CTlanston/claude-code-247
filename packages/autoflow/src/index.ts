@@ -166,6 +166,7 @@ export interface AutoflowDoctorReport {
     programArguments: string[]
     runtime?: LaunchdRuntimeStatus
   }
+  cadence?: AutoflowCadenceStatus
   config: {
     coderProvider: CoderProvider
     remoteMode: RemoteWriteMode
@@ -227,6 +228,17 @@ export interface LaunchdRuntimeStatus {
   runs?: number
   lastExitCode?: number
   pid?: number
+  reason?: string
+}
+
+export interface AutoflowCadenceStatus {
+  checked: boolean
+  intervalSeconds?: number
+  lastCompletedAt?: string
+  nextExpectedAt?: string
+  graceSeconds?: number
+  overdue: boolean
+  overdueMs?: number
   reason?: string
 }
 
@@ -399,6 +411,21 @@ export function buildAutoflowDoctorReport(config: AutoflowConfig, now = new Date
     checks.push({ code: 'summary_readable', status: 'warn', message: `summary file missing: ${config.summaryPath}` })
   }
 
+  const cadence = buildCadenceStatus(launchd, state, now)
+  if (cadence?.checked) {
+    checks.push(cadence.overdue
+      ? {
+        code: 'launchd_cadence_recent',
+        status: 'warn',
+        message: cadence.reason ?? `last completed run is overdue by ${cadence.overdueMs ?? 0}ms`,
+      }
+      : {
+        code: 'launchd_cadence_recent',
+        status: 'pass',
+        message: cadence.nextExpectedAt ? `next run expected around ${cadence.nextExpectedAt}` : 'cadence is configured',
+      })
+  }
+
   return {
     version: 1,
     status: overallDoctorStatus(checks),
@@ -412,6 +439,7 @@ export function buildAutoflowDoctorReport(config: AutoflowConfig, now = new Date
       programArguments: launchd.programArguments,
       runtime: launchd.runtime,
     } : undefined,
+    cadence,
     config: {
       coderProvider: config.coderProvider,
       remoteMode: config.remoteMode,
@@ -1934,6 +1962,50 @@ function firstLaunchdNumber(output: string, pattern: RegExp): number | undefined
   if (value === undefined) return undefined
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : undefined
+}
+
+function buildCadenceStatus(
+  launchd: LaunchdRegistration | undefined,
+  state: AutoflowDoctorReport['state'],
+  now: Date,
+): AutoflowCadenceStatus | undefined {
+  if (!launchd?.startInterval) return undefined
+  if (!state?.lastCompletedAt) {
+    return {
+      checked: false,
+      intervalSeconds: launchd.startInterval,
+      overdue: false,
+      reason: 'no completed cycle has been recorded yet',
+    }
+  }
+
+  const completedMs = Date.parse(state.lastCompletedAt)
+  if (!Number.isFinite(completedMs)) {
+    return {
+      checked: false,
+      intervalSeconds: launchd.startInterval,
+      lastCompletedAt: state.lastCompletedAt,
+      overdue: false,
+      reason: 'lastCompletedAt is not parseable',
+    }
+  }
+
+  const intervalMs = launchd.startInterval * 1000
+  const graceMs = intervalMs * 2
+  const dueMs = completedMs + graceMs
+  const overdueMs = now.getTime() - dueMs
+  return {
+    checked: true,
+    intervalSeconds: launchd.startInterval,
+    lastCompletedAt: state.lastCompletedAt,
+    nextExpectedAt: new Date(completedMs + intervalMs).toISOString(),
+    graceSeconds: graceMs / 1000,
+    overdue: overdueMs > 0,
+    overdueMs: overdueMs > 0 ? overdueMs : 0,
+    reason: overdueMs > 0
+      ? `no completed cycle within ${graceMs / 1000}s of last completion`
+      : undefined,
+  }
 }
 
 function launchdAutoflowArgv(programArguments: string[]): string[] {
