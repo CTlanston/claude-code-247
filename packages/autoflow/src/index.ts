@@ -615,6 +615,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
   const workingBefore = await listChangedPaths(config, runner, baseSha)
   saveState(config, { ...state, status: 'running', currentCycle: cycle, lastStartedAt: startedAt })
   logEvent(config, { type: 'autoflow.cycle_started', cycle, cycleDir, baseSha })
+  let latestUsage: AutoflowUsageSummary | undefined
 
   try {
     const claudePrompt = buildClaudePrompt(config, state, cycleDir)
@@ -624,9 +625,11 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
     logEvent(config, { type: 'autoflow.claude_completed', cycle, exitCode: claude.exitCode, durationMs: claude.durationMs })
     writeCommandEvidence(cycleDir, 'claude-result.json', claude)
     writeFileSync(join(cycleDir, 'claude-output.txt'), claude.stdout || claude.stderr || '')
+    latestUsage = buildUsageSummary(extractClaudeUsage(claude))
+    if (latestUsage) writeFileSync(join(cycleDir, 'model-usage.json'), JSON.stringify(latestUsage, null, 2) + '\n')
     if (claude.exitCode !== 0) {
       return await hold(config, cycle, 'CLAUDE_FAILED', `Claude exited ${claude.exitCode}`, cycleDir, state, {
-        usage: buildUsageSummary(extractClaudeUsage(claude)),
+        usage: latestUsage,
       })
     }
 
@@ -636,7 +639,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
     const badClaudePaths = claudeChanged.filter((path) => !isWorkbookOrAutoflowArtifact(path))
     if (badClaudePaths.length > 0) {
       return await hold(config, cycle, 'CLAUDE_SCOPE_VIOLATION', `Claude touched non-workbook paths: ${badClaudePaths.join(', ')}`, cycleDir, state, {
-        usage: buildUsageSummary(extractClaudeUsage(claude)),
+        usage: latestUsage,
       })
     }
     logEvent(config, { type: 'autoflow.workbook_sync_started', cycle })
@@ -658,6 +661,8 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
       if (config.coderProvider === 'codex') logEvent(config, { type: 'autoflow.codex_completed', cycle, attempt, exitCode: coder.exitCode, durationMs: coder.durationMs })
       writeCommandEvidence(cycleDir, `coder-result-${attempt}.json`, coder)
       writeFileSync(join(cycleDir, `coder-output-${attempt}.txt`), coder.stdout || coder.stderr || '')
+      latestUsage = buildUsageSummary(extractClaudeUsage(claude), config.coderProvider === 'claude' ? extractClaudeUsage(coder) : undefined)
+      if (latestUsage) writeFileSync(join(cycleDir, 'model-usage.json'), JSON.stringify(latestUsage, null, 2) + '\n')
       if (config.coderProvider === 'codex') {
         writeCommandEvidence(cycleDir, `codex-result-${attempt}.json`, coder)
         writeFileSync(join(cycleDir, `codex-output-${attempt}.txt`), coder.stdout || coder.stderr || '')
@@ -666,7 +671,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
         if (isCoderUsageLimit(config, coder)) {
           return await hold(config, cycle, coderUsageLimitCode(config), coder.stdout || coder.stderr || `${config.coderProvider} usage limit reached`, cycleDir, state, {
             stageDurationsMs: coderStageDurations(config, claude.durationMs, coder.durationMs),
-            usage: buildUsageSummary(extractClaudeUsage(claude), config.coderProvider === 'claude' ? extractClaudeUsage(coder) : undefined),
+            usage: latestUsage,
             resumeAfter: inferCoderUsageLimitResumeAfter(config, coder),
           })
         }
@@ -686,13 +691,18 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
     }
 
     if (!coder || coder.exitCode !== 0) {
-      return await recordFailureOrHold(config, cycle, 'CODER_FAILED', `${config.coderProvider} coder exited ${coder?.exitCode ?? 'unknown'}`, cycleDir, state)
+      return await recordFailureOrHold(config, cycle, 'CODER_FAILED', `${config.coderProvider} coder exited ${coder?.exitCode ?? 'unknown'}`, cycleDir, state, {
+        usage: latestUsage,
+      })
     }
     const usage = buildUsageSummary(extractClaudeUsage(claude), config.coderProvider === 'claude' ? extractClaudeUsage(coder) : undefined)
+    latestUsage = usage
     if (usage) writeFileSync(join(cycleDir, 'model-usage.json'), JSON.stringify(usage, null, 2) + '\n')
     const failingGate = gates.find((gate) => gate.exitCode !== 0)
     if (failingGate) {
-      return await recordFailureOrHold(config, cycle, 'GATES_FAILED', `Gate failed: ${failingGate.command}`, cycleDir, state)
+      return await recordFailureOrHold(config, cycle, 'GATES_FAILED', `Gate failed: ${failingGate.command}`, cycleDir, state, {
+        usage,
+      })
     }
 
     const changedPaths = await listChangedPaths(config, runner, baseSha)
@@ -717,7 +727,9 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
         consecutiveFailures: 0,
       }
       if (emptyState.consecutiveEmptyDiffs >= config.holdAfterConsecutiveEmptyDiffs) {
-        return await hold(config, cycle, 'EMPTY_DIFF_STREAK', `No changed paths for ${emptyState.consecutiveEmptyDiffs} consecutive cycle(s)`, cycleDir, emptyState)
+        return await hold(config, cycle, 'EMPTY_DIFF_STREAK', `No changed paths for ${emptyState.consecutiveEmptyDiffs} consecutive cycle(s)`, cycleDir, emptyState, {
+          usage,
+        })
       }
       const completedEmpty = {
         ...emptyState,
@@ -757,6 +769,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
           `No productive paths for ${noProductiveState.consecutiveNoProductiveChanges} consecutive cycle(s)`,
           cycleDir,
           noProductiveState,
+          { usage },
         )
       }
       const completedNoProductive = {
@@ -862,7 +875,9 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
     await pruneOldCycleWorktrees(config, runner, cycle)
     return { cycle, status: 'completed', evidenceDir: cycleDir, commitSha }
   } catch (error) {
-    return await recordFailureOrHold(config, cycle, 'CYCLE_ERROR', (error as Error).message, cycleDir, state)
+    return await recordFailureOrHold(config, cycle, 'CYCLE_ERROR', (error as Error).message, cycleDir, state, {
+      usage: latestUsage,
+    })
   }
 }
 
@@ -1430,6 +1445,7 @@ async function recordFailureOrHold(
   reason: string,
   cycleDir: string,
   state: AutoflowState,
+  summaryInput: Partial<Pick<WriteSummaryInput, 'usage'>> = {},
 ): Promise<CycleResult> {
   const failed = {
     ...state,
@@ -1439,7 +1455,7 @@ async function recordFailureOrHold(
     consecutiveSetupFetchTimeouts: 0,
   }
   if (failed.consecutiveFailures >= config.holdAfterConsecutiveFailures) {
-    return hold(config, cycle, code, `${reason}; failure streak=${failed.consecutiveFailures}`, cycleDir, failed)
+    return hold(config, cycle, code, `${reason}; failure streak=${failed.consecutiveFailures}`, cycleDir, failed, summaryInput)
   }
   saveState(config, {
     ...failed,
