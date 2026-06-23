@@ -44,6 +44,7 @@ class FakeRunner implements CommandRunner {
     headSha?: string
     fetchTimeouts?: number
     fetchFailureStderr?: string
+    claudeDelayMs?: number
   } = {}) {}
 
   async run(command: string, args: string[], callOpts: { cwd: string; timeoutMs: number; stdin?: string }): Promise<CommandResult> {
@@ -83,6 +84,7 @@ class FakeRunner implements CommandRunner {
         writeFileSync(join(callOpts.cwd, 'WORKBOOK_v4.md'), this.opts.claudeWorkbookContent)
       }
       if (!isPlanner) this.coderDone = true
+      if (this.opts.claudeDelayMs) await delay(this.opts.claudeDelayMs)
       return result(command, args, callOpts.cwd, '{"result":"implement the next workbook step"}\n')
     }
     if (command === 'codex') {
@@ -627,6 +629,26 @@ describe('autoflow cycle controls', () => {
     expect(summary.stageDurationsMs.codex).toBeUndefined()
   })
 
+  it('emits heartbeats while long Claude planner and coder stages run', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-stage-heartbeat-'))
+    const config = {
+      ...seededConfig(dir),
+      coderProvider: 'claude' as const,
+      stageHeartbeatIntervalMs: 5,
+    }
+
+    await runOneCycle(config, new FakeRunner({ changedPaths: ['src/example.ts'], claudeDelayMs: 20 }), loadState(config))
+
+    const heartbeats = readFileSync(config.logPath, 'utf8')
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as { type: string; stage?: string; provider?: string })
+      .filter((event) => event.type === 'autoflow.stage_heartbeat')
+
+    expect(heartbeats).toContainEqual(expect.objectContaining({ stage: 'claude' }))
+    expect(heartbeats).toContainEqual(expect.objectContaining({ stage: 'coder', provider: 'claude' }))
+  })
+
   it('adopts an existing coder commit when the worktree is already clean', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'autoflow-adopt-coder-commit-'))
     const config = { ...seededConfig(dir), coderProvider: 'claude' as const }
@@ -976,6 +998,7 @@ function testConfig(dir: string): AutoflowConfig {
     holdAfterConsecutiveFailures: 3,
     holdAfterConsecutiveEmptyDiffs: 3,
     commandTimeoutMs: 1000,
+    stageHeartbeatIntervalMs: 60_000,
     cycleSleepMs: 0,
     allowRemoteWrites: false,
     remoteMode: 'off',
