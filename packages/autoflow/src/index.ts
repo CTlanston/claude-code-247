@@ -43,6 +43,7 @@ export interface AutoflowConfig {
   holdAfterConsecutiveFailures: number
   holdAfterConsecutiveEmptyDiffs: number
   commandTimeoutMs: number
+  worktreeFetchTimeoutMs: number
   stageHeartbeatIntervalMs: number
   cycleSleepMs: number
   allowRemoteWrites: boolean
@@ -191,6 +192,7 @@ export function defaultConfig(env: NodeJS.ProcessEnv = process.env, argv: string
     holdAfterConsecutiveFailures: Number(env['AEDEV_AUTOFLOW_HOLD_AFTER_FAILURES'] ?? '3'),
     holdAfterConsecutiveEmptyDiffs: Number(env['AEDEV_AUTOFLOW_HOLD_AFTER_EMPTY_DIFFS'] ?? '3'),
     commandTimeoutMs: Number(env['AEDEV_AUTOFLOW_COMMAND_TIMEOUT_MS'] ?? '1800000'),
+    worktreeFetchTimeoutMs: Number(env['AEDEV_AUTOFLOW_WORKTREE_FETCH_TIMEOUT_MS'] ?? WORKTREE_FETCH_TIMEOUT_MS),
     stageHeartbeatIntervalMs: Number(env['AEDEV_AUTOFLOW_STAGE_HEARTBEAT_MS'] ?? DEFAULT_STAGE_HEARTBEAT_INTERVAL_MS),
     cycleSleepMs: Number(env['AEDEV_AUTOFLOW_CYCLE_SLEEP_MS'] ?? '0'),
     allowRemoteWrites: parseBoolean(env['AEDEV_AUTOFLOW_ALLOW_REMOTE_WRITES']),
@@ -735,7 +737,12 @@ async function assertCliAvailable(config: AutoflowConfig, runner: CommandRunner)
   }
 }
 
-async function ensureWorktree(config: AutoflowConfig, runner: CommandRunner): Promise<void> {
+async function ensureWorktree(
+  config: AutoflowConfig,
+  runner: CommandRunner,
+  stateConfig?: Pick<AutoflowConfig, 'logPath'>,
+  cycle?: number,
+): Promise<void> {
   ensureDir(dirname(config.worktreePath))
   if (existsSync(join(config.worktreePath, '.git'))) {
     await gitIn(config.worktreePath, runner, ['switch', config.branch], config.commandTimeoutMs)
@@ -746,12 +753,35 @@ async function ensureWorktree(config: AutoflowConfig, runner: CommandRunner): Pr
   }
   if (!localGitRefExists(config.repoRoot, `refs/heads/${config.branch}`)) {
     if (config.remoteMode !== 'off') {
+      const timeoutMs = worktreeFetchTimeoutMs(config)
+      if (stateConfig && cycle !== undefined) {
+        logEvent(stateConfig, {
+          type: 'autoflow.setup_fetch_started',
+          cycle,
+          remoteName: config.remoteName,
+          baseBranch: config.prBaseBranch,
+          timeoutMs,
+        })
+      }
       const fetch = await runner.run('git', ['fetch', config.remoteName, config.prBaseBranch], {
         cwd: config.repoRoot,
-        timeoutMs: worktreeFetchTimeoutMs(config),
+        timeoutMs,
       })
+      if (stateConfig && cycle !== undefined) {
+        logEvent(stateConfig, {
+          type: 'autoflow.setup_fetch_completed',
+          cycle,
+          remoteName: config.remoteName,
+          baseBranch: config.prBaseBranch,
+          exitCode: fetch.exitCode,
+          durationMs: fetch.durationMs,
+          timeoutMs,
+          stderr: summarizeCommandOutput(fetch.stderr),
+          stdout: summarizeCommandOutput(fetch.stdout),
+        })
+      }
       if (fetch.exitCode === 124) {
-        throw new Error(`git fetch timed out while preparing base ${config.remoteName}/${config.prBaseBranch}`)
+        throw new Error(`git fetch timed out after ${timeoutMs}ms while preparing base ${config.remoteName}/${config.prBaseBranch}`)
       }
       if (fetch.exitCode !== 0) {
         throw new Error(`git fetch failed while preparing base ${config.remoteName}/${config.prBaseBranch}: ${fetch.stderr || fetch.stdout || `exit ${fetch.exitCode}`}`)
@@ -782,7 +812,7 @@ async function prepareWorktree(
     branch: activeConfig.branch,
     worktreePath: activeConfig.worktreePath,
   })
-  await ensureWorktree(activeConfig, runner)
+  await ensureWorktree(activeConfig, runner, stateConfig, cycle)
   logEvent(stateConfig, {
     type: 'autoflow.ensure_worktree_completed',
     cycle,
@@ -1491,8 +1521,17 @@ function gitDirForRepo(repoRoot: string): string | null {
   return resolve(repoRoot, match[1])
 }
 
-function worktreeFetchTimeoutMs(config: Pick<AutoflowConfig, 'commandTimeoutMs'>): number {
-  return Math.min(config.commandTimeoutMs, WORKTREE_FETCH_TIMEOUT_MS)
+function worktreeFetchTimeoutMs(config: Pick<AutoflowConfig, 'commandTimeoutMs'> & Partial<Pick<AutoflowConfig, 'worktreeFetchTimeoutMs'>>): number {
+  const configured = typeof config.worktreeFetchTimeoutMs === 'number' && Number.isFinite(config.worktreeFetchTimeoutMs)
+    ? config.worktreeFetchTimeoutMs
+    : WORKTREE_FETCH_TIMEOUT_MS
+  return Math.min(config.commandTimeoutMs, configured)
+}
+
+function summarizeCommandOutput(output: string, maxLength = 500): string | undefined {
+  const trimmed = output.trim()
+  if (!trimmed) return undefined
+  return trimmed.length > maxLength ? `${trimmed.slice(0, maxLength)}...` : trimmed
 }
 
 function parseList(raw: string | undefined, fallback: string[] = []): string[] {
