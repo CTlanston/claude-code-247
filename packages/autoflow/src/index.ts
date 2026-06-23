@@ -157,6 +157,7 @@ export interface AutoflowDoctorReport {
   version: 1
   status: 'pass' | 'warn' | 'fail'
   generatedAt: string
+  operatorAction: AutoflowOperatorAction
   launchd?: {
     label: string
     plistPath: string
@@ -209,6 +210,13 @@ export interface AutoflowDoctorReport {
 
 type AutoflowDoctorState = NonNullable<AutoflowDoctorReport['state']>
 type AutoflowDoctorSummary = NonNullable<AutoflowDoctorReport['summary']>
+
+export interface AutoflowOperatorAction {
+  severity: 'info' | 'warn' | 'fail'
+  summary: string
+  command?: string
+  details?: string[]
+}
 
 interface LaunchdRegistration {
   label: string
@@ -430,6 +438,7 @@ export function buildAutoflowDoctorReport(config: AutoflowConfig, now = new Date
     version: 1,
     status: overallDoctorStatus(checks),
     generatedAt: now.toISOString(),
+    operatorAction: buildOperatorAction(config, launchd, state, summary, cadence, checks),
     launchd: launchd ? {
       label: launchd.label,
       plistPath: launchd.plistPath,
@@ -2008,9 +2017,101 @@ function buildCadenceStatus(
   }
 }
 
+function buildOperatorAction(
+  config: AutoflowConfig,
+  launchd: LaunchdRegistration | undefined,
+  state: AutoflowDoctorReport['state'],
+  summary: AutoflowDoctorReport['summary'],
+  cadence: AutoflowCadenceStatus | undefined,
+  checks: AutoflowDoctorReport['checks'],
+): AutoflowOperatorAction {
+  if (launchd && !launchd.exists) {
+    return {
+      severity: 'fail',
+      summary: 'Autoflow launchd plist is missing; reinstall or register the loop.',
+      details: [`Expected plist: ${launchd.plistPath}`],
+    }
+  }
+
+  if (launchd?.runtime && !launchd.runtime.loaded) {
+    return {
+      severity: 'warn',
+      summary: 'Autoflow launchd label is not loaded.',
+      command: launchd.exists ? `launchctl bootstrap gui/$(id -u) ${shellArg(launchd.plistPath)}` : undefined,
+      details: [launchd.runtime.reason ?? `Label: ${launchd.label}`],
+    }
+  }
+
+  if (state?.status === 'hold' && state.hold) {
+    return {
+      severity: 'warn',
+      summary: `Autoflow is on HOLD: ${state.hold.code}.`,
+      details: [
+        state.hold.operatorHint ?? state.hold.reason,
+        `Evidence directory: ${config.evidenceDir}`,
+      ],
+    }
+  }
+
+  if (checks.some((check) => check.code === 'running_state_stale' && check.status === 'warn')) {
+    return {
+      severity: 'warn',
+      summary: 'Autoflow has a stale running state; the next run should recover it.',
+      details: [
+        `State path: ${config.statePath}`,
+        `Log path: ${config.logPath}`,
+      ],
+    }
+  }
+
+  if (cadence?.checked && cadence.overdue && launchd?.label) {
+    return {
+      severity: 'warn',
+      summary: 'Autoflow launchd cadence is overdue; kickstart the label or inspect launchd.',
+      command: `launchctl kickstart -k gui/$(id -u)/${launchd.label}`,
+      details: cadence.reason ? [cadence.reason] : undefined,
+    }
+  }
+
+  const failedGates = summary?.gates.filter((gate) => gate.exitCode !== 0) ?? []
+  if (failedGates.length > 0) {
+    return {
+      severity: 'warn',
+      summary: 'Latest Autoflow summary has failing gates; inspect evidence before the next run.',
+      details: failedGates.map((gate) => `${gate.command} exited ${gate.exitCode}`),
+    }
+  }
+
+  const firstFail = checks.find((check) => check.status === 'fail')
+  if (firstFail) {
+    return {
+      severity: 'fail',
+      summary: firstFail.message,
+    }
+  }
+
+  const firstWarn = checks.find((check) => check.status === 'warn')
+  if (firstWarn) {
+    return {
+      severity: 'warn',
+      summary: firstWarn.message,
+    }
+  }
+
+  return {
+    severity: 'info',
+    summary: 'Autoflow is healthy; wait for the next scheduled run.',
+    details: cadence?.nextExpectedAt ? [`Next expected run: ${cadence.nextExpectedAt}`] : undefined,
+  }
+}
+
 function launchdAutoflowArgv(programArguments: string[]): string[] {
   const index = programArguments.findIndex((arg) => arg.endsWith('autoflow-loop.ts'))
   return index >= 0 ? programArguments.slice(index + 1) : []
+}
+
+function shellArg(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`
 }
 
 function readPlistStringDict(plist: string, key: string): NodeJS.ProcessEnv {

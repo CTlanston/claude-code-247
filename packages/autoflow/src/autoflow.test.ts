@@ -268,6 +268,10 @@ gui/501/com.claude247.autoflow.test = {
     expect(report.config.gateCommands).toEqual(['npm test', 'npm run build'])
     expect(report.state?.nextCycle).toBe(12)
     expect(report.summary?.coderProvider).toBe('claude')
+    expect(report.operatorAction).toMatchObject({
+      severity: 'info',
+      summary: 'Autoflow is healthy; wait for the next scheduled run.',
+    })
     expect(report.checks).toContainEqual(expect.objectContaining({ code: 'remote_writes_enabled', status: 'pass' }))
   })
 
@@ -432,7 +436,76 @@ gui/501/com.claude247.autoflow.test = {
       overdue: true,
       overdueMs: 60_000,
     })
+    expect(report.operatorAction).toMatchObject({
+      severity: 'warn',
+      summary: 'Autoflow launchd cadence is overdue; kickstart the label or inspect launchd.',
+      command: 'launchctl kickstart -k gui/$(id -u)/com.claude247.autoflow.test',
+    })
     expect(report.checks).toContainEqual(expect.objectContaining({ code: 'launchd_cadence_recent', status: 'warn' }))
+  })
+
+  it('recommends the hold operator hint before lower-priority warnings', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-doctor-hold-action-'))
+    const config = testConfig(dir)
+    saveState(config, {
+      ...loadState(config),
+      status: 'hold',
+      hold: {
+        code: 'gate_failure',
+        reason: 'npm test failed',
+        cycle: 9,
+        createdAt: '2026-06-23T21:00:00.000Z',
+        operatorHint: 'Open the evidence directory and fix the failing unit test.',
+      },
+      lastCompletedAt: '2026-06-23T20:00:00.000Z',
+    })
+
+    const report = buildAutoflowDoctorReport(
+      config,
+      new Date('2026-06-23T21:31:00.000Z'),
+      {
+        label: 'com.claude247.autoflow.test',
+        plistPath: join(dir, 'home', 'Library', 'LaunchAgents', 'com.claude247.autoflow.test.plist'),
+        exists: true,
+        environment: {},
+        programArguments: [],
+        startInterval: 900,
+        runtime: { checked: true, loaded: true, state: 'not running' },
+      },
+    )
+
+    expect(report.operatorAction).toMatchObject({
+      severity: 'warn',
+      summary: 'Autoflow is on HOLD: gate_failure.',
+      details: expect.arrayContaining(['Open the evidence directory and fix the failing unit test.']),
+    })
+  })
+
+  it('recommends loading launchd when the plist exists but runtime is absent', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-doctor-launchd-action-'))
+    const config = testConfig(dir)
+    const label = 'com.claude247.autoflow.test'
+    const plistPath = join(dir, 'home', 'Library', 'LaunchAgents', `${label}.plist`)
+
+    const report = buildAutoflowDoctorReport(
+      config,
+      new Date('2026-06-23T21:30:00.000Z'),
+      {
+        label,
+        plistPath,
+        exists: true,
+        environment: {},
+        programArguments: [],
+        startInterval: 900,
+        runtime: { checked: true, loaded: false, reason: 'Could not find service' },
+      },
+    )
+
+    expect(report.operatorAction).toMatchObject({
+      severity: 'warn',
+      summary: 'Autoflow launchd label is not loaded.',
+      command: `launchctl bootstrap gui/$(id -u) '${plistPath}'`,
+    })
   })
 })
 
