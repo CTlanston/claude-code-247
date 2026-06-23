@@ -144,6 +144,7 @@ const DEFAULT_GATES = ['pnpm typecheck', 'pnpm lint', 'pnpm test']
 const DEFAULT_FORBIDDEN = ['.env*', 'secrets/**', '.github/**', 'AGENTS.md']
 const WORKTREE_FETCH_TIMEOUT_MS = 60_000
 const DEFAULT_TIMEOUT_KILL_GRACE_MS = 2_000
+const TRANSIENT_SETUP_RESUME_DELAY_MS = 5 * 60_000
 
 export function defaultConfig(env: NodeJS.ProcessEnv = process.env, argv: string[] = process.argv.slice(2)): AutoflowConfig {
   const repoRoot = resolve(env['AEDEV_AUTOFLOW_REPO_ROOT'] ?? DEFAULT_REPO_ROOT)
@@ -256,7 +257,10 @@ export async function runAutoflow(config: AutoflowConfig, runner: CommandRunner 
       const cycle = fresh.nextCycle
       const cycleDir = join(config.evidenceDir, cycleIdFor(cycle))
       ensureDir(cycleDir)
-      const result = await hold(config, cycle, 'SETUP_FAILED', (error as Error).message, cycleDir, fresh)
+      const setupHold = classifySetupHold(error as Error)
+      const result = await hold(config, cycle, setupHold.code, (error as Error).message, cycleDir, fresh, {
+        resumeAfter: setupHold.resumeAfter,
+      })
       results.push(result)
       break
     }
@@ -1084,7 +1088,7 @@ function monthIndex(monthName: string): number | undefined {
 
 function autoResumeHoldIfReady(config: AutoflowConfig, state: AutoflowState): AutoflowState | null {
   const hold = state.hold
-  if (hold?.code !== 'CODEX_USAGE_LIMIT' || !hold.resumeAfter) return null
+  if (!hold || !isAutoResumableHold(hold) || !hold.resumeAfter) return null
   const resumeAfterMs = Date.parse(hold.resumeAfter)
   if (Number.isNaN(resumeAfterMs) || resumeAfterMs > Date.now()) return null
   const resumed = {
@@ -1096,6 +1100,20 @@ function autoResumeHoldIfReady(config: AutoflowConfig, state: AutoflowState): Au
   saveState(config, resumed)
   logEvent(config, { type: 'autoflow.hold_auto_resumed', hold, resumeAfter: hold.resumeAfter })
   return resumed
+}
+
+function isAutoResumableHold(hold: HoldRecord): boolean {
+  return hold.code === 'CODEX_USAGE_LIMIT' || hold.code === 'SETUP_FETCH_TIMEOUT'
+}
+
+function classifySetupHold(error: Error): { code: string; resumeAfter?: string } {
+  if (/git fetch timed out/i.test(error.message)) {
+    return {
+      code: 'SETUP_FETCH_TIMEOUT',
+      resumeAfter: new Date(Date.now() + TRANSIENT_SETUP_RESUME_DELAY_MS).toISOString(),
+    }
+  }
+  return { code: 'SETUP_FAILED' }
 }
 
 interface WriteSummaryInput {
