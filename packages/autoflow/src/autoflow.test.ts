@@ -226,6 +226,26 @@ describe('autoflow cycle controls', () => {
     expect(commands).toContain(`git worktree add ${config.worktreePath} codex/autoflow-workbook`)
   })
 
+  it('uses an existing local remote base ref without fetching during worktree preparation', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-worktree-local-remote-ref-'))
+    const config = {
+      ...testConfig(dir),
+      worktreePath: join(dir, 'new-worktree'),
+      remoteMode: 'pr' as const,
+    }
+    mkdirSync(join(config.repoRoot, '.git', 'refs', 'remotes', 'origin'), { recursive: true })
+    writeFileSync(join(config.repoRoot, '.git', 'refs', 'remotes', 'origin', 'main'), 'base-sha\n')
+    const runner = new WorktreeCreateRunner({ changedPaths: [] })
+
+    const results = await runAutoflow(config, runner)
+    const commands = runner.calls.map((call) => [call.command, ...call.args].join(' '))
+
+    expect(results[0]?.status).toBe('completed')
+    expect(commands).not.toContain('git fetch origin main')
+    expect(commands).toContain('git branch codex/autoflow-workbook origin/main')
+    expect(commands).toContain(`git worktree add ${config.worktreePath} codex/autoflow-workbook`)
+  })
+
   it('retries Codex up to the configured limit before committing', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'autoflow-cycle-'))
     const config = seededConfig(dir)
