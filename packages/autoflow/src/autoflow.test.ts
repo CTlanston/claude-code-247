@@ -309,7 +309,7 @@ describe('autoflow cycle controls', () => {
     const runner = new FakeRunner({
       codexFailures: 3,
       changedPaths: ['src/example.ts'],
-      codexFailureStdout: `{"type":"error","message":"You've hit your usage limit. Try again later."}\n`,
+      codexFailureStdout: `{"type":"error","message":"You've hit your usage limit. Try again at Jun 23rd, 2026 12:01 AM."}\n`,
     })
 
     const result = await runOneCycle(config, runner, loadState(config))
@@ -320,8 +320,61 @@ describe('autoflow cycle controls', () => {
 
     expect(result.status).toBe('hold')
     expect(result.hold?.code).toBe('CODEX_USAGE_LIMIT')
+    expect(result.hold?.resumeAfter).toBe(new Date(2026, 5, 23, 0, 1).toISOString())
     expect(runner.codexCalls).toBe(1)
     expect(events.some((event) => event.type === 'autoflow.gates_started')).toBe(false)
+  })
+
+  it('auto-resumes an expired Codex usage-limit hold on the next tick', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-codex-usage-resume-'))
+    const config = testConfig(dir)
+    mkdirSync(join(config.worktreePath, '.git'), { recursive: true })
+    saveState(config, {
+      ...loadState(config),
+      status: 'hold',
+      hold: {
+        code: 'CODEX_USAGE_LIMIT',
+        reason: 'Codex usage limit reached',
+        cycle: 4,
+        createdAt: '2026-06-22T23:50:00.000Z',
+        resumeAfter: '1970-01-01T00:00:00.000Z',
+      },
+    })
+
+    const results = await runAutoflow(config, new FakeRunner({ changedPaths: ['src/example.ts'] }))
+    const eventTypes = readFileSync(config.logPath, 'utf8')
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as { type: string })
+      .map((event) => event.type)
+
+    expect(results[0]?.status).toBe('completed')
+    expect(loadState(config).status).toBe('running')
+    expect(loadState(config).hold).toBeUndefined()
+    expect(eventTypes).toContain('autoflow.hold_auto_resumed')
+  })
+
+  it('stays on hold until a Codex usage-limit resume time arrives', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-codex-usage-wait-'))
+    const config = testConfig(dir)
+    const runner = new FakeRunner({ changedPaths: ['src/example.ts'] })
+    saveState(config, {
+      ...loadState(config),
+      status: 'hold',
+      hold: {
+        code: 'CODEX_USAGE_LIMIT',
+        reason: 'Codex usage limit reached',
+        cycle: 4,
+        createdAt: '2026-06-22T23:50:00.000Z',
+        resumeAfter: '2999-01-01T00:00:00.000Z',
+      },
+    })
+
+    const results = await runAutoflow(config, runner)
+
+    expect(results).toEqual([])
+    expect(loadState(config).status).toBe('hold')
+    expect(runner.calls).toHaveLength(0)
   })
 
   it('logs stage events around Claude, Codex, and gates', async () => {
