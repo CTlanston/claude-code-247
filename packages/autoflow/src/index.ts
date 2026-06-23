@@ -157,6 +157,14 @@ export interface AutoflowDoctorReport {
   version: 1
   status: 'pass' | 'warn' | 'fail'
   generatedAt: string
+  launchd?: {
+    label: string
+    plistPath: string
+    exists: boolean
+    startInterval?: number
+    workingDirectory?: string
+    programArguments: string[]
+  }
   config: {
     coderProvider: CoderProvider
     remoteMode: RemoteWriteMode
@@ -199,6 +207,16 @@ export interface AutoflowDoctorReport {
 
 type AutoflowDoctorState = NonNullable<AutoflowDoctorReport['state']>
 type AutoflowDoctorSummary = NonNullable<AutoflowDoctorReport['summary']>
+
+interface LaunchdRegistration {
+  label: string
+  plistPath: string
+  exists: boolean
+  environment: NodeJS.ProcessEnv
+  startInterval?: number
+  workingDirectory?: string
+  programArguments: string[]
+}
 
 export interface CommandRunner {
   run(command: string, args: string[], opts: CommandRunOptions): Promise<CommandResult>
@@ -267,11 +285,16 @@ export function defaultConfig(env: NodeJS.ProcessEnv = process.env, argv: string
 }
 
 export async function runAutoflowCli(env: NodeJS.ProcessEnv = process.env, argv: string[] = process.argv.slice(2)): Promise<void> {
-  const config = defaultConfig(env, argv)
   if (argv[0] === 'doctor' || argv.includes('--doctor')) {
-    console.log(JSON.stringify(buildAutoflowDoctorReport(config), null, 2))
+    const launchdLabel = argValue(argv, '--launchd-label')
+    const launchd = launchdLabel ? readLaunchdRegistration(launchdLabel, env) : undefined
+    const configEnv = launchd ? { ...env, ...launchd.environment } : env
+    const configArgv = launchd ? launchdAutoflowArgv(launchd.programArguments) : argv
+    const config = defaultConfig(configEnv, configArgv)
+    console.log(JSON.stringify(buildAutoflowDoctorReport(config, new Date(), launchd), null, 2))
     return
   }
+  const config = defaultConfig(env, argv)
   logEvent(config, {
     type: 'autoflow.cli_started',
     argv,
@@ -285,7 +308,7 @@ export async function runAutoflowCli(env: NodeJS.ProcessEnv = process.env, argv:
   logEvent(config, { type: 'autoflow.cli_completed' })
 }
 
-export function buildAutoflowDoctorReport(config: AutoflowConfig, now = new Date()): AutoflowDoctorReport {
+export function buildAutoflowDoctorReport(config: AutoflowConfig, now = new Date(), launchd?: LaunchdRegistration): AutoflowDoctorReport {
   const paths = {
     repoRoot: pathStatus(config.repoRoot),
     workbookPath: pathStatus(config.workbookPath),
@@ -296,6 +319,11 @@ export function buildAutoflowDoctorReport(config: AutoflowConfig, now = new Date
     worktreePath: pathStatus(config.worktreePath),
   }
   const checks: AutoflowDoctorReport['checks'] = [
+    ...(launchd
+      ? [launchd.exists
+        ? { code: 'launchd_plist_found' as const, status: 'pass' as const, message: `launchd plist found: ${launchd.plistPath}` }
+        : { code: 'launchd_plist_found' as const, status: 'fail' as const, message: `launchd plist missing: ${launchd.plistPath}` }]
+      : []),
     paths.repoRoot.exists
       ? { code: 'repo_root_exists', status: 'pass', message: `repo root found: ${config.repoRoot}` }
       : { code: 'repo_root_exists', status: 'fail', message: `repo root missing: ${config.repoRoot}` },
@@ -358,6 +386,14 @@ export function buildAutoflowDoctorReport(config: AutoflowConfig, now = new Date
     version: 1,
     status: overallDoctorStatus(checks),
     generatedAt: now.toISOString(),
+    launchd: launchd ? {
+      label: launchd.label,
+      plistPath: launchd.plistPath,
+      exists: launchd.exists,
+      startInterval: launchd.startInterval,
+      workingDirectory: launchd.workingDirectory,
+      programArguments: launchd.programArguments,
+    } : undefined,
     config: {
       coderProvider: config.coderProvider,
       remoteMode: config.remoteMode,
@@ -1820,6 +1856,70 @@ function worktreeFetchTimeoutMs(config: Pick<AutoflowConfig, 'commandTimeoutMs'>
 function setupFetchAttempts(config: Partial<Pick<AutoflowConfig, 'setupFetchAttempts'>>): number {
   const attempts = Math.floor(config.setupFetchAttempts ?? 1)
   return Number.isFinite(attempts) && attempts > 0 ? attempts : 1
+}
+
+function readLaunchdRegistration(label: string, env: NodeJS.ProcessEnv = process.env): LaunchdRegistration {
+  const home = env['HOME'] ?? homedir()
+  const plistPath = join(home, 'Library', 'LaunchAgents', `${label}.plist`)
+  if (!existsSync(plistPath)) {
+    return { label, plistPath, exists: false, environment: {}, programArguments: [] }
+  }
+  const plist = readFileSync(plistPath, 'utf8')
+  return {
+    label,
+    plistPath,
+    exists: true,
+    environment: readPlistStringDict(plist, 'EnvironmentVariables'),
+    startInterval: readPlistInteger(plist, 'StartInterval'),
+    workingDirectory: readPlistString(plist, 'WorkingDirectory'),
+    programArguments: readPlistStringArray(plist, 'ProgramArguments'),
+  }
+}
+
+function launchdAutoflowArgv(programArguments: string[]): string[] {
+  const index = programArguments.findIndex((arg) => arg.endsWith('autoflow-loop.ts'))
+  return index >= 0 ? programArguments.slice(index + 1) : []
+}
+
+function readPlistStringDict(plist: string, key: string): NodeJS.ProcessEnv {
+  const body = readPlistBlock(plist, key, 'dict')
+  if (!body) return {}
+  const result: NodeJS.ProcessEnv = {}
+  const pairPattern = /<key>([^<]+)<\/key>\s*<string>([\s\S]*?)<\/string>/g
+  for (const match of body.matchAll(pairPattern)) {
+    result[decodePlistValue(match[1])] = decodePlistValue(match[2])
+  }
+  return result
+}
+
+function readPlistStringArray(plist: string, key: string): string[] {
+  const body = readPlistBlock(plist, key, 'array')
+  if (!body) return []
+  return [...body.matchAll(/<string>([\s\S]*?)<\/string>/g)].map((match) => decodePlistValue(match[1]))
+}
+
+function readPlistString(plist: string, key: string): string | undefined {
+  const match = plist.match(new RegExp(`<key>${escapeRegExp(key)}</key>\\s*<string>([\\s\\S]*?)</string>`))
+  return match ? decodePlistValue(match[1]) : undefined
+}
+
+function readPlistInteger(plist: string, key: string): number | undefined {
+  const match = plist.match(new RegExp(`<key>${escapeRegExp(key)}</key>\\s*<integer>([0-9]+)</integer>`))
+  return match ? Number(match[1]) : undefined
+}
+
+function readPlistBlock(plist: string, key: string, tag: 'dict' | 'array'): string | undefined {
+  const match = plist.match(new RegExp(`<key>${escapeRegExp(key)}</key>\\s*<${tag}>([\\s\\S]*?)</${tag}>`))
+  return match?.[1]
+}
+
+function decodePlistValue(value: string): string {
+  return value
+    .replaceAll('&lt;', '<')
+    .replaceAll('&gt;', '>')
+    .replaceAll('&quot;', '"')
+    .replaceAll('&apos;', "'")
+    .replaceAll('&amp;', '&')
 }
 
 function pathStatus(path: string): { path: string; exists: boolean } {
