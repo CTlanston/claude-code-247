@@ -1,5 +1,6 @@
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { describe, expect, it } from 'vitest'
@@ -221,6 +222,40 @@ describe('spawn command runner', () => {
         try { process.kill(childPid, 'SIGKILL') } catch { /* already gone */ }
       }
     }
+  })
+})
+
+describe('autoflow launchd installer', () => {
+  it('renders coder and self-healing config into the launchd plist', () => {
+    const home = mkdtempSync(join(tmpdir(), 'autoflow-launchd-home-'))
+    const label = 'com.claude247.autoflow.test'
+    const script = join(process.cwd(), 'scripts', 'install_autoflow_launchd.sh')
+
+    execFileSync('/bin/bash', [script, '--render-only'], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        HOME: home,
+        AEDEV_AUTOFLOW_LABEL: label,
+        AEDEV_AUTOFLOW_CODER_PROVIDER: 'claude',
+        AEDEV_AUTOFLOW_CODER_RETRIES: '2',
+        AEDEV_AUTOFLOW_WORKTREE_FETCH_TIMEOUT_MS: '12345',
+        AEDEV_AUTOFLOW_SETUP_FETCH_ATTEMPTS: '4',
+        AEDEV_AUTOFLOW_RETAIN_CYCLE_WORKTREES: '7',
+        AEDEV_AUTOFLOW_RUNNING_STATE_TTL_MS: '8888',
+        AEDEV_AUTOFLOW_STAGE_HEARTBEAT_MS: '9999',
+      },
+      stdio: 'pipe',
+    })
+
+    const plist = readFileSync(join(home, 'Library', 'LaunchAgents', `${label}.plist`), 'utf8')
+    expect(plist).toContain('<key>AEDEV_AUTOFLOW_CODER_PROVIDER</key><string>claude</string>')
+    expect(plist).toContain('<key>AEDEV_AUTOFLOW_CODER_RETRIES</key><string>2</string>')
+    expect(plist).toContain('<key>AEDEV_AUTOFLOW_WORKTREE_FETCH_TIMEOUT_MS</key><string>12345</string>')
+    expect(plist).toContain('<key>AEDEV_AUTOFLOW_SETUP_FETCH_ATTEMPTS</key><string>4</string>')
+    expect(plist).toContain('<key>AEDEV_AUTOFLOW_RETAIN_CYCLE_WORKTREES</key><string>7</string>')
+    expect(plist).toContain('<key>AEDEV_AUTOFLOW_RUNNING_STATE_TTL_MS</key><string>8888</string>')
+    expect(plist).toContain('<key>AEDEV_AUTOFLOW_STAGE_HEARTBEAT_MS</key><string>9999</string>')
   })
 })
 
