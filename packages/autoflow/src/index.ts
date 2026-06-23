@@ -1083,7 +1083,10 @@ async function ensureWorktree(
 ): Promise<void> {
   ensureDir(dirname(config.worktreePath))
   if (existsSync(join(config.worktreePath, '.git'))) {
-    await gitIn(config.worktreePath, runner, ['switch', config.branch], config.commandTimeoutMs)
+    const currentBranch = (await gitIn(config.worktreePath, runner, ['branch', '--show-current'], config.commandTimeoutMs)).stdout.trim()
+    if (currentBranch !== config.branch) {
+      await gitIn(config.worktreePath, runner, ['switch', config.branch], config.commandTimeoutMs)
+    }
     return
   }
   if (existsSync(config.worktreePath)) {
