@@ -45,6 +45,7 @@ export interface AutoflowConfig {
   holdAfterConsecutiveEmptyDiffs: number
   commandTimeoutMs: number
   worktreeFetchTimeoutMs: number
+  setupFetchAttempts: number
   retainedCycleWorktrees: number
   stageHeartbeatIntervalMs: number
   cycleSleepMs: number
@@ -196,6 +197,7 @@ export function defaultConfig(env: NodeJS.ProcessEnv = process.env, argv: string
     holdAfterConsecutiveEmptyDiffs: Number(env['AEDEV_AUTOFLOW_HOLD_AFTER_EMPTY_DIFFS'] ?? '3'),
     commandTimeoutMs: Number(env['AEDEV_AUTOFLOW_COMMAND_TIMEOUT_MS'] ?? '1800000'),
     worktreeFetchTimeoutMs: Number(env['AEDEV_AUTOFLOW_WORKTREE_FETCH_TIMEOUT_MS'] ?? WORKTREE_FETCH_TIMEOUT_MS),
+    setupFetchAttempts: Number(env['AEDEV_AUTOFLOW_SETUP_FETCH_ATTEMPTS'] ?? '2'),
     retainedCycleWorktrees: Number(env['AEDEV_AUTOFLOW_RETAIN_CYCLE_WORKTREES'] ?? DEFAULT_RETAINED_CYCLE_WORKTREES),
     stageHeartbeatIntervalMs: Number(env['AEDEV_AUTOFLOW_STAGE_HEARTBEAT_MS'] ?? DEFAULT_STAGE_HEARTBEAT_INTERVAL_MS),
     cycleSleepMs: Number(env['AEDEV_AUTOFLOW_CYCLE_SLEEP_MS'] ?? '0'),
@@ -759,34 +761,44 @@ async function ensureWorktree(
   if (!localGitRefExists(config.repoRoot, `refs/heads/${config.branch}`)) {
     if (config.remoteMode !== 'off') {
       const timeoutMs = worktreeFetchTimeoutMs(config)
-      if (stateConfig && cycle !== undefined) {
-        logEvent(stateConfig, {
-          type: 'autoflow.setup_fetch_started',
-          cycle,
-          remoteName: config.remoteName,
-          baseBranch: config.prBaseBranch,
+      const maxAttempts = setupFetchAttempts(config)
+      let fetch: CommandResult | undefined
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        if (stateConfig && cycle !== undefined) {
+          logEvent(stateConfig, {
+            type: 'autoflow.setup_fetch_started',
+            cycle,
+            attempt,
+            maxAttempts,
+            remoteName: config.remoteName,
+            baseBranch: config.prBaseBranch,
+            timeoutMs,
+          })
+        }
+        fetch = await runner.run('git', ['fetch', config.remoteName, config.prBaseBranch], {
+          cwd: config.repoRoot,
           timeoutMs,
         })
+        if (stateConfig && cycle !== undefined) {
+          logEvent(stateConfig, {
+            type: 'autoflow.setup_fetch_completed',
+            cycle,
+            attempt,
+            maxAttempts,
+            remoteName: config.remoteName,
+            baseBranch: config.prBaseBranch,
+            exitCode: fetch.exitCode,
+            durationMs: fetch.durationMs,
+            timeoutMs,
+            stderr: summarizeCommandOutput(fetch.stderr),
+            stdout: summarizeCommandOutput(fetch.stdout),
+          })
+        }
+        if (fetch.exitCode !== 124 || attempt === maxAttempts) break
       }
-      const fetch = await runner.run('git', ['fetch', config.remoteName, config.prBaseBranch], {
-        cwd: config.repoRoot,
-        timeoutMs,
-      })
-      if (stateConfig && cycle !== undefined) {
-        logEvent(stateConfig, {
-          type: 'autoflow.setup_fetch_completed',
-          cycle,
-          remoteName: config.remoteName,
-          baseBranch: config.prBaseBranch,
-          exitCode: fetch.exitCode,
-          durationMs: fetch.durationMs,
-          timeoutMs,
-          stderr: summarizeCommandOutput(fetch.stderr),
-          stdout: summarizeCommandOutput(fetch.stdout),
-        })
-      }
+      if (!fetch) throw new Error(`git fetch did not run while preparing base ${config.remoteName}/${config.prBaseBranch}`)
       if (fetch.exitCode === 124) {
-        throw new Error(`git fetch timed out after ${timeoutMs}ms while preparing base ${config.remoteName}/${config.prBaseBranch}`)
+        throw new Error(`git fetch timed out after ${timeoutMs}ms while preparing base ${config.remoteName}/${config.prBaseBranch} after ${maxAttempts} attempt(s)`)
       }
       if (fetch.exitCode !== 0) {
         throw new Error(`git fetch failed while preparing base ${config.remoteName}/${config.prBaseBranch}: ${fetch.stderr || fetch.stdout || `exit ${fetch.exitCode}`}`)
@@ -1601,6 +1613,11 @@ function worktreeFetchTimeoutMs(config: Pick<AutoflowConfig, 'commandTimeoutMs'>
     ? config.worktreeFetchTimeoutMs
     : WORKTREE_FETCH_TIMEOUT_MS
   return Math.min(config.commandTimeoutMs, configured)
+}
+
+function setupFetchAttempts(config: Partial<Pick<AutoflowConfig, 'setupFetchAttempts'>>): number {
+  const attempts = Math.floor(config.setupFetchAttempts ?? 1)
+  return Number.isFinite(attempts) && attempts > 0 ? attempts : 1
 }
 
 function summarizeCommandOutput(output: string, maxLength = 500): string | undefined {
