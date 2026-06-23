@@ -361,19 +361,25 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
       return await hold(config, cycle, 'CLAUDE_FAILED', `Claude exited ${claude.exitCode}`, cycleDir, state)
     }
 
+    logEvent(config, { type: 'autoflow.post_claude_diff_started', cycle, baseSha })
     const claudeChanged = await listChangedPaths(config, runner, baseSha)
+    logEvent(config, { type: 'autoflow.post_claude_diff_completed', cycle, changedPaths: claudeChanged })
     const badClaudePaths = claudeChanged.filter((path) => !isWorkbookOrAutoflowArtifact(path))
     if (badClaudePaths.length > 0) {
       return await hold(config, cycle, 'CLAUDE_SCOPE_VIOLATION', `Claude touched non-workbook paths: ${badClaudePaths.join(', ')}`, cycleDir, state)
     }
+    logEvent(config, { type: 'autoflow.workbook_sync_started', cycle })
     persistWorkbookSeed(config, cycleDir)
+    logEvent(config, { type: 'autoflow.workbook_sync_completed', cycle })
 
     let coder: CommandResult | undefined
     let gates: GateResult[] = []
     let retryContext = ''
     for (let attempt = 1; attempt <= config.maxCoderRetries; attempt++) {
+      logEvent(config, { type: 'autoflow.coder_prompt_started', cycle, attempt, provider: config.coderProvider })
       const coderPrompt = buildCoderPrompt(config, cycle, attempt, cycleDir, claude.stdout || claude.stderr, retryContext)
       writeFileSync(join(cycleDir, `coder-prompt-${attempt}.md`), coderPrompt)
+      logEvent(config, { type: 'autoflow.coder_prompt_completed', cycle, attempt, provider: config.coderProvider })
       logEvent(config, { type: 'autoflow.coder_started', cycle, attempt, provider: config.coderProvider })
       if (config.coderProvider === 'codex') logEvent(config, { type: 'autoflow.codex_started', cycle, attempt })
       coder = await runWithStageHeartbeat(config, cycle, 'coder', () => runCoder(config, runner, coderPrompt), { attempt, provider: config.coderProvider })
