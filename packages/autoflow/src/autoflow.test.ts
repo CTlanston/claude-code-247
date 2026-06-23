@@ -156,6 +156,7 @@ describe('autoflow command builders', () => {
     expect(defaultConfig({}, []).coderProvider).toBe('codex')
     expect(defaultConfig({ AEDEV_AUTOFLOW_CODER_PROVIDER: 'claude' }, []).coderProvider).toBe('claude')
     expect(defaultConfig({ AEDEV_AUTOFLOW_WORKTREE_FETCH_TIMEOUT_MS: '120000' }, []).worktreeFetchTimeoutMs).toBe(120000)
+    expect(defaultConfig({ AEDEV_AUTOFLOW_SETUP_FETCH_ATTEMPTS: '3' }, []).setupFetchAttempts).toBe(3)
     expect(defaultConfig({ AEDEV_AUTOFLOW_RETAIN_CYCLE_WORKTREES: '4' }, []).retainedCycleWorktrees).toBe(4)
   })
 
@@ -357,6 +358,7 @@ describe('autoflow cycle controls', () => {
       allowRemoteWrites: true,
       remoteMode: 'pr' as const,
       commandTimeoutMs: 1800_000,
+      setupFetchAttempts: 1,
     }
     const runner = new WorktreeCreateRunner({ fetchTimeouts: 1, changedPaths: ['src/example.ts'] })
 
@@ -385,6 +387,39 @@ describe('autoflow cycle controls', () => {
       stderr: 'fetch timed out',
     }))
     expect(runner.calls.some((call) => call.command === 'claude')).toBe(false)
+  })
+
+  it('retries a timed-out remote base fetch before holding setup', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-worktree-fetch-retry-'))
+    const config = {
+      ...testConfig(dir),
+      worktreePath: join(dir, 'new-worktree'),
+      allowRemoteWrites: true,
+      remoteMode: 'pr' as const,
+      commandTimeoutMs: 1800_000,
+      setupFetchAttempts: 2,
+    }
+    const runner = new WorktreeCreateRunner({ fetchTimeouts: 1, changedPaths: ['src/example.ts'] })
+
+    const results = await runAutoflow(config, runner)
+    const events = readFileSync(config.logPath, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as { type: string; attempt?: number; maxAttempts?: number; exitCode?: number })
+
+    expect(results[0]?.status).toBe('completed')
+    expect(events).toContainEqual(expect.objectContaining({
+      type: 'autoflow.setup_fetch_completed',
+      attempt: 1,
+      maxAttempts: 2,
+      exitCode: 124,
+    }))
+    expect(events).toContainEqual(expect.objectContaining({
+      type: 'autoflow.setup_fetch_completed',
+      attempt: 2,
+      maxAttempts: 2,
+      exitCode: 0,
+    }))
   })
 
   it('uses the configured worktree fetch timeout when preparing remote worktrees', async () => {
@@ -424,6 +459,7 @@ describe('autoflow cycle controls', () => {
       worktreePath: join(dir, 'new-worktree'),
       allowRemoteWrites: true,
       remoteMode: 'pr' as const,
+      setupFetchAttempts: 1,
     }
     saveState(config, { ...loadState(config), consecutiveSetupFetchTimeouts: 1 })
     const runner = new WorktreeCreateRunner({ fetchTimeouts: 1, changedPaths: ['src/example.ts'] })
@@ -447,6 +483,7 @@ describe('autoflow cycle controls', () => {
       worktreePath: join(dir, 'new-worktree'),
       allowRemoteWrites: true,
       remoteMode: 'pr' as const,
+      setupFetchAttempts: 1,
     }
     saveState(config, { ...loadState(config), consecutiveSetupFetchTimeouts: 5 })
     const runner = new WorktreeCreateRunner({ fetchTimeouts: 1, changedPaths: ['src/example.ts'] })
@@ -1090,6 +1127,7 @@ function testConfig(dir: string): AutoflowConfig {
     holdAfterConsecutiveEmptyDiffs: 3,
     commandTimeoutMs: 1000,
     worktreeFetchTimeoutMs: 60_000,
+    setupFetchAttempts: 2,
     retainedCycleWorktrees: 12,
     stageHeartbeatIntervalMs: 60_000,
     cycleSleepMs: 0,
