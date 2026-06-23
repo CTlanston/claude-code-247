@@ -156,6 +156,7 @@ describe('autoflow command builders', () => {
     expect(defaultConfig({}, []).coderProvider).toBe('codex')
     expect(defaultConfig({ AEDEV_AUTOFLOW_CODER_PROVIDER: 'claude' }, []).coderProvider).toBe('claude')
     expect(defaultConfig({ AEDEV_AUTOFLOW_WORKTREE_FETCH_TIMEOUT_MS: '120000' }, []).worktreeFetchTimeoutMs).toBe(120000)
+    expect(defaultConfig({ AEDEV_AUTOFLOW_RETAIN_CYCLE_WORKTREES: '4' }, []).retainedCycleWorktrees).toBe(4)
   })
 
   it('builds Claude and Codex commands without remote-write operations', () => {
@@ -935,6 +936,50 @@ describe('autoflow cycle controls', () => {
     expect(nextState.worktreePath).toBe(join(dir, 'worktree-cycle-000003'))
   })
 
+  it('prunes old rotated worktrees after a successful cycle', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-remote-prune-worktrees-'))
+    const baseConfig = seededConfig(dir)
+    for (const cycle of [1, 2, 3, 4, 5]) {
+      mkdirSync(join(dir, `worktree-cycle-00000${cycle}`, '.git'), { recursive: true })
+    }
+    writeFileSync(join(dir, 'worktree-cycle-000005', 'WORKBOOK_v4.md'), readFileSync(baseConfig.workbookPath, 'utf8'))
+    const config = {
+      ...baseConfig,
+      branch: 'codex/autoflow-workbook-cycle-000005',
+      worktreePath: join(dir, 'worktree-cycle-000005'),
+      allowRemoteWrites: true,
+      remoteMode: 'pr-merge' as const,
+      rotateRemoteBranches: true,
+      retainedCycleWorktrees: 2,
+    }
+    const state = {
+      ...loadState(baseConfig),
+      nextCycle: 5,
+      branch: config.branch,
+      worktreePath: config.worktreePath,
+      seeded: true,
+    }
+    saveState(baseConfig, state)
+
+    const runner = new FakeRunner({ changedPaths: ['src/example.ts'] })
+    const result = await runOneCycle(config, runner, state)
+    const commands = runner.calls.map((call) => [call.command, ...call.args].join(' '))
+    const events = readFileSync(config.logPath, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as { type: string; removed?: number; attempted?: number; path?: string })
+
+    expect(result.status).toBe('completed')
+    expect(commands).toContain(`git worktree remove --force ${join(dir, 'worktree-cycle-000001')}`)
+    expect(commands).toContain(`git worktree remove --force ${join(dir, 'worktree-cycle-000002')}`)
+    expect(commands).not.toContain(`git worktree remove --force ${join(dir, 'worktree-cycle-000005')}`)
+    expect(events).toContainEqual(expect.objectContaining({
+      type: 'autoflow.cycle_worktree_prune_completed',
+      removed: 2,
+      attempted: 2,
+    }))
+  })
+
   it('holds instead of remote-writing when PR mode is enabled but policy blocks the change', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'autoflow-remote-policy-'))
     const config = {
@@ -1045,6 +1090,7 @@ function testConfig(dir: string): AutoflowConfig {
     holdAfterConsecutiveEmptyDiffs: 3,
     commandTimeoutMs: 1000,
     worktreeFetchTimeoutMs: 60_000,
+    retainedCycleWorktrees: 12,
     stageHeartbeatIntervalMs: 60_000,
     cycleSleepMs: 0,
     allowRemoteWrites: false,
