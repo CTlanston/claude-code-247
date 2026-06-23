@@ -104,10 +104,22 @@ describe('autoflow state', () => {
     const dir = mkdtempSync(join(tmpdir(), 'autoflow-state-'))
     const config = testConfig(dir)
     const initial = loadState(config)
+    expect(initial.status).toBe('idle')
     expect(initial.nextCycle).toBe(1)
     saveState(config, { ...initial, nextCycle: 7, seeded: true })
     expect(loadState(config).nextCycle).toBe(7)
     expect(loadState(config).seeded).toBe(true)
+  })
+
+  it('normalizes legacy completed running states to idle', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-state-legacy-running-'))
+    const config = testConfig(dir)
+    saveState(config, { ...loadState(config), status: 'running', nextCycle: 9, currentCycle: undefined })
+
+    const state = loadState(config)
+
+    expect(state.status).toBe('idle')
+    expect(state.nextCycle).toBe(9)
   })
 })
 
@@ -326,7 +338,7 @@ describe('autoflow cycle controls', () => {
     const results = await runAutoflow(config, runner)
 
     expect(results[0]?.status).toBe('completed')
-    expect(loadState(config).status).toBe('running')
+    expect(loadState(config).status).toBe('idle')
     expect(loadState(config).hold).toBeUndefined()
     expect(runner.calls.map((call) => [call.command, ...call.args].join(' '))).toContain('git fetch origin main')
   })
@@ -404,7 +416,7 @@ describe('autoflow cycle controls', () => {
       .map((event) => event.type)
 
     expect(results[0]?.status).toBe('completed')
-    expect(loadState(config).status).toBe('running')
+    expect(loadState(config).status).toBe('idle')
     expect(loadState(config).hold).toBeUndefined()
     expect(eventTypes).toContain('autoflow.hold_auto_resumed')
   })
