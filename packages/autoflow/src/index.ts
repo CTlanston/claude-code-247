@@ -142,6 +142,7 @@ const DEFAULT_HOME = join(homedir(), '.claude-code-247', 'autoflow')
 const DEFAULT_GATES = ['pnpm typecheck', 'pnpm lint', 'pnpm test']
 const DEFAULT_FORBIDDEN = ['.env*', 'secrets/**', '.github/**', 'AGENTS.md']
 const WORKTREE_FETCH_TIMEOUT_MS = 60_000
+const DEFAULT_TIMEOUT_KILL_GRACE_MS = 2_000
 
 export function defaultConfig(env: NodeJS.ProcessEnv = process.env, argv: string[] = process.argv.slice(2)): AutoflowConfig {
   const repoRoot = resolve(env['AEDEV_AUTOFLOW_REPO_ROOT'] ?? DEFAULT_REPO_ROOT)
@@ -582,7 +583,7 @@ export function pathMatches(pattern: string, path: string): boolean {
 }
 
 export class SpawnCommandRunner implements CommandRunner {
-  constructor(private readonly opts: { allowRemoteWrites?: boolean } = {}) {}
+  constructor(private readonly opts: { allowRemoteWrites?: boolean; timeoutKillGraceMs?: number } = {}) {}
 
   run(command: string, args: string[], opts: { cwd: string; timeoutMs: number; stdin?: string }): Promise<CommandResult> {
     if (shouldBlockRemoteWrite(command, args, this.opts.allowRemoteWrites ?? false)) {
@@ -600,11 +601,19 @@ export class SpawnCommandRunner implements CommandRunner {
       let stderr = ''
       let timedOut = false
       let settled = false
+      let killTimer: ReturnType<typeof setTimeout> | undefined
+      const killProcessGroup = (signal: NodeJS.Signals): void => {
+        if (child.pid !== undefined) {
+          try { process.kill(-child.pid, signal) } catch { /* already gone */ }
+        }
+      }
       const timer = setTimeout(() => {
         timedOut = true
-        if (child.pid !== undefined) {
-          try { process.kill(-child.pid, 'SIGTERM') } catch { /* already gone */ }
-        }
+        killProcessGroup('SIGTERM')
+        killTimer = setTimeout(() => {
+          killProcessGroup('SIGKILL')
+          settle(124)
+        }, this.opts.timeoutKillGraceMs ?? DEFAULT_TIMEOUT_KILL_GRACE_MS)
       }, opts.timeoutMs)
 
       child.stdout?.on('data', (chunk: Buffer) => { stdout += chunk.toString() })
@@ -617,6 +626,7 @@ export class SpawnCommandRunner implements CommandRunner {
         if (settled) return
         settled = true
         clearTimeout(timer)
+        if (killTimer) clearTimeout(killTimer)
         resolveCommand({
           command,
           args,
@@ -631,7 +641,10 @@ export class SpawnCommandRunner implements CommandRunner {
         stderr += error.message
         settle(1)
       })
-      child.on('close', (code) => settle(code ?? 1))
+      child.on('close', (code) => {
+        if (timedOut) killProcessGroup('SIGKILL')
+        settle(code ?? 1)
+      })
     })
   }
 }

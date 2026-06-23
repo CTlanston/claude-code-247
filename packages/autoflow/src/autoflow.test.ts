@@ -1,6 +1,7 @@
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
 import { describe, expect, it } from 'vitest'
 import {
   buildClaudeArgs,
@@ -15,6 +16,7 @@ import {
   saveState,
   scrubRemoteWriteEnv,
   shouldBlockRemoteWrite,
+  SpawnCommandRunner,
   type AutoflowConfig,
   type CommandResult,
   type CommandRunner,
@@ -143,6 +145,33 @@ describe('autoflow command builders', () => {
     expect(pathMatches('secrets/**', 'secrets/prod/key')).toBe(true)
     expect(pathMatches('AGENTS.md', 'AGENTS.md')).toBe(true)
     expect(pathMatches('.github/**', 'src/index.ts')).toBe(false)
+  })
+})
+
+describe('spawn command runner', () => {
+  it('kills lingering process groups after command timeout', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-timeout-'))
+    const pidFile = join(dir, 'child.pid')
+    const runner = new SpawnCommandRunner({ timeoutKillGraceMs: 25 })
+    let childPid: number | undefined
+
+    try {
+      const result = await runner.run('/bin/sh', ['-lc', [
+        "trap 'exit 0' TERM",
+        `(trap '' TERM; while true; do sleep 1; done) & echo $! > ${shellQuote(pidFile)}`,
+        'wait',
+      ].join('; ')], { cwd: dir, timeoutMs: 50 })
+
+      childPid = Number(readFileSync(pidFile, 'utf8').trim())
+      await delay(75)
+
+      expect(result.exitCode).toBe(124)
+      expect(isProcessAlive(childPid)).toBe(false)
+    } finally {
+      if (childPid !== undefined && isProcessAlive(childPid)) {
+        try { process.kill(childPid, 'SIGKILL') } catch { /* already gone */ }
+      }
+    }
   })
 })
 
@@ -559,4 +588,17 @@ function seededConfig(dir: string): AutoflowConfig {
   writeFileSync(join(config.worktreePath, 'WORKBOOK_v4.md'), readFileSync(config.workbookPath, 'utf8'))
   saveState(config, { ...loadState(config), seeded: true })
   return config
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
 }
