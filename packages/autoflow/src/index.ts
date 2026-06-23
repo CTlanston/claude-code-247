@@ -138,6 +138,7 @@ export interface AutoflowSummary {
   productivePaths: string[]
   gates: Array<{ command: string; exitCode: number }>
   coderProvider?: CoderProvider
+  usage?: AutoflowUsageSummary
   stageDurationsMs: {
     claude?: number
     coder?: number
@@ -151,6 +152,35 @@ export interface AutoflowSummary {
     categoryCounts: Record<string, number>
   }
   plannerSignals: string[]
+}
+
+export interface AutoflowUsageSummary {
+  planner?: AutoflowStageUsage
+  coder?: AutoflowStageUsage
+  total: {
+    costUsd: number | null
+    inputTokens: number
+    outputTokens: number
+    cacheCreationInputTokens: number
+    cacheReadInputTokens: number
+  }
+}
+
+export interface AutoflowStageUsage {
+  provider: 'claude'
+  costUsd: number | null
+  inputTokens: number
+  outputTokens: number
+  cacheCreationInputTokens: number
+  cacheReadInputTokens: number
+  serviceTier?: string
+  modelUsage?: Record<string, {
+    inputTokens: number
+    outputTokens: number
+    cacheCreationInputTokens: number
+    cacheReadInputTokens: number
+    costUsd: number | null
+  }>
 }
 
 export interface AutoflowDoctorReport {
@@ -204,6 +234,7 @@ export interface AutoflowDoctorReport {
     | 'plannerSignals'
     | 'changedPaths'
     | 'gates'
+    | 'usage'
   >
   checks: Array<{ code: string; status: 'pass' | 'warn' | 'fail'; message: string }>
 }
@@ -594,7 +625,9 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
     writeCommandEvidence(cycleDir, 'claude-result.json', claude)
     writeFileSync(join(cycleDir, 'claude-output.txt'), claude.stdout || claude.stderr || '')
     if (claude.exitCode !== 0) {
-      return await hold(config, cycle, 'CLAUDE_FAILED', `Claude exited ${claude.exitCode}`, cycleDir, state)
+      return await hold(config, cycle, 'CLAUDE_FAILED', `Claude exited ${claude.exitCode}`, cycleDir, state, {
+        usage: buildUsageSummary(extractClaudeUsage(claude)),
+      })
     }
 
     logEvent(config, { type: 'autoflow.post_claude_diff_started', cycle, baseSha })
@@ -602,7 +635,9 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
     logEvent(config, { type: 'autoflow.post_claude_diff_completed', cycle, changedPaths: claudeChanged })
     const badClaudePaths = claudeChanged.filter((path) => !isWorkbookOrAutoflowArtifact(path))
     if (badClaudePaths.length > 0) {
-      return await hold(config, cycle, 'CLAUDE_SCOPE_VIOLATION', `Claude touched non-workbook paths: ${badClaudePaths.join(', ')}`, cycleDir, state)
+      return await hold(config, cycle, 'CLAUDE_SCOPE_VIOLATION', `Claude touched non-workbook paths: ${badClaudePaths.join(', ')}`, cycleDir, state, {
+        usage: buildUsageSummary(extractClaudeUsage(claude)),
+      })
     }
     logEvent(config, { type: 'autoflow.workbook_sync_started', cycle })
     persistWorkbookSeed(config, cycleDir)
@@ -631,6 +666,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
         if (isCoderUsageLimit(config, coder)) {
           return await hold(config, cycle, coderUsageLimitCode(config), coder.stdout || coder.stderr || `${config.coderProvider} usage limit reached`, cycleDir, state, {
             stageDurationsMs: coderStageDurations(config, claude.durationMs, coder.durationMs),
+            usage: buildUsageSummary(extractClaudeUsage(claude), config.coderProvider === 'claude' ? extractClaudeUsage(coder) : undefined),
             resumeAfter: inferCoderUsageLimitResumeAfter(config, coder),
           })
         }
@@ -652,6 +688,8 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
     if (!coder || coder.exitCode !== 0) {
       return await recordFailureOrHold(config, cycle, 'CODER_FAILED', `${config.coderProvider} coder exited ${coder?.exitCode ?? 'unknown'}`, cycleDir, state)
     }
+    const usage = buildUsageSummary(extractClaudeUsage(claude), config.coderProvider === 'claude' ? extractClaudeUsage(coder) : undefined)
+    if (usage) writeFileSync(join(cycleDir, 'model-usage.json'), JSON.stringify(usage, null, 2) + '\n')
     const failingGate = gates.find((gate) => gate.exitCode !== 0)
     if (failingGate) {
       return await recordFailureOrHold(config, cycle, 'GATES_FAILED', `Gate failed: ${failingGate.command}`, cycleDir, state)
@@ -667,6 +705,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
         productivePaths,
         gates,
         stageDurationsMs: coderStageDurations(config, claude.durationMs, coder.durationMs),
+        usage,
       })
     }
     if (changedPaths.length === 0) {
@@ -697,6 +736,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
         productivePaths,
         gates,
         stageDurationsMs: coderStageDurations(config, claude.durationMs, coder.durationMs),
+        usage,
       })
       logEvent(config, { type: 'autoflow.cycle_empty_diff', cycle, streak: emptyState.consecutiveEmptyDiffs })
       return { cycle, status: 'completed', evidenceDir: cycleDir }
@@ -736,6 +776,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
         productivePaths,
         gates,
         stageDurationsMs: coderStageDurations(config, claude.durationMs, coder.durationMs),
+        usage,
       })
       logEvent(config, {
         type: 'autoflow.cycle_no_productive_change',
@@ -761,6 +802,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
         productivePaths,
         gates,
         stageDurationsMs: coderStageDurations(config, claude.durationMs, coder.durationMs),
+        usage,
       })
     }
 
@@ -778,6 +820,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
           productivePaths,
           gates,
           stageDurationsMs: coderStageDurations(config, claude.durationMs, coder.durationMs, remoteWrite.durationMs),
+          usage,
         })
       }
     }
@@ -813,6 +856,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
       productivePaths,
       gates,
       stageDurationsMs: coderStageDurations(config, claude.durationMs, coder.durationMs, remoteWriteDurationMs),
+      usage,
     })
     logEvent(config, { type: 'autoflow.cycle_completed', cycle, commitSha, changedPaths })
     await pruneOldCycleWorktrees(config, runner, cycle)
@@ -1415,7 +1459,7 @@ async function hold(
   reason: string,
   cycleDir: string,
   state: AutoflowState,
-  summaryInput: Partial<Pick<WriteSummaryInput, 'changedPaths' | 'productivePaths' | 'gates' | 'stageDurationsMs'>> & { resumeAfter?: string; retryCount?: number; operatorHint?: string } = {},
+  summaryInput: Partial<Pick<WriteSummaryInput, 'changedPaths' | 'productivePaths' | 'gates' | 'stageDurationsMs' | 'usage'>> & { resumeAfter?: string; retryCount?: number; operatorHint?: string } = {},
 ): Promise<CycleResult> {
   const record: HoldRecord = { code, reason, cycle, createdAt: new Date().toISOString() }
   if (summaryInput.resumeAfter) record.resumeAfter = summaryInput.resumeAfter
@@ -1435,6 +1479,7 @@ async function hold(
     productivePaths: summaryInput.productivePaths ?? [],
     gates: summaryInput.gates ?? [],
     stageDurationsMs: summaryInput.stageDurationsMs ?? {},
+    usage: summaryInput.usage,
   })
   logEvent(config, { type: 'autoflow.hold', hold: record })
   return { cycle, status: 'hold', evidenceDir: cycleDir, hold: record }
@@ -1651,6 +1696,7 @@ interface WriteSummaryInput {
   productivePaths: string[]
   gates: GateResult[]
   stageDurationsMs: AutoflowSummary['stageDurationsMs']
+  usage?: AutoflowUsageSummary
 }
 
 function writeAutoflowSummary(config: AutoflowConfig, input: WriteSummaryInput): void {
@@ -1671,6 +1717,7 @@ function writeAutoflowSummary(config: AutoflowConfig, input: WriteSummaryInput):
     productivePaths: input.productivePaths,
     gates: input.gates.map((gate) => ({ command: gate.command, exitCode: gate.exitCode })),
     coderProvider: config.coderProvider,
+    usage: input.usage,
     stageDurationsMs: input.stageDurationsMs,
     repetition,
     plannerSignals,
@@ -1694,6 +1741,74 @@ function coderStageDurations(config: Pick<AutoflowConfig, 'coderProvider'>, clau
     codex: config.coderProvider === 'codex' ? coderMs : undefined,
     remoteWrite: remoteWriteMs,
   }
+}
+
+function extractClaudeUsage(result: CommandResult): AutoflowStageUsage | undefined {
+  if (!result.stdout.trim()) return undefined
+  let parsed: Record<string, unknown>
+  try {
+    parsed = JSON.parse(result.stdout) as Record<string, unknown>
+  } catch {
+    return undefined
+  }
+  const usage = asRecord(parsed['usage'])
+  const modelUsage = asRecord(parsed['modelUsage'])
+  const inputTokens = numberField(usage, 'input_tokens')
+  const outputTokens = numberField(usage, 'output_tokens')
+  const cacheCreationInputTokens = numberField(usage, 'cache_creation_input_tokens')
+  const cacheReadInputTokens = numberField(usage, 'cache_read_input_tokens')
+  const breakdown: AutoflowStageUsage['modelUsage'] = {}
+  for (const [model, raw] of Object.entries(modelUsage)) {
+    const fields = asRecord(raw)
+    breakdown[model] = {
+      inputTokens: numberField(fields, 'inputTokens'),
+      outputTokens: numberField(fields, 'outputTokens'),
+      cacheCreationInputTokens: numberField(fields, 'cacheCreationInputTokens'),
+      cacheReadInputTokens: numberField(fields, 'cacheReadInputTokens'),
+      costUsd: nullableNumberField(fields, 'costUSD'),
+    }
+  }
+  return {
+    provider: 'claude',
+    costUsd: nullableNumberField(parsed, 'total_cost_usd'),
+    inputTokens,
+    outputTokens,
+    cacheCreationInputTokens,
+    cacheReadInputTokens,
+    serviceTier: typeof usage['service_tier'] === 'string' ? usage['service_tier'] : undefined,
+    modelUsage: Object.keys(breakdown).length > 0 ? breakdown : undefined,
+  }
+}
+
+function buildUsageSummary(planner?: AutoflowStageUsage, coder?: AutoflowStageUsage): AutoflowUsageSummary | undefined {
+  if (!planner && !coder) return undefined
+  const stages = [planner, coder].filter((stage): stage is AutoflowStageUsage => stage !== undefined)
+  const costs = stages.map((stage) => stage.costUsd).filter((cost): cost is number => typeof cost === 'number')
+  return {
+    planner,
+    coder,
+    total: {
+      costUsd: costs.length > 0 ? costs.reduce((sum, cost) => sum + cost, 0) : null,
+      inputTokens: stages.reduce((sum, stage) => sum + stage.inputTokens, 0),
+      outputTokens: stages.reduce((sum, stage) => sum + stage.outputTokens, 0),
+      cacheCreationInputTokens: stages.reduce((sum, stage) => sum + stage.cacheCreationInputTokens, 0),
+      cacheReadInputTokens: stages.reduce((sum, stage) => sum + stage.cacheReadInputTokens, 0),
+    },
+  }
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+}
+
+function numberField(record: Record<string, unknown>, key: string): number {
+  const value = record[key]
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0
+}
+
+function nullableNumberField(record: Record<string, unknown>, key: string): number | null {
+  const value = record[key]
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
 async function runWithStageHeartbeat<T>(
@@ -2196,6 +2311,7 @@ function pickDoctorSummary(summary: AutoflowSummary): AutoflowDoctorSummary {
     plannerSignals: summary.plannerSignals,
     changedPaths: summary.changedPaths,
     gates: summary.gates,
+    usage: summary.usage,
   }
 }
 

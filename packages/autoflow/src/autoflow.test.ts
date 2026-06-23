@@ -92,7 +92,7 @@ class FakeRunner implements CommandRunner {
       }
       if (!isPlanner) this.coderDone = true
       if (this.opts.claudeDelayMs) await delay(this.opts.claudeDelayMs)
-      return result(command, args, callOpts.cwd, '{"result":"implement the next workbook step"}\n')
+      return result(command, args, callOpts.cwd, fakeClaudeOutput(isPlanner ? 0.12 : 0.03, isPlanner ? 100 : 20, isPlanner ? 40 : 10))
     }
     if (command === 'codex') {
       this.codexCalls++
@@ -255,6 +255,10 @@ gui/501/com.claude247.autoflow.test = {
       productivePaths: ['src/example.ts'],
       gates: [{ command: 'npm test', exitCode: 0 }],
       coderProvider: 'claude',
+      usage: {
+        planner: { provider: 'claude', costUsd: 0.2, inputTokens: 10, outputTokens: 20, cacheCreationInputTokens: 30, cacheReadInputTokens: 40 },
+        total: { costUsd: 0.2, inputTokens: 10, outputTokens: 20, cacheCreationInputTokens: 30, cacheReadInputTokens: 40 },
+      },
       stageDurationsMs: { claude: 1, coder: 2, remoteWrite: 3 },
       repetition: { windowSize: 1, sameProductivePathStreak: 1, repeatedProductivePaths: [], categoryCounts: { source: 1 } },
       plannerSignals: [],
@@ -268,6 +272,7 @@ gui/501/com.claude247.autoflow.test = {
     expect(report.config.gateCommands).toEqual(['npm test', 'npm run build'])
     expect(report.state?.nextCycle).toBe(12)
     expect(report.summary?.coderProvider).toBe('claude')
+    expect(report.summary?.usage?.total).toMatchObject({ costUsd: 0.2, inputTokens: 10, outputTokens: 20 })
     expect(report.operatorAction).toMatchObject({
       severity: 'info',
       summary: 'Autoflow is healthy; wait for the next scheduled run.',
@@ -1174,7 +1179,9 @@ describe('autoflow cycle controls', () => {
     const summary = JSON.parse(readFileSync(config.summaryPath, 'utf8')) as {
       coderProvider?: string
       stageDurationsMs: { coder?: number; codex?: number }
+      usage?: AutoflowSummary['usage']
     }
+    const usageEvidence = JSON.parse(readFileSync(join(cycleDir, 'model-usage.json'), 'utf8')) as AutoflowSummary['usage']
 
     expect(plannerPrompt).toContain('guidance for Claude Code coder')
     expect(plannerPrompt).not.toContain('guidance for Codex')
@@ -1182,6 +1189,18 @@ describe('autoflow cycle controls', () => {
     expect(summary.coderProvider).toBe('claude')
     expect(summary.stageDurationsMs.coder).toBeGreaterThanOrEqual(0)
     expect(summary.stageDurationsMs.codex).toBeUndefined()
+    expect(summary.usage).toMatchObject({
+      planner: { provider: 'claude', costUsd: 0.12, inputTokens: 100, outputTokens: 40 },
+      coder: { provider: 'claude', costUsd: 0.03, inputTokens: 20, outputTokens: 10 },
+      total: {
+        costUsd: 0.15,
+        inputTokens: 120,
+        outputTokens: 50,
+        cacheCreationInputTokens: 14,
+        cacheReadInputTokens: 22,
+      },
+    })
+    expect(usageEvidence).toEqual(summary.usage)
   })
 
   it('emits heartbeats while long Claude planner and coder stages run', async () => {
@@ -1566,6 +1585,30 @@ describe('autoflow cycle controls', () => {
 
 function result(command: string, args: string[], cwd: string, stdout = '', stderr = '', exitCode = 0): CommandResult {
   return { command, args, cwd, stdout, stderr, exitCode, durationMs: 1 }
+}
+
+function fakeClaudeOutput(costUsd: number, inputTokens: number, outputTokens: number): string {
+  return JSON.stringify({
+    type: 'result',
+    result: 'implement the next workbook step',
+    total_cost_usd: costUsd,
+    usage: {
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      cache_creation_input_tokens: 7,
+      cache_read_input_tokens: 11,
+      service_tier: 'standard',
+    },
+    modelUsage: {
+      'claude-sonnet-test': {
+        inputTokens,
+        outputTokens,
+        cacheCreationInputTokens: 7,
+        cacheReadInputTokens: 11,
+        costUSD: costUsd,
+      },
+    },
+  }) + '\n'
 }
 
 function testConfig(dir: string): AutoflowConfig {
