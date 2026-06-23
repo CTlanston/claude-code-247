@@ -270,7 +270,7 @@ export async function runAutoflow(config: AutoflowConfig, runner: CommandRunner 
       const setupHold = classifySetupHold(error as Error, activeState)
       const holdState = {
         ...activeState,
-        consecutiveSetupFetchTimeouts: setupHold.code === 'SETUP_FETCH_TIMEOUT'
+        consecutiveSetupFetchTimeouts: setupHold.code === 'SETUP_FETCH_TIMEOUT' || setupHold.code === 'SETUP_FETCH_TRANSIENT'
           ? setupHold.retryCount ?? activeState.consecutiveSetupFetchTimeouts
           : activeState.consecutiveSetupFetchTimeouts,
       }
@@ -1150,19 +1150,26 @@ function autoResumeHoldIfReady(config: AutoflowConfig, state: AutoflowState): Au
 }
 
 function isAutoResumableHold(hold: HoldRecord): boolean {
-  return hold.code === 'CODEX_USAGE_LIMIT' || hold.code === 'SETUP_FETCH_TIMEOUT'
+  return hold.code === 'CODEX_USAGE_LIMIT' || hold.code === 'SETUP_FETCH_TIMEOUT' || hold.code === 'SETUP_FETCH_TRANSIENT'
 }
 
 function classifySetupHold(error: Error, state: Pick<AutoflowState, 'consecutiveSetupFetchTimeouts'>): { code: string; resumeAfter?: string; retryCount?: number } {
   if (/git fetch timed out/i.test(error.message)) {
-    const retryCount = state.consecutiveSetupFetchTimeouts + 1
-    return {
-      code: 'SETUP_FETCH_TIMEOUT',
-      resumeAfter: new Date(Date.now() + setupFetchTimeoutResumeDelayMs(retryCount)).toISOString(),
-      retryCount,
-    }
+    return transientSetupFetchHold('SETUP_FETCH_TIMEOUT', state)
+  }
+  if (/git fetch failed[\s\S]*(unable to read current working directory|operation not permitted|no such file or directory)/i.test(error.message)) {
+    return transientSetupFetchHold('SETUP_FETCH_TRANSIENT', state)
   }
   return { code: 'SETUP_FAILED' }
+}
+
+function transientSetupFetchHold(code: string, state: Pick<AutoflowState, 'consecutiveSetupFetchTimeouts'>): { code: string; resumeAfter: string; retryCount: number } {
+  const retryCount = state.consecutiveSetupFetchTimeouts + 1
+  return {
+    code,
+    resumeAfter: new Date(Date.now() + setupFetchTimeoutResumeDelayMs(retryCount)).toISOString(),
+    retryCount,
+  }
 }
 
 function setupFetchTimeoutResumeDelayMs(retryCount: number): number {

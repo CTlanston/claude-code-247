@@ -2,7 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>com.claude247.autoflow</string>
+  <key>Label</key><string>@@LABEL@@</string>
   <key>ProgramArguments</key>
   <array>
     <string>@@PNPM@@</string>
@@ -24,10 +24,11 @@
   <dict>
     <key>HOME</key><string>@@HOME@@</string>
     <key>PATH</key><string>@@PATH@@</string>
-    <key>AEDEV_AUTOFLOW_REPO_ROOT</key><string>@@REPO_ROOT@@</string>
-    <key>AEDEV_AUTOFLOW_WORKBOOK</key><string>@@REPO_ROOT@@/WORKBOOK_v4.md</string>
+    <key>AEDEV_AUTOFLOW_REPO_ROOT</key><string>@@TARGET_REPO_ROOT@@</string>
+    <key>AEDEV_AUTOFLOW_WORKBOOK</key><string>@@WORKBOOK@@</string>
     <key>AEDEV_AUTOFLOW_HOME</key><string>@@AUTOFLOW_HOME@@</string>
-    <key>AEDEV_AUTOFLOW_BRANCH</key><string>codex/autoflow-workbook</string>
+    <key>AEDEV_AUTOFLOW_BRANCH</key><string>@@AUTOFLOW_BRANCH@@</string>
+@@EXTRA_ENV@@
   </dict>
 </dict>
 </plist>
