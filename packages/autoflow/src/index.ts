@@ -903,7 +903,7 @@ async function commitCycle(config: AutoflowConfig, runner: CommandRunner, cycle:
   const head = (await git(config, runner, ['rev-parse', 'HEAD'])).stdout.trim()
   if (commit.exitCode !== 0) {
     const text = `${commit.stderr}\n${commit.stdout}`
-    if (/nothing to commit/i.test(text) && head && head !== baseSha) return head
+    if (/(nothing to commit|no changes added to commit)/i.test(text) && head && head !== baseSha) return head
     throw new Error(`git commit failed: ${commit.stderr || commit.stdout}`)
   }
   return head
