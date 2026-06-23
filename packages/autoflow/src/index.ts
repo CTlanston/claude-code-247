@@ -1083,7 +1083,7 @@ async function ensureWorktree(
 ): Promise<void> {
   ensureDir(dirname(config.worktreePath))
   if (existsSync(join(config.worktreePath, '.git'))) {
-    const currentBranch = (await gitIn(config.worktreePath, runner, ['branch', '--show-current'], config.commandTimeoutMs)).stdout.trim()
+    const currentBranch = readWorktreeHeadBranch(config.worktreePath)
     if (currentBranch !== config.branch) {
       await gitIn(config.worktreePath, runner, ['switch', config.branch], config.commandTimeoutMs)
     }
@@ -1151,6 +1151,24 @@ async function ensureWorktree(
     timeoutMs: config.commandTimeoutMs,
   })
   if (added.exitCode !== 0) throw new Error(`git worktree add failed: ${added.stderr || added.stdout}`)
+}
+
+function readWorktreeHeadBranch(worktreePath: string): string | undefined {
+  const gitPath = join(worktreePath, '.git')
+  try {
+    let gitDir = gitPath
+    if (lstatSync(gitPath).isFile()) {
+      const gitFile = readFileSync(gitPath, 'utf8').trim()
+      const match = /^gitdir:\s*(.+)$/i.exec(gitFile)
+      if (!match) return undefined
+      gitDir = resolve(dirname(gitPath), match[1])
+    }
+    const head = readFileSync(join(gitDir, 'HEAD'), 'utf8').trim()
+    const refPrefix = 'ref: refs/heads/'
+    return head.startsWith(refPrefix) ? head.slice(refPrefix.length) : undefined
+  } catch {
+    return undefined
+  }
 }
 
 async function prepareWorktree(

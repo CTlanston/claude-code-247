@@ -53,7 +53,6 @@ class FakeRunner implements CommandRunner {
     fetchFailureStderr?: string
     postClaudeDiffFailureStderr?: string
     claudeDelayMs?: number
-    currentBranch?: string
   } = {}) {}
 
   async run(command: string, args: string[], callOpts: CommandRunOptions): Promise<CommandResult> {
@@ -62,9 +61,6 @@ class FakeRunner implements CommandRunner {
     if (rendered.includes('rev-parse HEAD')) {
       this.revParseCalls++
       return result(command, args, callOpts.cwd, this.revParseCalls === 1 ? 'base-sha\n' : `${this.opts.headSha ?? 'commit-sha'}\n`)
-    }
-    if (rendered.includes('branch --show-current')) {
-      return result(command, args, callOpts.cwd, this.opts.currentBranch ? `${this.opts.currentBranch}\n` : '')
     }
     if (rendered.includes('fetch origin main')) {
       const fetchCalls = this.calls.filter((call) => [call.command, ...call.args].join(' ').includes('fetch origin main')).length
@@ -762,13 +758,14 @@ describe('autoflow cycle controls', () => {
     const dir = mkdtempSync(join(tmpdir(), 'autoflow-existing-worktree-current-'))
     const config = testConfig(dir)
     mkdirSync(join(config.worktreePath, '.git'), { recursive: true })
-    const runner = new FakeRunner({ changedPaths: ['src/example.ts'], currentBranch: config.branch })
+    writeFileSync(join(config.worktreePath, '.git', 'HEAD'), `ref: refs/heads/${config.branch}\n`)
+    const runner = new FakeRunner({ changedPaths: ['src/example.ts'] })
 
     const results = await runAutoflow(config, runner)
     const commands = runner.calls.map((call) => [call.command, ...call.args].join(' '))
 
     expect(results[0]?.status).toBe('completed')
-    expect(commands).toContain('git branch --show-current')
+    expect(commands).not.toContain('git branch --show-current')
     expect(commands).not.toContain(`git switch ${config.branch}`)
   })
 
