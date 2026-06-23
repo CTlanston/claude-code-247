@@ -71,6 +71,7 @@ export interface HoldRecord {
   reason: string
   cycle: number
   createdAt: string
+  resumeAfter?: string
 }
 
 export interface CommandResult {
@@ -207,10 +208,15 @@ export async function runAutoflow(config: AutoflowConfig, runner: CommandRunner 
   ensureDir(dirname(config.logPath))
   ensureDir(config.evidenceDir)
 
-  const state = loadState(config)
+  let state = loadState(config)
   if (state.status === 'hold') {
+    const resumed = autoResumeHoldIfReady(config, state)
+    if (resumed) {
+      state = resumed
+    } else {
     logEvent(config, { type: 'autoflow.already_on_hold', hold: state.hold ?? null })
     return []
+    }
   }
 
   try {
@@ -308,6 +314,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
         if (isCodexUsageLimit(codex)) {
           return await hold(config, cycle, 'CODEX_USAGE_LIMIT', codex.stdout || codex.stderr || 'Codex usage limit reached', cycleDir, state, {
             stageDurationsMs: { claude: claude.durationMs, codex: codex.durationMs },
+            resumeAfter: inferCodexUsageLimitResumeAfter(codex),
           })
         }
         retryContext = renderRetryContext(codex, [])
@@ -936,9 +943,10 @@ async function hold(
   reason: string,
   cycleDir: string,
   state: AutoflowState,
-  summaryInput: Partial<Pick<WriteSummaryInput, 'changedPaths' | 'productivePaths' | 'gates' | 'stageDurationsMs'>> = {},
+  summaryInput: Partial<Pick<WriteSummaryInput, 'changedPaths' | 'productivePaths' | 'gates' | 'stageDurationsMs'>> & { resumeAfter?: string } = {},
 ): Promise<CycleResult> {
   const record: HoldRecord = { code, reason, cycle, createdAt: new Date().toISOString() }
+  if (summaryInput.resumeAfter) record.resumeAfter = summaryInput.resumeAfter
   writeFileSync(join(cycleDir, 'HOLD.json'), JSON.stringify(record, null, 2) + '\n')
   writeFileSync(join(cycleDir, 'HOLD.md'), [`# HOLD ${code}`, '', reason, ''].join('\n'))
   const heldState = { ...state, status: 'hold' as const, currentCycle: undefined, hold: record }
@@ -1038,6 +1046,55 @@ function renderRetryContext(codex: CommandResult, gates: GateResult[]): string {
 
 function isCodexUsageLimit(codex: CommandResult): boolean {
   return /usage limit/i.test(`${codex.stdout}\n${codex.stderr}`)
+}
+
+function inferCodexUsageLimitResumeAfter(codex: CommandResult): string | undefined {
+  const text = `${codex.stdout}\n${codex.stderr}`
+  const match = text.match(/try again at ([A-Za-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?,\s+(\d{4})\s+(\d{1,2}):(\d{2})\s*(AM|PM)/i)
+  if (!match) return undefined
+  const [, monthName, dayRaw, yearRaw, hourRaw, minuteRaw, ampm] = match
+  const month = monthIndex(monthName)
+  if (month === undefined) return undefined
+  let hour = Number(hourRaw)
+  if (ampm.toUpperCase() === 'PM' && hour < 12) hour += 12
+  if (ampm.toUpperCase() === 'AM' && hour === 12) hour = 0
+  const parsed = new Date(Number(yearRaw), month, Number(dayRaw), hour, Number(minuteRaw), 0, 0)
+  if (Number.isNaN(parsed.getTime())) return undefined
+  return parsed.toISOString()
+}
+
+function monthIndex(monthName: string): number | undefined {
+  const months = new Map([
+    ['jan', 0],
+    ['feb', 1],
+    ['mar', 2],
+    ['apr', 3],
+    ['may', 4],
+    ['jun', 5],
+    ['jul', 6],
+    ['aug', 7],
+    ['sep', 8],
+    ['oct', 9],
+    ['nov', 10],
+    ['dec', 11],
+  ])
+  return months.get(monthName.slice(0, 3).toLowerCase())
+}
+
+function autoResumeHoldIfReady(config: AutoflowConfig, state: AutoflowState): AutoflowState | null {
+  const hold = state.hold
+  if (hold?.code !== 'CODEX_USAGE_LIMIT' || !hold.resumeAfter) return null
+  const resumeAfterMs = Date.parse(hold.resumeAfter)
+  if (Number.isNaN(resumeAfterMs) || resumeAfterMs > Date.now()) return null
+  const resumed = {
+    ...state,
+    status: 'running' as const,
+    hold: undefined,
+    consecutiveFailures: 0,
+  }
+  saveState(config, resumed)
+  logEvent(config, { type: 'autoflow.hold_auto_resumed', hold, resumeAfter: hold.resumeAfter })
+  return resumed
 }
 
 interface WriteSummaryInput {
