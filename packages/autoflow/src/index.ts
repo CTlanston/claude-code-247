@@ -140,6 +140,7 @@ const DEFAULT_BRANCH = 'codex/autoflow-workbook'
 const DEFAULT_HOME = join(homedir(), '.claude-code-247', 'autoflow')
 const DEFAULT_GATES = ['pnpm typecheck', 'pnpm lint', 'pnpm test']
 const DEFAULT_FORBIDDEN = ['.env*', 'secrets/**', '.github/**', 'AGENTS.md']
+const WORKTREE_PROBE_TIMEOUT_MS = 30_000
 
 export function defaultConfig(env: NodeJS.ProcessEnv = process.env, argv: string[] = process.argv.slice(2)): AutoflowConfig {
   const repoRoot = resolve(env['AEDEV_AUTOFLOW_REPO_ROOT'] ?? DEFAULT_REPO_ROOT)
@@ -655,8 +656,14 @@ async function ensureWorktree(config: AutoflowConfig, runner: CommandRunner): Pr
   }
   const branchExists = await runner.run('git', ['show-ref', '--verify', '--quiet', `refs/heads/${config.branch}`], {
     cwd: config.repoRoot,
-    timeoutMs: config.commandTimeoutMs,
+    timeoutMs: worktreeProbeTimeoutMs(config),
   })
+  if (branchExists.exitCode === 124) {
+    throw new Error(`git show-ref timed out while checking branch ${config.branch}`)
+  }
+  if (branchExists.exitCode !== 0 && branchExists.exitCode !== 1) {
+    throw new Error(`git show-ref failed while checking branch ${config.branch}: ${branchExists.stderr || branchExists.stdout || `exit ${branchExists.exitCode}`}`)
+  }
   if (branchExists.exitCode !== 0) {
     if (config.remoteMode !== 'off') {
       await runner.run('git', ['fetch', config.remoteName, config.prBaseBranch], { cwd: config.repoRoot, timeoutMs: config.commandTimeoutMs })
@@ -1186,6 +1193,10 @@ function cycleIdFor(cycle: number): string {
 
 function ensureDir(path: string): void {
   mkdirSync(path, { recursive: true })
+}
+
+function worktreeProbeTimeoutMs(config: Pick<AutoflowConfig, 'commandTimeoutMs'>): number {
+  return Math.min(config.commandTimeoutMs, WORKTREE_PROBE_TIMEOUT_MS)
 }
 
 function parseList(raw: string | undefined, fallback: string[] = []): string[] {

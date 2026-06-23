@@ -81,6 +81,18 @@ class SetupFailRunner implements CommandRunner {
   }
 }
 
+class WorktreeProbeTimeoutRunner implements CommandRunner {
+  calls: Array<{ command: string; args: string[]; timeoutMs: number }> = []
+
+  async run(command: string, args: string[], callOpts: { cwd: string; timeoutMs: number }): Promise<CommandResult> {
+    this.calls.push({ command, args, timeoutMs: callOpts.timeoutMs })
+    const rendered = [command, ...args].join(' ')
+    if (command === '/usr/bin/which') return result(command, args, callOpts.cwd)
+    if (rendered.includes('show-ref --verify --quiet')) return result(command, args, callOpts.cwd, '', '', 124)
+    return result(command, args, callOpts.cwd)
+  }
+}
+
 describe('autoflow state', () => {
   it('loads a default state and saves recovered state', () => {
     const dir = mkdtempSync(join(tmpdir(), 'autoflow-state-'))
@@ -201,6 +213,20 @@ describe('autoflow cycle controls', () => {
     expect(eventTypes).toContain('autoflow.seed_workbook_completed')
     expect(eventTypes).toContain('autoflow.setup_command_started')
     expect(eventTypes).toContain('autoflow.setup_command_completed')
+  })
+
+  it('holds quickly when the worktree branch probe times out', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-worktree-probe-timeout-'))
+    const config = { ...testConfig(dir), worktreePath: join(dir, 'new-worktree'), commandTimeoutMs: 60_000 }
+    const runner = new WorktreeProbeTimeoutRunner()
+
+    const results = await runAutoflow(config, runner)
+
+    const showRef = runner.calls.find((call) => call.args.includes('show-ref'))
+    expect(results[0]?.status).toBe('hold')
+    expect(results[0]?.hold?.code).toBe('SETUP_FAILED')
+    expect(results[0]?.hold?.reason).toContain('git show-ref timed out')
+    expect(showRef?.timeoutMs).toBe(30_000)
   })
 
   it('retries Codex up to the configured limit before committing', async () => {
