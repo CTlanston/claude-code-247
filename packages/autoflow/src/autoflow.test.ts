@@ -106,6 +106,7 @@ describe('autoflow state', () => {
     const initial = loadState(config)
     expect(initial.status).toBe('idle')
     expect(initial.nextCycle).toBe(1)
+    expect(initial.consecutiveSetupFetchTimeouts).toBe(0)
     saveState(config, { ...initial, nextCycle: 7, seeded: true })
     expect(loadState(config).nextCycle).toBe(7)
     expect(loadState(config).seeded).toBe(true)
@@ -338,7 +339,32 @@ describe('autoflow cycle controls', () => {
     expect(results[0]?.status).toBe('hold')
     expect(state.hold?.code).toBe('SETUP_FETCH_TIMEOUT')
     expect(state.hold?.resumeAfter).toBeTruthy()
+    expect(state.hold?.retryCount).toBe(1)
+    expect(state.consecutiveSetupFetchTimeouts).toBe(1)
     expect(runner.calls.some((call) => call.command === 'claude')).toBe(false)
+  })
+
+  it('backs off repeated setup fetch timeout retries', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-worktree-fetch-backoff-'))
+    const config = {
+      ...testConfig(dir),
+      worktreePath: join(dir, 'new-worktree'),
+      allowRemoteWrites: true,
+      remoteMode: 'pr' as const,
+    }
+    saveState(config, { ...loadState(config), consecutiveSetupFetchTimeouts: 1 })
+    const runner = new WorktreeCreateRunner({ fetchTimeouts: 1, changedPaths: ['src/example.ts'] })
+    const before = Date.now()
+
+    const results = await runAutoflow(config, runner)
+    const state = loadState(config)
+    const resumeAfter = Date.parse(state.hold?.resumeAfter ?? '')
+
+    expect(results[0]?.status).toBe('hold')
+    expect(state.hold?.code).toBe('SETUP_FETCH_TIMEOUT')
+    expect(state.hold?.retryCount).toBe(2)
+    expect(state.consecutiveSetupFetchTimeouts).toBe(2)
+    expect(resumeAfter).toBeGreaterThanOrEqual(before + 10 * 60_000)
   })
 
   it('auto-resumes an expired setup fetch timeout hold on the next tick', async () => {
@@ -367,6 +393,7 @@ describe('autoflow cycle controls', () => {
     expect(results[0]?.status).toBe('completed')
     expect(loadState(config).status).toBe('idle')
     expect(loadState(config).hold).toBeUndefined()
+    expect(loadState(config).consecutiveSetupFetchTimeouts).toBe(0)
     expect(runner.calls.map((call) => [call.command, ...call.args].join(' '))).toContain('git fetch origin main')
   })
 
