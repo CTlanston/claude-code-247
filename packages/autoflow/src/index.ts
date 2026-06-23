@@ -596,18 +596,42 @@ async function prepareWorktree(
   activeConfig: AutoflowConfig,
   runner: CommandRunner,
   state: AutoflowState,
-  stateConfig: Pick<AutoflowConfig, 'statePath'>,
+  stateConfig: Pick<AutoflowConfig, 'statePath' | 'logPath'>,
 ): Promise<void> {
+  const cycle = state.nextCycle
+  const ensureStarted = Date.now()
+  logEvent(stateConfig, {
+    type: 'autoflow.ensure_worktree_started',
+    cycle,
+    branch: activeConfig.branch,
+    worktreePath: activeConfig.worktreePath,
+  })
   await ensureWorktree(activeConfig, runner)
+  logEvent(stateConfig, {
+    type: 'autoflow.ensure_worktree_completed',
+    cycle,
+    durationMs: Date.now() - ensureStarted,
+  })
   const workbookTarget = join(activeConfig.worktreePath, 'WORKBOOK_v4.md')
   if (!state.seeded || !existsSync(workbookTarget)) {
+    logEvent(stateConfig, { type: 'autoflow.seed_workbook_started', cycle, target: workbookTarget })
     seedWorkbook(activeConfig)
     saveState(stateConfig, { ...state, seeded: true })
+    logEvent(stateConfig, { type: 'autoflow.seed_workbook_completed', cycle, target: workbookTarget })
   }
-  for (const command of activeConfig.setupCommands) {
+  for (const [index, command] of activeConfig.setupCommands.entries()) {
+    logEvent(stateConfig, { type: 'autoflow.setup_command_started', cycle, index, command })
     const result = await runner.run('/bin/sh', ['-lc', command], {
       cwd: activeConfig.worktreePath,
       timeoutMs: activeConfig.commandTimeoutMs,
+    })
+    logEvent(stateConfig, {
+      type: 'autoflow.setup_command_completed',
+      cycle,
+      index,
+      command,
+      exitCode: result.exitCode,
+      durationMs: result.durationMs,
     })
     if (result.exitCode !== 0) throw new Error(`setup command failed: ${command}: ${result.stderr || result.stdout}`)
   }
