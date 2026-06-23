@@ -295,6 +295,33 @@ describe('autoflow cycle controls', () => {
     expect(commands).toContain(`git worktree add ${config.worktreePath} codex/autoflow-workbook`)
   })
 
+  it('marks state running while worktree preparation is active', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-worktree-active-state-'))
+    const config = {
+      ...testConfig(dir),
+      worktreePath: join(dir, 'new-worktree'),
+      allowRemoteWrites: true,
+      remoteMode: 'pr' as const,
+    }
+    mkdirSync(join(config.repoRoot, '.git', 'refs', 'remotes', 'origin'), { recursive: true })
+    writeFileSync(join(config.repoRoot, '.git', 'refs', 'remotes', 'origin', 'main'), 'base-sha\n')
+    let observedState: ReturnType<typeof loadState> | undefined
+    class InspectPrepareRunner extends WorktreeCreateRunner {
+      override async run(command: string, args: string[], callOpts: { cwd: string; timeoutMs: number; stdin?: string }): Promise<CommandResult> {
+        if ([command, ...args].join(' ').includes('fetch origin main')) {
+          observedState = loadState(config)
+        }
+        return super.run(command, args, callOpts)
+      }
+    }
+
+    const results = await runAutoflow(config, new InspectPrepareRunner({ changedPaths: ['src/example.ts'] }))
+
+    expect(results[0]?.status).toBe('completed')
+    expect(observedState?.status).toBe('running')
+    expect(observedState?.currentCycle).toBe(1)
+  })
+
   it('holds transiently when remote base fetch times out during worktree preparation', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'autoflow-worktree-fetch-timeout-'))
     const config = {
