@@ -194,6 +194,24 @@ describe('autoflow cycle controls', () => {
     expect(runner.codexCalls).toBe(3)
   })
 
+  it('passes previous cycle evidence and state into the Claude planning prompt', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-prompt-evidence-'))
+    const config = seededConfig(dir)
+    const state = {
+      ...loadState(config),
+      nextCycle: 7,
+      lastCommitSha: 'previous-sha',
+      lastCompletedAt: '2026-06-23T02:13:52.994Z',
+    }
+    saveState(config, state)
+    const runner = new FakeRunner({ changedPaths: ['src/example.ts'] })
+    await runOneCycle(config, runner, state)
+    const claudeCall = runner.calls.find((call) => call.command === 'claude')
+    expect(claudeCall?.stdin).toContain(`Previous cycle evidence dir: ${join(config.evidenceDir, 'cycle-000006')}`)
+    expect(claudeCall?.stdin).toContain('Previous cycle commit: previous-sha')
+    expect(claudeCall?.stdin).toContain('Previous cycle completed at: 2026-06-23T02:13:52.994Z')
+  })
+
   it('pushes and creates a PR after green low-risk changes when PR mode is enabled', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'autoflow-remote-pr-'))
     const config = {

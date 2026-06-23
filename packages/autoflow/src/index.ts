@@ -800,6 +800,8 @@ async function hold(
 }
 
 function buildClaudePrompt(config: AutoflowConfig, state: AutoflowState, cycleDir: string): string {
+  const previousCycle = state.nextCycle > 1 ? state.nextCycle - 1 : null
+  const previousEvidenceDir = previousCycle === null ? null : join(config.evidenceDir, cycleIdFor(previousCycle))
   return [
     'You are Claude Code acting as the planner/reviewer side of a 24/7 local autoflow.',
     '',
@@ -807,6 +809,9 @@ function buildClaudePrompt(config: AutoflowConfig, state: AutoflowState, cycleDi
     `Worktree workbook: ${join(config.worktreePath, 'WORKBOOK_v4.md')}`,
     `Cycle: ${state.nextCycle}`,
     `Evidence dir for this cycle: ${cycleDir}`,
+    previousEvidenceDir ? `Previous cycle evidence dir: ${previousEvidenceDir}` : 'Previous cycle evidence dir: none',
+    state.lastCommitSha ? `Previous cycle commit: ${state.lastCommitSha}` : 'Previous cycle commit: none',
+    state.lastCompletedAt ? `Previous cycle completed at: ${state.lastCompletedAt}` : 'Previous cycle completed at: none',
     '',
     'Allowed writes: WORKBOOK_v4.md and local autoflow planning/review artifacts only.',
     'Forbidden: git push, PR creation, merge, editing .env*, secrets/**, .github/**, AGENTS.md.',
@@ -815,9 +820,10 @@ function buildClaudePrompt(config: AutoflowConfig, state: AutoflowState, cycleDi
       : 'Remote stage is supervisor-owned. For an auto-merge smoke, choose only a tiny source/test change; do not ask Codex to edit package files, lockfiles, scripts, docs, .github, secrets, or env files.',
     'Task:',
     '1. Read WORKBOOK_v4.md, especially §0 next_action.',
-    '2. Review the latest autoflow evidence if present.',
-    '3. Update WORKBOOK_v4.md only when it improves machine-readable next_action/state.',
-    '4. Emit concise JSON-compatible guidance for Codex: goal, constraints, acceptance checks, and risks.',
+    '2. Review the previous cycle evidence dir when present and record the result in WORKBOOK_v4.md.',
+    '3. Choose the next bounded product/harness slice from the current workbook state.',
+    '4. Update WORKBOOK_v4.md only when it improves machine-readable next_action/state.',
+    '5. Emit concise JSON-compatible guidance for Codex: goal, constraints, acceptance checks, and risks.',
   ].join('\n')
 }
 
