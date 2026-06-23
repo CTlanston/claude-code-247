@@ -342,6 +342,8 @@ describe('autoflow cycle controls', () => {
     expect(state.hold?.code).toBe('SETUP_FETCH_TIMEOUT')
     expect(state.hold?.resumeAfter).toBeTruthy()
     expect(state.hold?.retryCount).toBe(1)
+    expect(state.hold?.operatorHint).toContain(`git -C ${config.repoRoot} fetch origin main`)
+    expect(readFileSync(join(config.evidenceDir, 'cycle-000001', 'HOLD.md'), 'utf8')).toContain('Operator hint:')
     expect(state.consecutiveSetupFetchTimeouts).toBe(1)
     expect(runner.calls.some((call) => call.command === 'claude')).toBe(false)
   })
@@ -367,6 +369,30 @@ describe('autoflow cycle controls', () => {
     expect(state.hold?.retryCount).toBe(2)
     expect(state.consecutiveSetupFetchTimeouts).toBe(2)
     expect(resumeAfter).toBeGreaterThanOrEqual(before + 10 * 60_000)
+  })
+
+  it('signals repeated setup fetch timeouts after max backoff is reached', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-worktree-fetch-repeated-summary-'))
+    const config = {
+      ...testConfig(dir),
+      worktreePath: join(dir, 'new-worktree'),
+      allowRemoteWrites: true,
+      remoteMode: 'pr' as const,
+    }
+    saveState(config, { ...loadState(config), consecutiveSetupFetchTimeouts: 5 })
+    const runner = new WorktreeCreateRunner({ fetchTimeouts: 1, changedPaths: ['src/example.ts'] })
+
+    const results = await runAutoflow(config, runner)
+    const summary = JSON.parse(readFileSync(config.summaryPath, 'utf8')) as {
+      hold?: { retryCount?: number; operatorHint?: string }
+      plannerSignals: string[]
+    }
+
+    expect(results[0]?.status).toBe('hold')
+    expect(summary.hold?.retryCount).toBe(6)
+    expect(summary.hold?.operatorHint).toContain('repeated setup fetch issue after 6 retries')
+    expect(summary.plannerSignals).toContain('setup_fetch_repeated:6')
+    expect(summary.plannerSignals).toContain('setup_fetch_max_backoff')
   })
 
   it('auto-resumes transient setup fetch cwd failures', async () => {
