@@ -229,6 +229,38 @@ describe('autoflow cycle controls', () => {
     expect(eventTypes).toContain('autoflow.gates_completed')
   })
 
+  it('writes a latest and per-cycle summary with repetition signals', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-summary-'))
+    const config = seededConfig(dir)
+    for (const cycle of [1, 2]) {
+      const cycleDir = join(config.evidenceDir, `cycle-00000${cycle}`)
+      mkdirSync(cycleDir, { recursive: true })
+      writeFileSync(join(cycleDir, 'changed-paths.json'), JSON.stringify({
+        productivePaths: ['src/lib/calculations.test.ts'],
+      }) + '\n')
+    }
+    const state = { ...loadState(config), nextCycle: 3 }
+    saveState(config, state)
+
+    const result = await runOneCycle(config, new FakeRunner({ changedPaths: ['src/lib/calculations.test.ts'] }), state)
+    const latestSummary = JSON.parse(readFileSync(config.summaryPath, 'utf8')) as {
+      productivePaths: string[]
+      repetition: { sameProductivePathStreak: number }
+      plannerSignals: string[]
+      gates: Array<{ command: string; exitCode: number }>
+    }
+    const cycleSummary = JSON.parse(readFileSync(join(config.evidenceDir, 'cycle-000003', 'autoflow-summary.json'), 'utf8')) as {
+      cycle: number
+    }
+
+    expect(result.status).toBe('completed')
+    expect(latestSummary.productivePaths).toEqual(['src/lib/calculations.test.ts'])
+    expect(latestSummary.gates).toEqual([{ command: 'pnpm typecheck', exitCode: 0 }])
+    expect(latestSummary.repetition.sameProductivePathStreak).toBe(3)
+    expect(latestSummary.plannerSignals).toContain('repeated_productive_paths:3')
+    expect(cycleSummary.cycle).toBe(3)
+  })
+
   it('passes previous cycle evidence and state into the Claude planning prompt', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'autoflow-prompt-evidence-'))
     const config = seededConfig(dir)
@@ -245,6 +277,19 @@ describe('autoflow cycle controls', () => {
     expect(claudeCall?.stdin).toContain(`Previous cycle evidence dir: ${join(config.evidenceDir, 'cycle-000006')}`)
     expect(claudeCall?.stdin).toContain('Previous cycle commit: previous-sha')
     expect(claudeCall?.stdin).toContain('Previous cycle completed at: 2026-06-23T02:13:52.994Z')
+  })
+
+  it('passes latest planner signals into the Claude planning prompt', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-prompt-summary-'))
+    const config = seededConfig(dir)
+    writeFileSync(config.summaryPath, JSON.stringify({ plannerSignals: ['repeated_productive_paths:3', 'test_only_window'] }) + '\n')
+    const runner = new FakeRunner({ changedPaths: ['src/example.ts'] })
+
+    await runOneCycle(config, runner, loadState(config))
+
+    const claudeCall = runner.calls.find((call) => call.command === 'claude')
+    expect(claudeCall?.stdin).toContain(`Latest autoflow summary: ${config.summaryPath}`)
+    expect(claudeCall?.stdin).toContain('Latest planner signals: repeated_productive_paths:3, test_only_window')
   })
 
   it('pushes and creates a PR after green low-risk changes when PR mode is enabled', async () => {
@@ -359,8 +404,11 @@ describe('autoflow cycle controls', () => {
     const runner = new FakeRunner({ changedPaths: ['package.json'] })
     const result = await runOneCycle(config, runner, loadState(config))
     const commands = runner.calls.map((call) => [call.command, ...call.args].join(' '))
+    const summary = JSON.parse(readFileSync(config.summaryPath, 'utf8')) as { changedPaths: string[]; plannerSignals: string[] }
     expect(result.status).toBe('hold')
     expect(result.hold?.code).toBe('REMOTE_WRITE_POLICY_BLOCKED')
+    expect(summary.changedPaths).toContain('package.json')
+    expect(summary.plannerSignals).toContain('hold:REMOTE_WRITE_POLICY_BLOCKED')
     expect(commands.some((command) => command.includes('git push'))).toBe(false)
   })
 
@@ -437,6 +485,7 @@ function testConfig(dir: string): AutoflowConfig {
     worktreePath: join(dir, 'worktree'),
     branch: 'codex/autoflow-workbook',
     statePath: join(dir, 'state.json'),
+    summaryPath: join(dir, 'autoflow-summary.json'),
     logPath: join(dir, 'logs', 'autoflow.jsonl'),
     evidenceDir: join(dir, 'evidence'),
     claudeBin: 'claude',
