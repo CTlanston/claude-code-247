@@ -291,6 +291,62 @@ gui/501/com.claude247.autoflow.test = {
     expect(report.checks).toContainEqual(expect.objectContaining({ code: 'running_state_stale', status: 'warn' }))
   })
 
+  it('reports an active run before suggesting the next scheduled run', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-doctor-running-action-'))
+    const config = {
+      ...testConfig(dir),
+      coderProvider: 'claude' as const,
+      allowRemoteWrites: true,
+      remoteMode: 'pr-merge' as const,
+      runningStateTtlMs: 60 * 60_000,
+    }
+    saveState(config, {
+      ...loadState(config),
+      status: 'running',
+      currentCycle: 12,
+      lastStartedAt: '2026-06-23T21:55:00.000Z',
+      lastCompletedAt: '2026-06-23T21:41:47.817Z',
+    })
+    writeFileSync(config.summaryPath, JSON.stringify({
+      version: 1,
+      updatedAt: '2026-06-23T21:41:47.817Z',
+      status: 'completed',
+      cycle: 11,
+      nextCycle: 12,
+      branch: config.branch,
+      worktreePath: config.worktreePath,
+      evidenceDir: join(config.evidenceDir, 'cycle-000011'),
+      changedPaths: ['src/example.ts'],
+      productivePaths: ['src/example.ts'],
+      gates: [{ command: 'npm test', exitCode: 0 }],
+      coderProvider: 'claude',
+      stageDurationsMs: { claude: 1, coder: 2 },
+      repetition: { windowSize: 1, sameProductivePathStreak: 1, repeatedProductivePaths: [], categoryCounts: { source: 1 } },
+      plannerSignals: [],
+    } satisfies AutoflowSummary) + '\n')
+
+    const report = buildAutoflowDoctorReport(
+      config,
+      new Date('2026-06-23T21:57:00.000Z'),
+      {
+        label: 'com.claude247.autoflow.test',
+        plistPath: join(dir, 'home', 'Library', 'LaunchAgents', 'com.claude247.autoflow.test.plist'),
+        exists: true,
+        environment: {},
+        programArguments: [],
+        startInterval: 900,
+        runtime: { checked: true, loaded: true, state: 'running', pid: 1234 },
+      },
+    )
+
+    expect(report.status).toBe('pass')
+    expect(report.operatorAction).toMatchObject({
+      severity: 'info',
+      summary: 'Autoflow cycle 12 is currently running.',
+      details: expect.arrayContaining(['Started at: 2026-06-23T21:55:00.000Z']),
+    })
+  })
+
   it('prints JSON from the CLI doctor mode without starting a cycle', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'autoflow-doctor-cli-'))
     const config = testConfig(dir)
