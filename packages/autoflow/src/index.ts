@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import {
   appendFileSync,
   copyFileSync,
@@ -164,6 +164,7 @@ export interface AutoflowDoctorReport {
     startInterval?: number
     workingDirectory?: string
     programArguments: string[]
+    runtime?: LaunchdRuntimeStatus
   }
   config: {
     coderProvider: CoderProvider
@@ -216,6 +217,17 @@ interface LaunchdRegistration {
   startInterval?: number
   workingDirectory?: string
   programArguments: string[]
+  runtime?: LaunchdRuntimeStatus
+}
+
+export interface LaunchdRuntimeStatus {
+  checked: boolean
+  loaded: boolean
+  state?: string
+  runs?: number
+  lastExitCode?: number
+  pid?: number
+  reason?: string
 }
 
 export interface CommandRunner {
@@ -324,6 +336,11 @@ export function buildAutoflowDoctorReport(config: AutoflowConfig, now = new Date
         ? { code: 'launchd_plist_found' as const, status: 'pass' as const, message: `launchd plist found: ${launchd.plistPath}` }
         : { code: 'launchd_plist_found' as const, status: 'fail' as const, message: `launchd plist missing: ${launchd.plistPath}` }]
       : []),
+    ...(launchd?.runtime
+      ? [launchd.runtime.loaded
+        ? { code: 'launchd_runtime_loaded' as const, status: 'pass' as const, message: `launchd runtime is ${launchd.runtime.state ?? 'loaded'}` }
+        : { code: 'launchd_runtime_loaded' as const, status: 'warn' as const, message: launchd.runtime.reason ?? 'launchd runtime is not loaded' }]
+      : []),
     paths.repoRoot.exists
       ? { code: 'repo_root_exists', status: 'pass', message: `repo root found: ${config.repoRoot}` }
       : { code: 'repo_root_exists', status: 'fail', message: `repo root missing: ${config.repoRoot}` },
@@ -393,6 +410,7 @@ export function buildAutoflowDoctorReport(config: AutoflowConfig, now = new Date
       startInterval: launchd.startInterval,
       workingDirectory: launchd.workingDirectory,
       programArguments: launchd.programArguments,
+      runtime: launchd.runtime,
     } : undefined,
     config: {
       coderProvider: config.coderProvider,
@@ -1862,7 +1880,7 @@ function readLaunchdRegistration(label: string, env: NodeJS.ProcessEnv = process
   const home = env['HOME'] ?? homedir()
   const plistPath = join(home, 'Library', 'LaunchAgents', `${label}.plist`)
   if (!existsSync(plistPath)) {
-    return { label, plistPath, exists: false, environment: {}, programArguments: [] }
+    return { label, plistPath, exists: false, environment: {}, programArguments: [], runtime: readLaunchdRuntime(label, env) }
   }
   const plist = readFileSync(plistPath, 'utf8')
   return {
@@ -1873,7 +1891,49 @@ function readLaunchdRegistration(label: string, env: NodeJS.ProcessEnv = process
     startInterval: readPlistInteger(plist, 'StartInterval'),
     workingDirectory: readPlistString(plist, 'WorkingDirectory'),
     programArguments: readPlistStringArray(plist, 'ProgramArguments'),
+    runtime: readLaunchdRuntime(label, env),
   }
+}
+
+function readLaunchdRuntime(label: string, env: NodeJS.ProcessEnv = process.env): LaunchdRuntimeStatus | undefined {
+  if (env['AEDEV_AUTOFLOW_SKIP_LAUNCHD_RUNTIME'] === '1') return undefined
+  const uid = typeof process.getuid === 'function' ? process.getuid() : undefined
+  if (uid === undefined) {
+    return { checked: false, loaded: false, reason: 'launchd runtime check is only available on uid-aware platforms' }
+  }
+  const target = `gui/${uid}/${label}`
+  const result = spawnSync('launchctl', ['print', target], { encoding: 'utf8' })
+  return parseLaunchdRuntimeOutput(label, result.status ?? 1, result.stdout ?? '', result.stderr ?? '')
+}
+
+export function parseLaunchdRuntimeOutput(label: string, exitCode: number, stdout: string, stderr = ''): LaunchdRuntimeStatus {
+  if (exitCode !== 0) {
+    return {
+      checked: true,
+      loaded: false,
+      reason: summarizeCommandOutput(stderr) ?? `launchd label is not loaded: ${label}`,
+    }
+  }
+  return {
+    checked: true,
+    loaded: true,
+    state: firstLaunchdString(stdout, /state = ([^\n]+)/),
+    runs: firstLaunchdNumber(stdout, /runs = ([0-9]+)/),
+    lastExitCode: firstLaunchdNumber(stdout, /last exit code = (-?[0-9]+)/),
+    pid: firstLaunchdNumber(stdout, /pid = ([0-9]+)/),
+  }
+}
+
+function firstLaunchdString(output: string, pattern: RegExp): string | undefined {
+  const match = output.match(pattern)
+  return match?.[1]?.trim()
+}
+
+function firstLaunchdNumber(output: string, pattern: RegExp): number | undefined {
+  const value = firstLaunchdString(output, pattern)
+  if (value === undefined) return undefined
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : undefined
 }
 
 function launchdAutoflowArgv(programArguments: string[]): string[] {
