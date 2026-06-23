@@ -36,6 +36,7 @@ class FakeRunner implements CommandRunner {
     claudeWorkbookContent?: string
     codexFailureStdout?: string
     fetchTimeouts?: number
+    fetchFailureStderr?: string
   } = {}) {}
 
   async run(command: string, args: string[], callOpts: { cwd: string; timeoutMs: number; stdin?: string }): Promise<CommandResult> {
@@ -44,6 +45,7 @@ class FakeRunner implements CommandRunner {
     if (rendered.includes('rev-parse HEAD')) return result(command, args, callOpts.cwd, 'base-sha\n')
     if (rendered.includes('fetch origin main')) {
       const fetchCalls = this.calls.filter((call) => [call.command, ...call.args].join(' ').includes('fetch origin main')).length
+      if (this.opts.fetchFailureStderr) return result(command, args, callOpts.cwd, '', this.opts.fetchFailureStderr, 1)
       return fetchCalls <= (this.opts.fetchTimeouts ?? 0)
         ? result(command, args, callOpts.cwd, '', 'fetch timed out\n', 124)
         : result(command, args, callOpts.cwd)
@@ -365,6 +367,30 @@ describe('autoflow cycle controls', () => {
     expect(state.hold?.retryCount).toBe(2)
     expect(state.consecutiveSetupFetchTimeouts).toBe(2)
     expect(resumeAfter).toBeGreaterThanOrEqual(before + 10 * 60_000)
+  })
+
+  it('auto-resumes transient setup fetch cwd failures', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-worktree-fetch-transient-'))
+    const config = {
+      ...testConfig(dir),
+      worktreePath: join(dir, 'new-worktree'),
+      allowRemoteWrites: true,
+      remoteMode: 'pr' as const,
+    }
+    const runner = new WorktreeCreateRunner({
+      fetchFailureStderr: 'fatal: Unable to read current working directory: Operation not permitted\n',
+      changedPaths: ['src/example.ts'],
+    })
+
+    const results = await runAutoflow(config, runner)
+    const state = loadState(config)
+
+    expect(results[0]?.status).toBe('hold')
+    expect(state.hold?.code).toBe('SETUP_FETCH_TRANSIENT')
+    expect(state.hold?.resumeAfter).toBeTruthy()
+    expect(state.hold?.retryCount).toBe(1)
+    expect(state.consecutiveSetupFetchTimeouts).toBe(1)
+    expect(runner.calls.some((call) => call.command === 'claude')).toBe(false)
   })
 
   it('auto-resumes an expired setup fetch timeout hold on the next tick', async () => {
