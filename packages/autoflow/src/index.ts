@@ -670,18 +670,15 @@ async function ensureWorktree(config: AutoflowConfig, runner: CommandRunner): Pr
   }
   if (!localGitRefExists(config.repoRoot, `refs/heads/${config.branch}`)) {
     if (config.remoteMode !== 'off') {
-      const remoteBaseRef = `refs/remotes/${config.remoteName}/${config.prBaseBranch}`
-      if (!localGitRefExists(config.repoRoot, remoteBaseRef)) {
-        const fetch = await runner.run('git', ['fetch', config.remoteName, config.prBaseBranch], {
-          cwd: config.repoRoot,
-          timeoutMs: worktreeFetchTimeoutMs(config),
-        })
-        if (fetch.exitCode === 124) {
-          throw new Error(`git fetch timed out while preparing base ${config.remoteName}/${config.prBaseBranch}`)
-        }
-        if (fetch.exitCode !== 0) {
-          throw new Error(`git fetch failed while preparing base ${config.remoteName}/${config.prBaseBranch}: ${fetch.stderr || fetch.stdout || `exit ${fetch.exitCode}`}`)
-        }
+      const fetch = await runner.run('git', ['fetch', config.remoteName, config.prBaseBranch], {
+        cwd: config.repoRoot,
+        timeoutMs: worktreeFetchTimeoutMs(config),
+      })
+      if (fetch.exitCode === 124) {
+        throw new Error(`git fetch timed out while preparing base ${config.remoteName}/${config.prBaseBranch}`)
+      }
+      if (fetch.exitCode !== 0) {
+        throw new Error(`git fetch failed while preparing base ${config.remoteName}/${config.prBaseBranch}: ${fetch.stderr || fetch.stdout || `exit ${fetch.exitCode}`}`)
       }
       await runner.run('git', ['branch', config.branch, `${config.remoteName}/${config.prBaseBranch}`], { cwd: config.repoRoot, timeoutMs: config.commandTimeoutMs })
     } else {
