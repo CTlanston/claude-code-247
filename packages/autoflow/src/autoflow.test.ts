@@ -751,7 +751,7 @@ describe('autoflow cycle controls', () => {
     expect(runner.calls).toHaveLength(0)
   })
 
-  it('logs stage events around Claude, Codex, and gates', async () => {
+  it('logs stage events around Claude, transition checks, Codex, and gates', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'autoflow-stage-events-'))
     const config = seededConfig(dir)
     await runOneCycle(config, new FakeRunner({ changedPaths: ['src/example.ts'] }), loadState(config))
@@ -762,6 +762,12 @@ describe('autoflow cycle controls', () => {
       .map((event) => event.type)
     expect(eventTypes).toContain('autoflow.claude_started')
     expect(eventTypes).toContain('autoflow.claude_completed')
+    expect(eventTypes).toContain('autoflow.post_claude_diff_started')
+    expect(eventTypes).toContain('autoflow.post_claude_diff_completed')
+    expect(eventTypes).toContain('autoflow.workbook_sync_started')
+    expect(eventTypes).toContain('autoflow.workbook_sync_completed')
+    expect(eventTypes).toContain('autoflow.coder_prompt_started')
+    expect(eventTypes).toContain('autoflow.coder_prompt_completed')
     expect(eventTypes).toContain('autoflow.codex_started')
     expect(eventTypes).toContain('autoflow.codex_completed')
     expect(eventTypes).toContain('autoflow.gates_started')
