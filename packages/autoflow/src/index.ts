@@ -59,6 +59,7 @@ export interface AutoflowState {
   consecutiveFailures: number
   consecutiveEmptyDiffs: number
   consecutiveNoProductiveChanges: number
+  consecutiveSetupFetchTimeouts: number
   currentCycle?: number
   lastCommitSha?: string
   lastStartedAt?: string
@@ -72,6 +73,7 @@ export interface HoldRecord {
   cycle: number
   createdAt: string
   resumeAfter?: string
+  retryCount?: number
 }
 
 export interface CommandResult {
@@ -145,6 +147,7 @@ const DEFAULT_FORBIDDEN = ['.env*', 'secrets/**', '.github/**', 'AGENTS.md']
 const WORKTREE_FETCH_TIMEOUT_MS = 60_000
 const DEFAULT_TIMEOUT_KILL_GRACE_MS = 2_000
 const TRANSIENT_SETUP_RESUME_DELAY_MS = 5 * 60_000
+const MAX_TRANSIENT_SETUP_RESUME_DELAY_MS = 60 * 60_000
 
 export function defaultConfig(env: NodeJS.ProcessEnv = process.env, argv: string[] = process.argv.slice(2)): AutoflowConfig {
   const repoRoot = resolve(env['AEDEV_AUTOFLOW_REPO_ROOT'] ?? DEFAULT_REPO_ROOT)
@@ -264,14 +267,21 @@ export async function runAutoflow(config: AutoflowConfig, runner: CommandRunner 
       const cycle = fresh.nextCycle
       const cycleDir = join(config.evidenceDir, cycleIdFor(cycle))
       ensureDir(cycleDir)
-      const setupHold = classifySetupHold(error as Error)
-      const result = await hold(config, cycle, setupHold.code, (error as Error).message, cycleDir, activeState, {
+      const setupHold = classifySetupHold(error as Error, activeState)
+      const holdState = {
+        ...activeState,
+        consecutiveSetupFetchTimeouts: setupHold.code === 'SETUP_FETCH_TIMEOUT'
+          ? setupHold.retryCount ?? activeState.consecutiveSetupFetchTimeouts
+          : activeState.consecutiveSetupFetchTimeouts,
+      }
+      const result = await hold(config, cycle, setupHold.code, (error as Error).message, cycleDir, holdState, {
         resumeAfter: setupHold.resumeAfter,
+        retryCount: setupHold.retryCount,
       })
       results.push(result)
       break
     }
-    const result = await runOneCycle(activeConfig, runner, activeState)
+    const result = await runOneCycle(activeConfig, runner, { ...activeState, consecutiveSetupFetchTimeouts: 0 })
     results.push(result)
     if (result.status === 'hold') break
     completedThisRun++
@@ -368,6 +378,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
         ...state,
         consecutiveEmptyDiffs: state.consecutiveEmptyDiffs + 1,
         consecutiveNoProductiveChanges: state.consecutiveNoProductiveChanges + 1,
+        consecutiveSetupFetchTimeouts: 0,
         consecutiveFailures: 0,
       }
       if (emptyState.consecutiveEmptyDiffs >= config.holdAfterConsecutiveEmptyDiffs) {
@@ -400,6 +411,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
         consecutiveFailures: 0,
         consecutiveEmptyDiffs: 0,
         consecutiveNoProductiveChanges: state.consecutiveNoProductiveChanges + 1,
+        consecutiveSetupFetchTimeouts: 0,
       }
       if (noProductiveState.consecutiveNoProductiveChanges >= config.holdAfterConsecutiveEmptyDiffs) {
         return await hold(
@@ -486,6 +498,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
       consecutiveFailures: 0,
       consecutiveEmptyDiffs: 0,
       consecutiveNoProductiveChanges: 0,
+      consecutiveSetupFetchTimeouts: 0,
       branch: nextLocation.branch,
       worktreePath: nextLocation.worktreePath,
       lastCommitSha: commitSha,
@@ -524,6 +537,7 @@ export function loadState(config: Pick<AutoflowConfig, 'statePath' | 'branch' | 
       consecutiveFailures: 0,
       consecutiveEmptyDiffs: 0,
       consecutiveNoProductiveChanges: 0,
+      consecutiveSetupFetchTimeouts: 0,
     }
   }
   const parsed = JSON.parse(readFileSync(config.statePath, 'utf8')) as AutoflowState
@@ -535,7 +549,8 @@ export function loadState(config: Pick<AutoflowConfig, 'statePath' | 'branch' | 
     status: normalizedStatus,
     branch: parsed.branch || config.branch,
     worktreePath: parsed.worktreePath || config.worktreePath,
-    consecutiveNoProductiveChanges: parsed.consecutiveNoProductiveChanges ?? 0,
+      consecutiveNoProductiveChanges: parsed.consecutiveNoProductiveChanges ?? 0,
+      consecutiveSetupFetchTimeouts: parsed.consecutiveSetupFetchTimeouts ?? 0,
   }
 }
 
@@ -955,6 +970,7 @@ async function recordFailureOrHold(
     consecutiveFailures: state.consecutiveFailures + 1,
     consecutiveEmptyDiffs: 0,
     consecutiveNoProductiveChanges: 0,
+    consecutiveSetupFetchTimeouts: 0,
   }
   if (failed.consecutiveFailures >= config.holdAfterConsecutiveFailures) {
     return hold(config, cycle, code, `${reason}; failure streak=${failed.consecutiveFailures}`, cycleDir, failed)
@@ -977,10 +993,11 @@ async function hold(
   reason: string,
   cycleDir: string,
   state: AutoflowState,
-  summaryInput: Partial<Pick<WriteSummaryInput, 'changedPaths' | 'productivePaths' | 'gates' | 'stageDurationsMs'>> & { resumeAfter?: string } = {},
+  summaryInput: Partial<Pick<WriteSummaryInput, 'changedPaths' | 'productivePaths' | 'gates' | 'stageDurationsMs'>> & { resumeAfter?: string; retryCount?: number } = {},
 ): Promise<CycleResult> {
   const record: HoldRecord = { code, reason, cycle, createdAt: new Date().toISOString() }
   if (summaryInput.resumeAfter) record.resumeAfter = summaryInput.resumeAfter
+  if (summaryInput.retryCount) record.retryCount = summaryInput.retryCount
   writeFileSync(join(cycleDir, 'HOLD.json'), JSON.stringify(record, null, 2) + '\n')
   writeFileSync(join(cycleDir, 'HOLD.md'), [`# HOLD ${code}`, '', reason, ''].join('\n'))
   const heldState = { ...state, status: 'hold' as const, currentCycle: undefined, hold: record }
@@ -1136,14 +1153,23 @@ function isAutoResumableHold(hold: HoldRecord): boolean {
   return hold.code === 'CODEX_USAGE_LIMIT' || hold.code === 'SETUP_FETCH_TIMEOUT'
 }
 
-function classifySetupHold(error: Error): { code: string; resumeAfter?: string } {
+function classifySetupHold(error: Error, state: Pick<AutoflowState, 'consecutiveSetupFetchTimeouts'>): { code: string; resumeAfter?: string; retryCount?: number } {
   if (/git fetch timed out/i.test(error.message)) {
+    const retryCount = state.consecutiveSetupFetchTimeouts + 1
     return {
       code: 'SETUP_FETCH_TIMEOUT',
-      resumeAfter: new Date(Date.now() + TRANSIENT_SETUP_RESUME_DELAY_MS).toISOString(),
+      resumeAfter: new Date(Date.now() + setupFetchTimeoutResumeDelayMs(retryCount)).toISOString(),
+      retryCount,
     }
   }
   return { code: 'SETUP_FAILED' }
+}
+
+function setupFetchTimeoutResumeDelayMs(retryCount: number): number {
+  return Math.min(
+    TRANSIENT_SETUP_RESUME_DELAY_MS * 2 ** Math.max(0, retryCount - 1),
+    MAX_TRANSIENT_SETUP_RESUME_DELAY_MS,
+  )
 }
 
 interface WriteSummaryInput {
