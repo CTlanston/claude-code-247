@@ -25,7 +25,9 @@ import {
 class FakeRunner implements CommandRunner {
   calls: Array<{ command: string; args: string[]; stdin?: string }> = []
   codexCalls = 0
+  claudeCalls = 0
   claudeDone = false
+  coderDone = false
 
   constructor(private readonly opts: {
     codexFailures?: number
@@ -55,21 +57,25 @@ class FakeRunner implements CommandRunner {
     }
     if (rendered.includes('diff --name-only')) return result(command, args, callOpts.cwd, '')
     if (rendered.includes('status --porcelain')) {
-      const paths = this.codexCalls === 0 && this.claudeDone
+      const paths = !this.coderDone && this.claudeDone
         ? ['WORKBOOK_v4.md']
         : this.opts.changedPaths ?? ['src/example.ts']
       return result(command, args, callOpts.cwd, paths.map((p) => ` M ${p}`).join('\n') + '\n')
     }
     if (command === 'claude') {
-      this.claudeDone = true
-      if (this.opts.claudeWorkbookContent) {
+      this.claudeCalls++
+      const isPlanner = this.claudeCalls === 1
+      if (isPlanner) this.claudeDone = true
+      if (isPlanner && this.opts.claudeWorkbookContent) {
         writeFileSync(join(callOpts.cwd, 'WORKBOOK_v4.md'), this.opts.claudeWorkbookContent)
       }
+      if (!isPlanner) this.coderDone = true
       return result(command, args, callOpts.cwd, '{"result":"implement the next workbook step"}\n')
     }
     if (command === 'codex') {
       this.codexCalls++
       const fail = this.codexCalls <= (this.opts.codexFailures ?? 0)
+      if (!fail) this.coderDone = true
       return result(command, args, callOpts.cwd, fail ? (this.opts.codexFailureStdout ?? '{"msg":"codex failed"}\n') : '{"msg":"codex"}\n', '', fail ? 1 : 0)
     }
     if (command === '/bin/sh') {
@@ -133,6 +139,8 @@ describe('autoflow command builders', () => {
     expect(defaultConfig({ AEDEV_AUTOFLOW_ALLOW_REMOTE_WRITES: 'true' }, []).allowRemoteWrites).toBe(true)
     expect(defaultConfig({ AEDEV_AUTOFLOW_ROTATE_REMOTE_BRANCHES: '1' }, []).rotateRemoteBranches).toBe(true)
     expect(defaultConfig({ AEDEV_AUTOFLOW_SETUP_COMMANDS: 'npm install||npm test' }, []).setupCommands).toEqual(['npm install', 'npm test'])
+    expect(defaultConfig({}, []).coderProvider).toBe('codex')
+    expect(defaultConfig({ AEDEV_AUTOFLOW_CODER_PROVIDER: 'claude' }, []).coderProvider).toBe('claude')
   })
 
   it('builds Claude and Codex commands without remote-write operations', () => {
@@ -567,6 +575,25 @@ describe('autoflow cycle controls', () => {
     expect(eventTypes).toContain('autoflow.gates_completed')
   })
 
+  it('can use Claude Code as the coder provider without invoking Codex', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-claude-coder-'))
+    const config = { ...seededConfig(dir), coderProvider: 'claude' as const }
+    const runner = new FakeRunner({ changedPaths: ['src/example.ts'] })
+
+    const result = await runOneCycle(config, runner, loadState(config))
+    const events = readFileSync(config.logPath, 'utf8')
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as { type: string; provider?: string })
+
+    expect(result.status).toBe('completed')
+    expect(runner.claudeCalls).toBe(2)
+    expect(runner.codexCalls).toBe(0)
+    expect(events).toContainEqual(expect.objectContaining({ type: 'autoflow.coder_started', provider: 'claude' }))
+    expect(events).toContainEqual(expect.objectContaining({ type: 'autoflow.coder_completed', provider: 'claude' }))
+    expect(events.map((event) => event.type)).not.toContain('autoflow.codex_started')
+  })
+
   it('writes a latest and per-cycle summary with repetition signals', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'autoflow-summary-'))
     const config = seededConfig(dir)
@@ -860,11 +887,12 @@ function testConfig(dir: string): AutoflowConfig {
     ghBin: 'gh',
     claudeEffort: 'high',
     codexConfig: [],
+    coderProvider: 'codex',
     setupCommands: [],
     gateCommands: ['pnpm typecheck'],
     forbiddenPatterns: ['.env*', 'secrets/**', '.github/**', 'AGENTS.md'],
     maxCycles: 1,
-    maxCodexRetries: 3,
+    maxCoderRetries: 3,
     holdAfterConsecutiveFailures: 3,
     holdAfterConsecutiveEmptyDiffs: 3,
     commandTimeoutMs: 1000,

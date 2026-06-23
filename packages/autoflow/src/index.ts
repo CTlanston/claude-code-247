@@ -14,6 +14,7 @@ import { dirname, join, resolve } from 'node:path'
 
 export type AutoflowStatus = 'idle' | 'running' | 'hold'
 export type RemoteWriteMode = 'off' | 'pr' | 'pr-merge'
+export type CoderProvider = 'codex' | 'claude'
 
 export interface AutoflowConfig {
   repoRoot: string
@@ -33,11 +34,12 @@ export interface AutoflowConfig {
   claudeEffort: string
   codexModel?: string
   codexConfig: string[]
+  coderProvider: CoderProvider
   setupCommands: string[]
   gateCommands: string[]
   forbiddenPatterns: string[]
   maxCycles: number | null
-  maxCodexRetries: number
+  maxCoderRetries: number
   holdAfterConsecutiveFailures: number
   holdAfterConsecutiveEmptyDiffs: number
   commandTimeoutMs: number
@@ -176,11 +178,12 @@ export function defaultConfig(env: NodeJS.ProcessEnv = process.env, argv: string
     claudeEffort: env['AEDEV_AUTOFLOW_CLAUDE_EFFORT'] ?? 'high',
     codexModel: emptyToUndefined(env['AEDEV_AUTOFLOW_CODEX_MODEL']),
     codexConfig: parseList(env['AEDEV_AUTOFLOW_CODEX_CONFIG']),
+    coderProvider: parseCoderProvider(env['AEDEV_AUTOFLOW_CODER_PROVIDER']),
     setupCommands: parseList(env['AEDEV_AUTOFLOW_SETUP_COMMANDS']),
     gateCommands: parseList(env['AEDEV_AUTOFLOW_GATES'], DEFAULT_GATES),
     forbiddenPatterns: parseList(env['AEDEV_AUTOFLOW_FORBIDDEN'], DEFAULT_FORBIDDEN),
     maxCycles: parseMaxCycles(maxCyclesRaw),
-    maxCodexRetries: Number(env['AEDEV_AUTOFLOW_CODEX_RETRIES'] ?? '3'),
+    maxCoderRetries: Number(env['AEDEV_AUTOFLOW_CODER_RETRIES'] ?? env['AEDEV_AUTOFLOW_CODEX_RETRIES'] ?? '3'),
     holdAfterConsecutiveFailures: Number(env['AEDEV_AUTOFLOW_HOLD_AFTER_FAILURES'] ?? '3'),
     holdAfterConsecutiveEmptyDiffs: Number(env['AEDEV_AUTOFLOW_HOLD_AFTER_EMPTY_DIFFS'] ?? '3'),
     commandTimeoutMs: Number(env['AEDEV_AUTOFLOW_COMMAND_TIMEOUT_MS'] ?? '1800000'),
@@ -322,25 +325,31 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
     }
     persistWorkbookSeed(config, cycleDir)
 
-    let codex: CommandResult | undefined
+    let coder: CommandResult | undefined
     let gates: GateResult[] = []
     let retryContext = ''
-    for (let attempt = 1; attempt <= config.maxCodexRetries; attempt++) {
-      const codexPrompt = buildCodexPrompt(config, cycle, attempt, cycleDir, claude.stdout || claude.stderr, retryContext)
-      writeFileSync(join(cycleDir, `codex-prompt-${attempt}.md`), codexPrompt)
-      logEvent(config, { type: 'autoflow.codex_started', cycle, attempt })
-      codex = await runCodex(config, runner, codexPrompt)
-      logEvent(config, { type: 'autoflow.codex_completed', cycle, attempt, exitCode: codex.exitCode, durationMs: codex.durationMs })
-      writeCommandEvidence(cycleDir, `codex-result-${attempt}.json`, codex)
-      writeFileSync(join(cycleDir, `codex-output-${attempt}.txt`), codex.stdout || codex.stderr || '')
-      if (codex.exitCode !== 0) {
-        if (isCodexUsageLimit(codex)) {
-          return await hold(config, cycle, 'CODEX_USAGE_LIMIT', codex.stdout || codex.stderr || 'Codex usage limit reached', cycleDir, state, {
-            stageDurationsMs: { claude: claude.durationMs, codex: codex.durationMs },
-            resumeAfter: inferCodexUsageLimitResumeAfter(codex),
+    for (let attempt = 1; attempt <= config.maxCoderRetries; attempt++) {
+      const coderPrompt = buildCoderPrompt(config, cycle, attempt, cycleDir, claude.stdout || claude.stderr, retryContext)
+      writeFileSync(join(cycleDir, `coder-prompt-${attempt}.md`), coderPrompt)
+      logEvent(config, { type: 'autoflow.coder_started', cycle, attempt, provider: config.coderProvider })
+      if (config.coderProvider === 'codex') logEvent(config, { type: 'autoflow.codex_started', cycle, attempt })
+      coder = await runCoder(config, runner, coderPrompt)
+      logEvent(config, { type: 'autoflow.coder_completed', cycle, attempt, provider: config.coderProvider, exitCode: coder.exitCode, durationMs: coder.durationMs })
+      if (config.coderProvider === 'codex') logEvent(config, { type: 'autoflow.codex_completed', cycle, attempt, exitCode: coder.exitCode, durationMs: coder.durationMs })
+      writeCommandEvidence(cycleDir, `coder-result-${attempt}.json`, coder)
+      writeFileSync(join(cycleDir, `coder-output-${attempt}.txt`), coder.stdout || coder.stderr || '')
+      if (config.coderProvider === 'codex') {
+        writeCommandEvidence(cycleDir, `codex-result-${attempt}.json`, coder)
+        writeFileSync(join(cycleDir, `codex-output-${attempt}.txt`), coder.stdout || coder.stderr || '')
+      }
+      if (coder.exitCode !== 0) {
+        if (isCoderUsageLimit(config, coder)) {
+          return await hold(config, cycle, coderUsageLimitCode(config), coder.stdout || coder.stderr || `${config.coderProvider} usage limit reached`, cycleDir, state, {
+            stageDurationsMs: { claude: claude.durationMs, codex: coder.durationMs },
+            resumeAfter: inferCoderUsageLimitResumeAfter(config, coder),
           })
         }
-        retryContext = renderRetryContext(codex, [])
+        retryContext = renderRetryContext(coder, [])
         continue
       }
       logEvent(config, { type: 'autoflow.gates_started', cycle, attempt, commands: config.gateCommands })
@@ -351,12 +360,12 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
         attempt,
         results: gates.map((gate) => ({ command: gate.command, exitCode: gate.exitCode })),
       })
-      if (codex.exitCode === 0 && gates.every((gate) => gate.exitCode === 0)) break
-      retryContext = renderRetryContext(codex, gates)
+      if (coder.exitCode === 0 && gates.every((gate) => gate.exitCode === 0)) break
+      retryContext = renderRetryContext(coder, gates)
     }
 
-    if (!codex || codex.exitCode !== 0) {
-      return await recordFailureOrHold(config, cycle, 'CODEX_FAILED', `Codex exited ${codex?.exitCode ?? 'unknown'}`, cycleDir, state)
+    if (!coder || coder.exitCode !== 0) {
+      return await recordFailureOrHold(config, cycle, 'CODER_FAILED', `${config.coderProvider} coder exited ${coder?.exitCode ?? 'unknown'}`, cycleDir, state)
     }
     const failingGate = gates.find((gate) => gate.exitCode !== 0)
     if (failingGate) {
@@ -372,7 +381,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
         changedPaths,
         productivePaths,
         gates,
-        stageDurationsMs: { claude: claude.durationMs, codex: codex.durationMs },
+        stageDurationsMs: { claude: claude.durationMs, codex: coder.durationMs },
       })
     }
     if (changedPaths.length === 0) {
@@ -402,7 +411,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
         changedPaths,
         productivePaths,
         gates,
-        stageDurationsMs: { claude: claude.durationMs, codex: codex.durationMs },
+        stageDurationsMs: { claude: claude.durationMs, codex: coder.durationMs },
       })
       logEvent(config, { type: 'autoflow.cycle_empty_diff', cycle, streak: emptyState.consecutiveEmptyDiffs })
       return { cycle, status: 'completed', evidenceDir: cycleDir }
@@ -441,7 +450,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
         changedPaths,
         productivePaths,
         gates,
-        stageDurationsMs: { claude: claude.durationMs, codex: codex.durationMs },
+        stageDurationsMs: { claude: claude.durationMs, codex: coder.durationMs },
       })
       logEvent(config, {
         type: 'autoflow.cycle_no_productive_change',
@@ -466,7 +475,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
         changedPaths,
         productivePaths,
         gates,
-        stageDurationsMs: { claude: claude.durationMs, codex: codex.durationMs },
+        stageDurationsMs: { claude: claude.durationMs, codex: coder.durationMs },
       })
     }
 
@@ -483,7 +492,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
           changedPaths,
           productivePaths,
           gates,
-          stageDurationsMs: { claude: claude.durationMs, codex: codex.durationMs, remoteWrite: remoteWrite.durationMs },
+          stageDurationsMs: { claude: claude.durationMs, codex: coder.durationMs, remoteWrite: remoteWrite.durationMs },
         })
       }
     }
@@ -518,7 +527,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
       changedPaths,
       productivePaths,
       gates,
-      stageDurationsMs: { claude: claude.durationMs, codex: codex.durationMs, remoteWrite: remoteWriteDurationMs },
+      stageDurationsMs: { claude: claude.durationMs, codex: coder.durationMs, remoteWrite: remoteWriteDurationMs },
     })
     logEvent(config, { type: 'autoflow.cycle_completed', cycle, commitSha, changedPaths })
     return { cycle, status: 'completed', evidenceDir: cycleDir, commitSha }
@@ -711,9 +720,10 @@ export class SpawnCommandRunner implements CommandRunner {
 }
 
 async function assertCliAvailable(config: AutoflowConfig, runner: CommandRunner): Promise<void> {
+  const coderBins = config.coderProvider === 'codex' ? [config.codexBin] : []
   const bins = config.remoteMode === 'off'
-    ? [config.claudeBin, config.codexBin, config.pnpmBin, 'git']
-    : [config.claudeBin, config.codexBin, config.pnpmBin, config.ghBin, 'git']
+    ? [config.claudeBin, ...coderBins, config.pnpmBin, 'git']
+    : [config.claudeBin, ...coderBins, config.pnpmBin, config.ghBin, 'git']
   for (const bin of bins) {
     const result = await runner.run('/usr/bin/which', [bin], { cwd: config.repoRoot, timeoutMs: 5000 })
     if (result.exitCode !== 0) throw new Error(`required CLI not found: ${bin}`)
@@ -826,7 +836,14 @@ async function runClaude(config: AutoflowConfig, runner: CommandRunner, prompt: 
   })
 }
 
-async function runCodex(config: AutoflowConfig, runner: CommandRunner, prompt: string): Promise<CommandResult> {
+async function runCoder(config: AutoflowConfig, runner: CommandRunner, prompt: string): Promise<CommandResult> {
+  if (config.coderProvider === 'claude') {
+    return runner.run(config.claudeBin, buildClaudeArgs(config), {
+      cwd: config.worktreePath,
+      timeoutMs: config.commandTimeoutMs,
+      stdin: prompt,
+    })
+  }
   return runner.run(config.codexBin, buildCodexArgs(config), {
     cwd: config.worktreePath,
     timeoutMs: config.commandTimeoutMs,
@@ -1052,7 +1069,7 @@ function buildClaudePrompt(config: AutoflowConfig, state: AutoflowState, cycleDi
   ].join('\n')
 }
 
-function buildCodexPrompt(
+function buildCoderPrompt(
   config: AutoflowConfig,
   cycle: number,
   attempt: number,
@@ -1060,13 +1077,16 @@ function buildCodexPrompt(
   claudeOutput: string,
   retryContext = '',
 ): string {
+  const roleName = config.coderProvider === 'claude'
+    ? 'Claude Code'
+    : 'Codex'
   return [
-    'You are Codex acting as the coder/debugger side of a 24/7 local autoflow.',
+    `You are ${roleName} acting as the coder/debugger side of a 24/7 local autoflow.`,
     '',
     `Worktree: ${config.worktreePath}`,
     `Workbook: ${join(config.worktreePath, 'WORKBOOK_v4.md')}`,
     `Cycle: ${cycle}`,
-    `Attempt: ${attempt}/${config.maxCodexRetries}`,
+    `Attempt: ${attempt}/${config.maxCoderRetries}`,
     `Evidence dir recorded by supervisor: ${cycleDir}`,
     '',
     'Forbidden: git push, gh pr create, gh pr merge, git merge, editing .env*, secrets/**, .github/**, AGENTS.md.',
@@ -1084,7 +1104,7 @@ function buildCodexPrompt(
   ].join('\n')
 }
 
-function renderRetryContext(codex: CommandResult, gates: GateResult[]): string {
+function renderRetryContext(coder: CommandResult, gates: GateResult[]): string {
   const gateSummary = gates.map((gate) => [
     `Gate: ${gate.command}`,
     `Exit: ${gate.exitCode}`,
@@ -1092,19 +1112,24 @@ function renderRetryContext(codex: CommandResult, gates: GateResult[]): string {
     gate.stderr.trim() ? `STDERR:\n${gate.stderr.slice(0, 4000)}` : '',
   ].filter(Boolean).join('\n')).join('\n\n')
   return [
-    `Codex exit: ${codex.exitCode}`,
-    codex.stdout.trim() ? `Codex stdout:\n${codex.stdout.slice(0, 4000)}` : '',
-    codex.stderr.trim() ? `Codex stderr:\n${codex.stderr.slice(0, 4000)}` : '',
+    `Coder exit: ${coder.exitCode}`,
+    coder.stdout.trim() ? `Coder stdout:\n${coder.stdout.slice(0, 4000)}` : '',
+    coder.stderr.trim() ? `Coder stderr:\n${coder.stderr.slice(0, 4000)}` : '',
     gateSummary,
   ].filter(Boolean).join('\n\n')
 }
 
-function isCodexUsageLimit(codex: CommandResult): boolean {
-  return /usage limit/i.test(`${codex.stdout}\n${codex.stderr}`)
+function isCoderUsageLimit(config: Pick<AutoflowConfig, 'coderProvider'>, coder: CommandResult): boolean {
+  if (config.coderProvider === 'codex') return /usage limit/i.test(`${coder.stdout}\n${coder.stderr}`)
+  return /usage limit|rate limit|quota/i.test(`${coder.stdout}\n${coder.stderr}`)
 }
 
-function inferCodexUsageLimitResumeAfter(codex: CommandResult): string | undefined {
-  const text = `${codex.stdout}\n${codex.stderr}`
+function coderUsageLimitCode(config: Pick<AutoflowConfig, 'coderProvider'>): string {
+  return config.coderProvider === 'codex' ? 'CODEX_USAGE_LIMIT' : 'CLAUDE_CODER_USAGE_LIMIT'
+}
+
+function inferCoderUsageLimitResumeAfter(_config: Pick<AutoflowConfig, 'coderProvider'>, coder: CommandResult): string | undefined {
+  const text = `${coder.stdout}\n${coder.stderr}`
   const match = text.match(/try again at ([A-Za-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?,\s+(\d{4})\s+(\d{1,2}):(\d{2})\s*(AM|PM)/i)
   if (!match) return undefined
   const [, monthName, dayRaw, yearRaw, hourRaw, minuteRaw, ampm] = match
@@ -1439,6 +1464,11 @@ function parseBoolean(raw: string | undefined): boolean {
 function parseRemoteWriteMode(raw: string | undefined): RemoteWriteMode {
   if (raw === 'pr' || raw === 'pr-merge') return raw
   return 'off'
+}
+
+function parseCoderProvider(raw: string | undefined): CoderProvider {
+  if (raw === 'claude') return 'claude'
+  return 'codex'
 }
 
 function isMediumOrHighRiskRemoteWritePath(path: string): boolean {
