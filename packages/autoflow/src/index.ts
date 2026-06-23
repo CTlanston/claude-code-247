@@ -3,6 +3,7 @@ import {
   appendFileSync,
   copyFileSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   readFileSync,
   renameSync,
@@ -140,7 +141,6 @@ const DEFAULT_BRANCH = 'codex/autoflow-workbook'
 const DEFAULT_HOME = join(homedir(), '.claude-code-247', 'autoflow')
 const DEFAULT_GATES = ['pnpm typecheck', 'pnpm lint', 'pnpm test']
 const DEFAULT_FORBIDDEN = ['.env*', 'secrets/**', '.github/**', 'AGENTS.md']
-const WORKTREE_PROBE_TIMEOUT_MS = 30_000
 
 export function defaultConfig(env: NodeJS.ProcessEnv = process.env, argv: string[] = process.argv.slice(2)): AutoflowConfig {
   const repoRoot = resolve(env['AEDEV_AUTOFLOW_REPO_ROOT'] ?? DEFAULT_REPO_ROOT)
@@ -654,17 +654,7 @@ async function ensureWorktree(config: AutoflowConfig, runner: CommandRunner): Pr
   if (existsSync(config.worktreePath)) {
     throw new Error(`worktree path exists but is not a git worktree: ${config.worktreePath}`)
   }
-  const branchExists = await runner.run('git', ['show-ref', '--verify', '--quiet', `refs/heads/${config.branch}`], {
-    cwd: config.repoRoot,
-    timeoutMs: worktreeProbeTimeoutMs(config),
-  })
-  if (branchExists.exitCode === 124) {
-    throw new Error(`git show-ref timed out while checking branch ${config.branch}`)
-  }
-  if (branchExists.exitCode !== 0 && branchExists.exitCode !== 1) {
-    throw new Error(`git show-ref failed while checking branch ${config.branch}: ${branchExists.stderr || branchExists.stdout || `exit ${branchExists.exitCode}`}`)
-  }
-  if (branchExists.exitCode !== 0) {
+  if (!localBranchExists(config.repoRoot, config.branch)) {
     if (config.remoteMode !== 'off') {
       await runner.run('git', ['fetch', config.remoteName, config.prBaseBranch], { cwd: config.repoRoot, timeoutMs: config.commandTimeoutMs })
       await runner.run('git', ['branch', config.branch, `${config.remoteName}/${config.prBaseBranch}`], { cwd: config.repoRoot, timeoutMs: config.commandTimeoutMs })
@@ -1195,8 +1185,27 @@ function ensureDir(path: string): void {
   mkdirSync(path, { recursive: true })
 }
 
-function worktreeProbeTimeoutMs(config: Pick<AutoflowConfig, 'commandTimeoutMs'>): number {
-  return Math.min(config.commandTimeoutMs, WORKTREE_PROBE_TIMEOUT_MS)
+function localBranchExists(repoRoot: string, branch: string): boolean {
+  const gitDir = gitDirForRepo(repoRoot)
+  if (!gitDir) return false
+  const looseRef = join(gitDir, 'refs', 'heads', ...branch.split('/'))
+  if (existsSync(looseRef)) return true
+  const packedRefs = join(gitDir, 'packed-refs')
+  if (!existsSync(packedRefs)) return false
+  const refName = `refs/heads/${branch}`
+  return readFileSync(packedRefs, 'utf8')
+    .split('\n')
+    .some((line) => line.trim().endsWith(` ${refName}`))
+}
+
+function gitDirForRepo(repoRoot: string): string | null {
+  const dotGit = join(repoRoot, '.git')
+  if (!existsSync(dotGit)) return null
+  const stat = lstatSync(dotGit)
+  if (stat.isDirectory()) return dotGit
+  const match = readFileSync(dotGit, 'utf8').match(/^gitdir:\s*(.+)\s*$/m)
+  if (!match) return null
+  return resolve(repoRoot, match[1])
 }
 
 function parseList(raw: string | undefined, fallback: string[] = []): string[] {
