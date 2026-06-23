@@ -119,5 +119,5 @@ launchctl unload "$PLIST" 2>/dev/null || true
 launchctl load -w "$PLIST"
 sleep 1
 if launchctl list | grep -q "$LABEL"; then echo "loaded $LABEL"; else echo "warning: $LABEL not loaded" >&2; fi
-echo "state: $AUTOFLOW_HOME/state.json"
-echo "logs:  $LOG_DIR/autoflow.{out,err}.log and $LOG_DIR/autoflow.jsonl"
+echo "state: ${AEDEV_AUTOFLOW_STATE:-$AUTOFLOW_HOME/state.json}"
+echo "logs:  $LOG_DIR/autoflow.{out,err}.log and ${AEDEV_AUTOFLOW_LOG:-$LOG_DIR/autoflow.jsonl}"
