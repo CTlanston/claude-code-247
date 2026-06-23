@@ -74,6 +74,7 @@ export interface HoldRecord {
   createdAt: string
   resumeAfter?: string
   retryCount?: number
+  operatorHint?: string
 }
 
 export interface CommandResult {
@@ -277,6 +278,7 @@ export async function runAutoflow(config: AutoflowConfig, runner: CommandRunner 
       const result = await hold(config, cycle, setupHold.code, (error as Error).message, cycleDir, holdState, {
         resumeAfter: setupHold.resumeAfter,
         retryCount: setupHold.retryCount,
+        operatorHint: buildSetupHoldOperatorHint(activeConfig, setupHold),
       })
       results.push(result)
       break
@@ -993,13 +995,14 @@ async function hold(
   reason: string,
   cycleDir: string,
   state: AutoflowState,
-  summaryInput: Partial<Pick<WriteSummaryInput, 'changedPaths' | 'productivePaths' | 'gates' | 'stageDurationsMs'>> & { resumeAfter?: string; retryCount?: number } = {},
+  summaryInput: Partial<Pick<WriteSummaryInput, 'changedPaths' | 'productivePaths' | 'gates' | 'stageDurationsMs'>> & { resumeAfter?: string; retryCount?: number; operatorHint?: string } = {},
 ): Promise<CycleResult> {
   const record: HoldRecord = { code, reason, cycle, createdAt: new Date().toISOString() }
   if (summaryInput.resumeAfter) record.resumeAfter = summaryInput.resumeAfter
   if (summaryInput.retryCount) record.retryCount = summaryInput.retryCount
+  if (summaryInput.operatorHint) record.operatorHint = summaryInput.operatorHint
   writeFileSync(join(cycleDir, 'HOLD.json'), JSON.stringify(record, null, 2) + '\n')
-  writeFileSync(join(cycleDir, 'HOLD.md'), [`# HOLD ${code}`, '', reason, ''].join('\n'))
+  writeFileSync(join(cycleDir, 'HOLD.md'), renderHoldMarkdown(record))
   const heldState = { ...state, status: 'hold' as const, currentCycle: undefined, hold: record }
   saveState(config, heldState)
   writeAutoflowSummary(config, {
@@ -1163,6 +1166,26 @@ function classifySetupHold(error: Error, state: Pick<AutoflowState, 'consecutive
   return { code: 'SETUP_FAILED' }
 }
 
+function buildSetupHoldOperatorHint(
+  config: Pick<AutoflowConfig, 'repoRoot' | 'remoteName' | 'prBaseBranch'>,
+  hold: Pick<HoldRecord, 'code' | 'retryCount'>,
+): string | undefined {
+  if (hold.code !== 'SETUP_FETCH_TIMEOUT' && hold.code !== 'SETUP_FETCH_TRANSIENT') return undefined
+  const fetchCommand = `git -C ${config.repoRoot} fetch ${config.remoteName} ${config.prBaseBranch}`
+  const retryLabel = hold.retryCount && hold.retryCount >= 3
+    ? `repeated setup fetch issue after ${hold.retryCount} retries`
+    : 'transient setup fetch issue'
+  return `${retryLabel}; verify repository fetch health with: ${fetchCommand}. If it succeeds, wait for resumeAfter or move hold.resumeAfter into the past and kick the launchd job.`
+}
+
+function renderHoldMarkdown(record: HoldRecord): string {
+  const lines = [`# HOLD ${record.code}`, '', record.reason, '']
+  if (record.retryCount) lines.push(`Retry count: ${record.retryCount}`, '')
+  if (record.resumeAfter) lines.push(`Resume after: ${record.resumeAfter}`, '')
+  if (record.operatorHint) lines.push('Operator hint:', '', record.operatorHint, '')
+  return lines.join('\n')
+}
+
 function transientSetupFetchHold(code: string, state: Pick<AutoflowState, 'consecutiveSetupFetchTimeouts'>): { code: string; resumeAfter: string; retryCount: number } {
   const retryCount = state.consecutiveSetupFetchTimeouts + 1
   return {
@@ -1282,6 +1305,12 @@ function buildPlannerSignals(
   const signals: string[] = []
   if (input.status === 'hold' && input.hold) {
     signals.push(`hold:${input.hold.code}`)
+    if ((input.hold.code === 'SETUP_FETCH_TIMEOUT' || input.hold.code === 'SETUP_FETCH_TRANSIENT') && (input.hold.retryCount ?? 0) >= 3) {
+      signals.push(`setup_fetch_repeated:${input.hold.retryCount}`)
+    }
+    if ((input.hold.code === 'SETUP_FETCH_TIMEOUT' || input.hold.code === 'SETUP_FETCH_TRANSIENT') && setupFetchTimeoutResumeDelayMs(input.hold.retryCount ?? 0) >= MAX_TRANSIENT_SETUP_RESUME_DELAY_MS) {
+      signals.push('setup_fetch_max_backoff')
+    }
   }
   if (input.productivePaths.length === 0) {
     signals.push('no_productive_paths')
