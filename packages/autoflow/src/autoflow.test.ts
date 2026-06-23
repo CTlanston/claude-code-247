@@ -39,6 +39,7 @@ class FakeRunner implements CommandRunner {
     claudeWorkbookContent?: string
     codexFailureStdout?: string
     committedChangedPaths?: string[]
+    unstagedChangedPathsAfterCoder?: string[]
     commitFailureStderr?: string
     headSha?: string
     fetchTimeouts?: number
@@ -68,7 +69,7 @@ class FakeRunner implements CommandRunner {
     }
     if (rendered.includes('status --porcelain')) {
       const paths = this.coderDone && this.opts.committedChangedPaths
-        ? []
+        ? this.opts.unstagedChangedPathsAfterCoder ?? []
         : !this.coderDone && this.claudeDone
         ? ['WORKBOOK_v4.md']
         : this.opts.changedPaths ?? ['src/example.ts']
@@ -625,6 +626,30 @@ describe('autoflow cycle controls', () => {
     expect(result.commitSha).toBe('coder-commit-sha')
     expect(summary.commitSha).toBe('coder-commit-sha')
     expect(summary.changedPaths).toEqual(['src/example.ts'])
+    expect(summary.productivePaths).toEqual(['src/example.ts'])
+  })
+
+  it('adopts an existing coder commit when only workbook changes remain unstaged', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-adopt-coder-commit-workbook-'))
+    const config = { ...seededConfig(dir), coderProvider: 'claude' as const }
+    const runner = new FakeRunner({
+      committedChangedPaths: ['src/example.ts'],
+      unstagedChangedPathsAfterCoder: ['WORKBOOK_v4.md'],
+      commitFailureStderr: 'Changes not staged for commit:\n\tmodified:   WORKBOOK_v4.md\n\nno changes added to commit\n',
+      headSha: 'coder-commit-sha',
+    })
+
+    const result = await runOneCycle(config, runner, loadState(config))
+    const summary = JSON.parse(readFileSync(config.summaryPath, 'utf8')) as {
+      commitSha?: string
+      changedPaths: string[]
+      productivePaths: string[]
+    }
+
+    expect(result.status).toBe('completed')
+    expect(result.commitSha).toBe('coder-commit-sha')
+    expect(summary.commitSha).toBe('coder-commit-sha')
+    expect(summary.changedPaths).toEqual(['WORKBOOK_v4.md', 'src/example.ts'])
     expect(summary.productivePaths).toEqual(['src/example.ts'])
   })
 
