@@ -43,6 +43,7 @@ export interface AutoflowConfig {
   holdAfterConsecutiveFailures: number
   holdAfterConsecutiveEmptyDiffs: number
   commandTimeoutMs: number
+  stageHeartbeatIntervalMs: number
   cycleSleepMs: number
   allowRemoteWrites: boolean
   remoteMode: RemoteWriteMode
@@ -151,6 +152,7 @@ const DEFAULT_GATES = ['pnpm typecheck', 'pnpm lint', 'pnpm test']
 const DEFAULT_FORBIDDEN = ['.env*', 'secrets/**', '.github/**', 'AGENTS.md']
 const WORKTREE_FETCH_TIMEOUT_MS = 60_000
 const DEFAULT_TIMEOUT_KILL_GRACE_MS = 2_000
+const DEFAULT_STAGE_HEARTBEAT_INTERVAL_MS = 60_000
 const TRANSIENT_SETUP_RESUME_DELAY_MS = 5 * 60_000
 const MAX_TRANSIENT_SETUP_RESUME_DELAY_MS = 60 * 60_000
 
@@ -189,6 +191,7 @@ export function defaultConfig(env: NodeJS.ProcessEnv = process.env, argv: string
     holdAfterConsecutiveFailures: Number(env['AEDEV_AUTOFLOW_HOLD_AFTER_FAILURES'] ?? '3'),
     holdAfterConsecutiveEmptyDiffs: Number(env['AEDEV_AUTOFLOW_HOLD_AFTER_EMPTY_DIFFS'] ?? '3'),
     commandTimeoutMs: Number(env['AEDEV_AUTOFLOW_COMMAND_TIMEOUT_MS'] ?? '1800000'),
+    stageHeartbeatIntervalMs: Number(env['AEDEV_AUTOFLOW_STAGE_HEARTBEAT_MS'] ?? DEFAULT_STAGE_HEARTBEAT_INTERVAL_MS),
     cycleSleepMs: Number(env['AEDEV_AUTOFLOW_CYCLE_SLEEP_MS'] ?? '0'),
     allowRemoteWrites: parseBoolean(env['AEDEV_AUTOFLOW_ALLOW_REMOTE_WRITES']),
     remoteMode: parseRemoteWriteMode(env['AEDEV_AUTOFLOW_REMOTE_MODE']),
@@ -312,7 +315,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
     const claudePrompt = buildClaudePrompt(config, state, cycleDir)
     writeFileSync(join(cycleDir, 'claude-prompt.md'), claudePrompt)
     logEvent(config, { type: 'autoflow.claude_started', cycle, cycleDir })
-    const claude = await runClaude(config, runner, claudePrompt)
+    const claude = await runWithStageHeartbeat(config, cycle, 'claude', () => runClaude(config, runner, claudePrompt))
     logEvent(config, { type: 'autoflow.claude_completed', cycle, exitCode: claude.exitCode, durationMs: claude.durationMs })
     writeCommandEvidence(cycleDir, 'claude-result.json', claude)
     writeFileSync(join(cycleDir, 'claude-output.txt'), claude.stdout || claude.stderr || '')
@@ -335,7 +338,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
       writeFileSync(join(cycleDir, `coder-prompt-${attempt}.md`), coderPrompt)
       logEvent(config, { type: 'autoflow.coder_started', cycle, attempt, provider: config.coderProvider })
       if (config.coderProvider === 'codex') logEvent(config, { type: 'autoflow.codex_started', cycle, attempt })
-      coder = await runCoder(config, runner, coderPrompt)
+      coder = await runWithStageHeartbeat(config, cycle, 'coder', () => runCoder(config, runner, coderPrompt), { attempt, provider: config.coderProvider })
       logEvent(config, { type: 'autoflow.coder_completed', cycle, attempt, provider: config.coderProvider, exitCode: coder.exitCode, durationMs: coder.durationMs })
       if (config.coderProvider === 'codex') logEvent(config, { type: 'autoflow.codex_completed', cycle, attempt, exitCode: coder.exitCode, durationMs: coder.durationMs })
       writeCommandEvidence(cycleDir, `coder-result-${attempt}.json`, coder)
@@ -1288,6 +1291,35 @@ function coderStageDurations(config: Pick<AutoflowConfig, 'coderProvider'>, clau
     coder: coderMs,
     codex: config.coderProvider === 'codex' ? coderMs : undefined,
     remoteWrite: remoteWriteMs,
+  }
+}
+
+async function runWithStageHeartbeat<T>(
+  config: Pick<AutoflowConfig, 'logPath' | 'stageHeartbeatIntervalMs'>,
+  cycle: number,
+  stage: string,
+  operation: () => Promise<T>,
+  details: Record<string, unknown> = {},
+): Promise<T> {
+  const intervalMs = config.stageHeartbeatIntervalMs
+  if (!Number.isFinite(intervalMs) || intervalMs <= 0) return operation()
+
+  const startedAt = Date.now()
+  const heartbeat = setInterval(() => {
+    logEvent(config, {
+      type: 'autoflow.stage_heartbeat',
+      cycle,
+      stage,
+      elapsedMs: Date.now() - startedAt,
+      ...details,
+    })
+  }, intervalMs)
+  heartbeat.unref?.()
+
+  try {
+    return await operation()
+  } finally {
+    clearInterval(heartbeat)
   }
 }
 
