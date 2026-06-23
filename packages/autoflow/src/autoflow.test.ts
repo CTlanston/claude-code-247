@@ -26,6 +26,7 @@ class FakeRunner implements CommandRunner {
   calls: Array<{ command: string; args: string[]; stdin?: string }> = []
   codexCalls = 0
   claudeCalls = 0
+  revParseCalls = 0
   claudeDone = false
   coderDone = false
 
@@ -37,6 +38,9 @@ class FakeRunner implements CommandRunner {
     failRemoteWrite?: boolean
     claudeWorkbookContent?: string
     codexFailureStdout?: string
+    committedChangedPaths?: string[]
+    commitFailureStderr?: string
+    headSha?: string
     fetchTimeouts?: number
     fetchFailureStderr?: string
   } = {}) {}
@@ -44,7 +48,10 @@ class FakeRunner implements CommandRunner {
   async run(command: string, args: string[], callOpts: { cwd: string; timeoutMs: number; stdin?: string }): Promise<CommandResult> {
     this.calls.push({ command, args, stdin: callOpts.stdin })
     const rendered = [command, ...args].join(' ')
-    if (rendered.includes('rev-parse HEAD')) return result(command, args, callOpts.cwd, 'base-sha\n')
+    if (rendered.includes('rev-parse HEAD')) {
+      this.revParseCalls++
+      return result(command, args, callOpts.cwd, this.revParseCalls === 1 ? 'base-sha\n' : `${this.opts.headSha ?? 'commit-sha'}\n`)
+    }
     if (rendered.includes('fetch origin main')) {
       const fetchCalls = this.calls.filter((call) => [call.command, ...call.args].join(' ').includes('fetch origin main')).length
       if (this.opts.fetchFailureStderr) return result(command, args, callOpts.cwd, '', this.opts.fetchFailureStderr, 1)
@@ -55,9 +62,14 @@ class FakeRunner implements CommandRunner {
     if (rendered.includes('diff --name-only origin/main...HEAD')) {
       return result(command, args, callOpts.cwd, (this.opts.remoteChangedPaths ?? []).join('\n') + '\n')
     }
-    if (rendered.includes('diff --name-only')) return result(command, args, callOpts.cwd, '')
+    if (rendered.includes('diff --name-only')) {
+      const paths = this.coderDone ? this.opts.committedChangedPaths ?? [] : []
+      return result(command, args, callOpts.cwd, paths.join('\n') + (paths.length > 0 ? '\n' : ''))
+    }
     if (rendered.includes('status --porcelain')) {
-      const paths = !this.coderDone && this.claudeDone
+      const paths = this.coderDone && this.opts.committedChangedPaths
+        ? []
+        : !this.coderDone && this.claudeDone
         ? ['WORKBOOK_v4.md']
         : this.opts.changedPaths ?? ['src/example.ts']
       return result(command, args, callOpts.cwd, paths.map((p) => ` M ${p}`).join('\n') + '\n')
@@ -83,8 +95,7 @@ class FakeRunner implements CommandRunner {
       return result(command, args, callOpts.cwd, gateFail ? '' : 'ok\n', gateFail ? 'failed\n' : '', gateFail ? 1 : 0)
     }
     if (rendered.includes('git add')) return result(command, args, callOpts.cwd)
-    if (rendered.includes('git -c user.name')) return result(command, args, callOpts.cwd)
-    if (rendered.includes('rev-parse HEAD')) return result(command, args, callOpts.cwd, 'commit-sha\n')
+    if (rendered.includes('git -c user.name')) return result(command, args, callOpts.cwd, '', this.opts.commitFailureStderr ?? '', this.opts.commitFailureStderr ? 1 : 0)
     if (rendered.includes('git push')) return result(command, args, callOpts.cwd, 'pushed\n', this.opts.failRemoteWrite ? 'push failed\n' : '', this.opts.failRemoteWrite ? 1 : 0)
     if (rendered.includes('gh pr create')) return result(command, args, callOpts.cwd, 'https://github.com/example/repo/pull/1\n')
     if (rendered.includes('gh pr merge')) return result(command, args, callOpts.cwd, 'merged\n')
@@ -592,6 +603,29 @@ describe('autoflow cycle controls', () => {
     expect(events).toContainEqual(expect.objectContaining({ type: 'autoflow.coder_started', provider: 'claude' }))
     expect(events).toContainEqual(expect.objectContaining({ type: 'autoflow.coder_completed', provider: 'claude' }))
     expect(events.map((event) => event.type)).not.toContain('autoflow.codex_started')
+  })
+
+  it('adopts an existing coder commit when the worktree is already clean', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-adopt-coder-commit-'))
+    const config = { ...seededConfig(dir), coderProvider: 'claude' as const }
+    const runner = new FakeRunner({
+      committedChangedPaths: ['src/example.ts'],
+      commitFailureStderr: 'nothing to commit, working tree clean\n',
+      headSha: 'coder-commit-sha',
+    })
+
+    const result = await runOneCycle(config, runner, loadState(config))
+    const summary = JSON.parse(readFileSync(config.summaryPath, 'utf8')) as {
+      commitSha?: string
+      changedPaths: string[]
+      productivePaths: string[]
+    }
+
+    expect(result.status).toBe('completed')
+    expect(result.commitSha).toBe('coder-commit-sha')
+    expect(summary.commitSha).toBe('coder-commit-sha')
+    expect(summary.changedPaths).toEqual(['src/example.ts'])
+    expect(summary.productivePaths).toEqual(['src/example.ts'])
   })
 
   it('writes a latest and per-cycle summary with repetition signals', async () => {
