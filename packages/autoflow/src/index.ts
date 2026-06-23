@@ -95,6 +95,13 @@ export interface CommandResult {
   durationMs: number
 }
 
+export interface CommandRunOptions {
+  cwd: string
+  timeoutMs: number
+  stdin?: string
+  env?: NodeJS.ProcessEnv
+}
+
 export interface GateResult {
   command: string
   exitCode: number
@@ -147,7 +154,7 @@ export interface AutoflowSummary {
 }
 
 export interface CommandRunner {
-  run(command: string, args: string[], opts: { cwd: string; timeoutMs: number; stdin?: string }): Promise<CommandResult>
+  run(command: string, args: string[], opts: CommandRunOptions): Promise<CommandResult>
 }
 
 const DEFAULT_REPO_ROOT = '/Users/lanston/projects/claude-code-247'
@@ -692,7 +699,7 @@ export function pathMatches(pattern: string, path: string): boolean {
 export class SpawnCommandRunner implements CommandRunner {
   constructor(private readonly opts: { allowRemoteWrites?: boolean; timeoutKillGraceMs?: number } = {}) {}
 
-  run(command: string, args: string[], opts: { cwd: string; timeoutMs: number; stdin?: string }): Promise<CommandResult> {
+  run(command: string, args: string[], opts: CommandRunOptions): Promise<CommandResult> {
     if (shouldBlockRemoteWrite(command, args, this.opts.allowRemoteWrites ?? false)) {
       throw new Error(`remote write command blocked: ${command} ${args.join(' ')}`)
     }
@@ -700,7 +707,7 @@ export class SpawnCommandRunner implements CommandRunner {
     return new Promise((resolveCommand) => {
       const child = spawn(command, args, {
         cwd: opts.cwd,
-        env: scrubRemoteWriteEnv(process.env, this.opts.allowRemoteWrites ?? false),
+        env: scrubRemoteWriteEnv({ ...process.env, ...(opts.env ?? {}) }, this.opts.allowRemoteWrites ?? false),
         stdio: ['pipe', 'pipe', 'pipe'],
         detached: true,
       })
@@ -785,6 +792,7 @@ async function ensureWorktree(
     if (config.remoteMode !== 'off') {
       const timeoutMs = worktreeFetchTimeoutMs(config)
       const maxAttempts = setupFetchAttempts(config)
+      const fetchEnv = nonInteractiveGitEnv()
       let fetch: CommandResult | undefined
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         if (stateConfig && cycle !== undefined) {
@@ -796,11 +804,13 @@ async function ensureWorktree(
             remoteName: config.remoteName,
             baseBranch: config.prBaseBranch,
             timeoutMs,
+            nonInteractive: true,
           })
         }
         fetch = await runner.run('git', ['fetch', config.remoteName, config.prBaseBranch], {
           cwd: config.repoRoot,
           timeoutMs,
+          env: fetchEnv,
         })
         if (stateConfig && cycle !== undefined) {
           logEvent(stateConfig, {
@@ -813,6 +823,7 @@ async function ensureWorktree(
             exitCode: fetch.exitCode,
             durationMs: fetch.durationMs,
             timeoutMs,
+            nonInteractive: true,
             stderr: summarizeCommandOutput(fetch.stderr),
             stdout: summarizeCommandOutput(fetch.stdout),
           })
@@ -1608,6 +1619,14 @@ export function scrubRemoteWriteEnv(env: NodeJS.ProcessEnv, allowRemoteWrites = 
     delete safe['GH_TOKEN']
   }
   return safe
+}
+
+export function nonInteractiveGitEnv(): NodeJS.ProcessEnv {
+  return {
+    GCM_INTERACTIVE: 'never',
+    GIT_ASKPASS: '',
+    GIT_TERMINAL_PROMPT: '0',
+  }
 }
 
 function cycleIdFor(cycle: number): string {
