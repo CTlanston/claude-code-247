@@ -11,6 +11,7 @@ import {
   commandContainsRemoteWrite,
   defaultConfig,
   loadState,
+  parseLaunchdRuntimeOutput,
   pathMatches,
   planRemoteWriteStage,
   runAutoflow,
@@ -203,6 +204,28 @@ describe('autoflow command builders', () => {
 })
 
 describe('autoflow doctor', () => {
+  it('parses launchd runtime status from launchctl print output', () => {
+    const runtime = parseLaunchdRuntimeOutput('com.claude247.autoflow.test', 0, `
+gui/501/com.claude247.autoflow.test = {
+  active count = 1
+  path = /Users/test/Library/LaunchAgents/com.claude247.autoflow.test.plist
+  state = not running
+  runs = 21
+  last exit code = 0
+}
+`)
+
+    expect(runtime).toEqual({
+      checked: true,
+      loaded: true,
+      state: 'not running',
+      runs: 21,
+      lastExitCode: 0,
+      pid: undefined,
+    })
+    expect(parseLaunchdRuntimeOutput('missing.label', 113, '', 'Could not find service "missing.label"').loaded).toBe(false)
+  })
+
   it('reports Claude coder, remote write, state, and summary health', () => {
     const dir = mkdtempSync(join(tmpdir(), 'autoflow-doctor-pass-'))
     const config = {
@@ -357,7 +380,7 @@ describe('autoflow doctor', () => {
     const originalLog = console.log
     console.log = (line?: unknown) => { lines.push(String(line)) }
     try {
-      await runAutoflowCli({ HOME: home }, ['doctor', '--launchd-label', label, '--json'])
+      await runAutoflowCli({ HOME: home, AEDEV_AUTOFLOW_SKIP_LAUNCHD_RUNTIME: '1' }, ['doctor', '--launchd-label', label, '--json'])
     } finally {
       console.log = originalLog
     }
