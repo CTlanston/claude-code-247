@@ -141,6 +141,7 @@ const DEFAULT_BRANCH = 'codex/autoflow-workbook'
 const DEFAULT_HOME = join(homedir(), '.claude-code-247', 'autoflow')
 const DEFAULT_GATES = ['pnpm typecheck', 'pnpm lint', 'pnpm test']
 const DEFAULT_FORBIDDEN = ['.env*', 'secrets/**', '.github/**', 'AGENTS.md']
+const WORKTREE_FETCH_TIMEOUT_MS = 60_000
 
 export function defaultConfig(env: NodeJS.ProcessEnv = process.env, argv: string[] = process.argv.slice(2)): AutoflowConfig {
   const repoRoot = resolve(env['AEDEV_AUTOFLOW_REPO_ROOT'] ?? DEFAULT_REPO_ROOT)
@@ -654,9 +655,21 @@ async function ensureWorktree(config: AutoflowConfig, runner: CommandRunner): Pr
   if (existsSync(config.worktreePath)) {
     throw new Error(`worktree path exists but is not a git worktree: ${config.worktreePath}`)
   }
-  if (!localBranchExists(config.repoRoot, config.branch)) {
+  if (!localGitRefExists(config.repoRoot, `refs/heads/${config.branch}`)) {
     if (config.remoteMode !== 'off') {
-      await runner.run('git', ['fetch', config.remoteName, config.prBaseBranch], { cwd: config.repoRoot, timeoutMs: config.commandTimeoutMs })
+      const remoteBaseRef = `refs/remotes/${config.remoteName}/${config.prBaseBranch}`
+      if (!localGitRefExists(config.repoRoot, remoteBaseRef)) {
+        const fetch = await runner.run('git', ['fetch', config.remoteName, config.prBaseBranch], {
+          cwd: config.repoRoot,
+          timeoutMs: worktreeFetchTimeoutMs(config),
+        })
+        if (fetch.exitCode === 124) {
+          throw new Error(`git fetch timed out while preparing base ${config.remoteName}/${config.prBaseBranch}`)
+        }
+        if (fetch.exitCode !== 0) {
+          throw new Error(`git fetch failed while preparing base ${config.remoteName}/${config.prBaseBranch}: ${fetch.stderr || fetch.stdout || `exit ${fetch.exitCode}`}`)
+        }
+      }
       await runner.run('git', ['branch', config.branch, `${config.remoteName}/${config.prBaseBranch}`], { cwd: config.repoRoot, timeoutMs: config.commandTimeoutMs })
     } else {
       await runner.run('git', ['branch', config.branch, 'HEAD'], { cwd: config.repoRoot, timeoutMs: config.commandTimeoutMs })
@@ -1185,14 +1198,13 @@ function ensureDir(path: string): void {
   mkdirSync(path, { recursive: true })
 }
 
-function localBranchExists(repoRoot: string, branch: string): boolean {
+function localGitRefExists(repoRoot: string, refName: string): boolean {
   const gitDir = gitDirForRepo(repoRoot)
   if (!gitDir) return false
-  const looseRef = join(gitDir, 'refs', 'heads', ...branch.split('/'))
+  const looseRef = join(gitDir, ...refName.split('/'))
   if (existsSync(looseRef)) return true
   const packedRefs = join(gitDir, 'packed-refs')
   if (!existsSync(packedRefs)) return false
-  const refName = `refs/heads/${branch}`
   return readFileSync(packedRefs, 'utf8')
     .split('\n')
     .some((line) => line.trim().endsWith(` ${refName}`))
@@ -1206,6 +1218,10 @@ function gitDirForRepo(repoRoot: string): string | null {
   const match = readFileSync(dotGit, 'utf8').match(/^gitdir:\s*(.+)\s*$/m)
   if (!match) return null
   return resolve(repoRoot, match[1])
+}
+
+function worktreeFetchTimeoutMs(config: Pick<AutoflowConfig, 'commandTimeoutMs'>): number {
+  return Math.min(config.commandTimeoutMs, WORKTREE_FETCH_TIMEOUT_MS)
 }
 
 function parseList(raw: string | undefined, fallback: string[] = []): string[] {
