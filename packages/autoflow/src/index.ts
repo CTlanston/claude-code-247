@@ -239,6 +239,13 @@ export async function runAutoflow(config: AutoflowConfig, runner: CommandRunner 
     const fresh = loadState(config)
     if (fresh.status === 'hold') break
     const activeConfig = configForState(config, fresh)
+    const activeState = {
+      ...fresh,
+      status: 'running' as const,
+      currentCycle: fresh.nextCycle,
+      lastStartedAt: new Date().toISOString(),
+    }
+    saveState(config, activeState)
     try {
       logEvent(config, {
         type: 'autoflow.prepare_worktree_started',
@@ -246,7 +253,7 @@ export async function runAutoflow(config: AutoflowConfig, runner: CommandRunner 
         branch: activeConfig.branch,
         worktreePath: activeConfig.worktreePath,
       })
-      await prepareWorktree(activeConfig, runner, fresh, config)
+      await prepareWorktree(activeConfig, runner, activeState, config)
       logEvent(config, {
         type: 'autoflow.prepare_worktree_completed',
         cycle: fresh.nextCycle,
@@ -258,13 +265,13 @@ export async function runAutoflow(config: AutoflowConfig, runner: CommandRunner 
       const cycleDir = join(config.evidenceDir, cycleIdFor(cycle))
       ensureDir(cycleDir)
       const setupHold = classifySetupHold(error as Error)
-      const result = await hold(config, cycle, setupHold.code, (error as Error).message, cycleDir, fresh, {
+      const result = await hold(config, cycle, setupHold.code, (error as Error).message, cycleDir, activeState, {
         resumeAfter: setupHold.resumeAfter,
       })
       results.push(result)
       break
     }
-    const result = await runOneCycle(activeConfig, runner, fresh)
+    const result = await runOneCycle(activeConfig, runner, activeState)
     results.push(result)
     if (result.status === 'hold') break
     completedThisRun++
