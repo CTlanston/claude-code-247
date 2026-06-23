@@ -2064,6 +2064,18 @@ function buildOperatorAction(
     }
   }
 
+  if (state?.status === 'running') {
+    return {
+      severity: 'info',
+      summary: `Autoflow cycle ${state.currentCycle ?? state.nextCycle} is currently running.`,
+      details: [
+        ...(state.lastStartedAt ? [`Started at: ${state.lastStartedAt}`] : []),
+        ...(launchd?.runtime?.pid ? [`launchd pid: ${launchd.runtime.pid}`] : []),
+        `Log path: ${config.logPath}`,
+      ],
+    }
+  }
+
   if (cadence?.checked && cadence.overdue && launchd?.label) {
     return {
       severity: 'warn',
