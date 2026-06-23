@@ -185,6 +185,24 @@ describe('autoflow cycle controls', () => {
     expect(loadState(config).hold?.code).toBe('SETUP_FAILED')
   })
 
+  it('logs prepare sub-stage events around worktree, workbook seed, and setup commands', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-prepare-events-'))
+    const config = { ...testConfig(dir), setupCommands: ['npm install'] }
+    mkdirSync(join(config.worktreePath, '.git'), { recursive: true })
+    await runAutoflow(config, new FakeRunner({ changedPaths: ['src/example.ts'] }))
+    const eventTypes = readFileSync(config.logPath, 'utf8')
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as { type: string })
+      .map((event) => event.type)
+    expect(eventTypes).toContain('autoflow.ensure_worktree_started')
+    expect(eventTypes).toContain('autoflow.ensure_worktree_completed')
+    expect(eventTypes).toContain('autoflow.seed_workbook_started')
+    expect(eventTypes).toContain('autoflow.seed_workbook_completed')
+    expect(eventTypes).toContain('autoflow.setup_command_started')
+    expect(eventTypes).toContain('autoflow.setup_command_completed')
+  })
+
   it('retries Codex up to the configured limit before committing', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'autoflow-cycle-'))
     const config = seededConfig(dir)
