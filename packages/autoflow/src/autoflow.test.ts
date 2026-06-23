@@ -51,6 +51,7 @@ class FakeRunner implements CommandRunner {
     headSha?: string
     fetchTimeouts?: number
     fetchFailureStderr?: string
+    postClaudeDiffFailureStderr?: string
     claudeDelayMs?: number
   } = {}) {}
 
@@ -72,6 +73,9 @@ class FakeRunner implements CommandRunner {
       return result(command, args, callOpts.cwd, (this.opts.remoteChangedPaths ?? []).join('\n') + '\n')
     }
     if (rendered.includes('diff --name-only')) {
+      if (this.claudeDone && !this.coderDone && this.opts.postClaudeDiffFailureStderr) {
+        return result(command, args, callOpts.cwd, '', this.opts.postClaudeDiffFailureStderr, 1)
+      }
       const paths = this.coderDone ? this.opts.committedChangedPaths ?? [] : []
       return result(command, args, callOpts.cwd, paths.join('\n') + (paths.length > 0 ? '\n' : ''))
     }
@@ -1200,6 +1204,42 @@ describe('autoflow cycle controls', () => {
         cacheReadInputTokens: 22,
       },
     })
+    expect(usageEvidence).toEqual(summary.usage)
+  })
+
+  it('preserves Claude usage evidence when a post-planner cycle error holds the loop', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-cycle-error-usage-'))
+    const config = { ...seededConfig(dir), coderProvider: 'claude' as const }
+    const state = { ...loadState(config), consecutiveFailures: 2 }
+    saveState(config, state)
+    const runner = new FakeRunner({ postClaudeDiffFailureStderr: 'fatal: not a git repository\n' })
+
+    const result = await runOneCycle(
+      config,
+      runner,
+      state,
+    )
+
+    const cycleDir = join(config.evidenceDir, 'cycle-000001')
+    const summary = JSON.parse(readFileSync(config.summaryPath, 'utf8')) as AutoflowSummary
+    const usageEvidence = JSON.parse(readFileSync(join(cycleDir, 'model-usage.json'), 'utf8')) as AutoflowSummary['usage']
+
+    expect(result.status).toBe('hold')
+    expect(result.hold?.code).toBe('CYCLE_ERROR')
+    expect(runner.claudeCalls).toBe(1)
+    expect(runner.codexCalls).toBe(0)
+    expect(summary.status).toBe('hold')
+    expect(summary.usage).toMatchObject({
+      planner: { provider: 'claude', costUsd: 0.12, inputTokens: 100, outputTokens: 40 },
+      total: {
+        costUsd: 0.12,
+        inputTokens: 100,
+        outputTokens: 40,
+        cacheCreationInputTokens: 7,
+        cacheReadInputTokens: 11,
+      },
+    })
+    expect(summary.usage?.coder).toBeUndefined()
     expect(usageEvidence).toEqual(summary.usage)
   })
 
