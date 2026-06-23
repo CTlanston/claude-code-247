@@ -34,6 +34,7 @@ class FakeRunner implements CommandRunner {
     remoteChangedPaths?: string[]
     failRemoteWrite?: boolean
     claudeWorkbookContent?: string
+    codexFailureStdout?: string
   } = {}) {}
 
   async run(command: string, args: string[], callOpts: { cwd: string; timeoutMs: number; stdin?: string }): Promise<CommandResult> {
@@ -61,7 +62,7 @@ class FakeRunner implements CommandRunner {
     if (command === 'codex') {
       this.codexCalls++
       const fail = this.codexCalls <= (this.opts.codexFailures ?? 0)
-      return result(command, args, callOpts.cwd, '{"msg":"codex"}\n', '', fail ? 1 : 0)
+      return result(command, args, callOpts.cwd, fail ? (this.opts.codexFailureStdout ?? '{"msg":"codex failed"}\n') : '{"msg":"codex"}\n', '', fail ? 1 : 0)
     }
     if (command === '/bin/sh') {
       const gateFail = this.calls.filter((c) => c.command === '/bin/sh').length <= (this.opts.gateFailures ?? 0)
@@ -282,6 +283,45 @@ describe('autoflow cycle controls', () => {
     const result = await runOneCycle(config, runner, loadState(config))
     expect(result.status).toBe('completed')
     expect(runner.codexCalls).toBe(3)
+  })
+
+  it('skips gates for failed Codex attempts and runs gates after a successful retry', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-codex-fail-gates-'))
+    const config = seededConfig(dir)
+    const runner = new FakeRunner({ codexFailures: 1, changedPaths: ['src/example.ts'] })
+
+    const result = await runOneCycle(config, runner, loadState(config))
+    const events = readFileSync(config.logPath, 'utf8')
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as { type: string; attempt?: number })
+    const gateAttempts = events
+      .filter((event) => event.type === 'autoflow.gates_started')
+      .map((event) => event.attempt)
+
+    expect(result.status).toBe('completed')
+    expect(gateAttempts).toEqual([2])
+  })
+
+  it('holds immediately on Codex usage limits without retrying or running gates', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-codex-usage-limit-'))
+    const config = seededConfig(dir)
+    const runner = new FakeRunner({
+      codexFailures: 3,
+      changedPaths: ['src/example.ts'],
+      codexFailureStdout: `{"type":"error","message":"You've hit your usage limit. Try again later."}\n`,
+    })
+
+    const result = await runOneCycle(config, runner, loadState(config))
+    const events = readFileSync(config.logPath, 'utf8')
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as { type: string })
+
+    expect(result.status).toBe('hold')
+    expect(result.hold?.code).toBe('CODEX_USAGE_LIMIT')
+    expect(runner.codexCalls).toBe(1)
+    expect(events.some((event) => event.type === 'autoflow.gates_started')).toBe(false)
   })
 
   it('logs stage events around Claude, Codex, and gates', async () => {
