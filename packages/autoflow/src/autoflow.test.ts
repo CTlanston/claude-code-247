@@ -194,6 +194,23 @@ describe('autoflow cycle controls', () => {
     expect(runner.codexCalls).toBe(3)
   })
 
+  it('logs stage events around Claude, Codex, and gates', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-stage-events-'))
+    const config = seededConfig(dir)
+    await runOneCycle(config, new FakeRunner({ changedPaths: ['src/example.ts'] }), loadState(config))
+    const eventTypes = readFileSync(config.logPath, 'utf8')
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as { type: string })
+      .map((event) => event.type)
+    expect(eventTypes).toContain('autoflow.claude_started')
+    expect(eventTypes).toContain('autoflow.claude_completed')
+    expect(eventTypes).toContain('autoflow.codex_started')
+    expect(eventTypes).toContain('autoflow.codex_completed')
+    expect(eventTypes).toContain('autoflow.gates_started')
+    expect(eventTypes).toContain('autoflow.gates_completed')
+  })
+
   it('passes previous cycle evidence and state into the Claude planning prompt', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'autoflow-prompt-evidence-'))
     const config = seededConfig(dir)

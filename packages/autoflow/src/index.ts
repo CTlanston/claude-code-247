@@ -244,7 +244,9 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
   try {
     const claudePrompt = buildClaudePrompt(config, state, cycleDir)
     writeFileSync(join(cycleDir, 'claude-prompt.md'), claudePrompt)
+    logEvent(config, { type: 'autoflow.claude_started', cycle, cycleDir })
     const claude = await runClaude(config, runner, claudePrompt)
+    logEvent(config, { type: 'autoflow.claude_completed', cycle, exitCode: claude.exitCode, durationMs: claude.durationMs })
     writeCommandEvidence(cycleDir, 'claude-result.json', claude)
     writeFileSync(join(cycleDir, 'claude-output.txt'), claude.stdout || claude.stderr || '')
     if (claude.exitCode !== 0) {
@@ -264,10 +266,19 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
     for (let attempt = 1; attempt <= config.maxCodexRetries; attempt++) {
       const codexPrompt = buildCodexPrompt(config, cycle, attempt, cycleDir, claude.stdout || claude.stderr, retryContext)
       writeFileSync(join(cycleDir, `codex-prompt-${attempt}.md`), codexPrompt)
+      logEvent(config, { type: 'autoflow.codex_started', cycle, attempt })
       codex = await runCodex(config, runner, codexPrompt)
+      logEvent(config, { type: 'autoflow.codex_completed', cycle, attempt, exitCode: codex.exitCode, durationMs: codex.durationMs })
       writeCommandEvidence(cycleDir, `codex-result-${attempt}.json`, codex)
       writeFileSync(join(cycleDir, `codex-output-${attempt}.txt`), codex.stdout || codex.stderr || '')
+      logEvent(config, { type: 'autoflow.gates_started', cycle, attempt, commands: config.gateCommands })
       gates = await runGates(config, runner, cycleDir, attempt)
+      logEvent(config, {
+        type: 'autoflow.gates_completed',
+        cycle,
+        attempt,
+        results: gates.map((gate) => ({ command: gate.command, exitCode: gate.exitCode })),
+      })
       if (codex.exitCode === 0 && gates.every((gate) => gate.exitCode === 0)) break
       retryContext = renderRetryContext(codex, gates)
     }
@@ -344,7 +355,9 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
     const pathsToCommit = remotePlan.allowed ? productivePaths : changedPaths
     const commitSha = await commitCycle(config, runner, cycle, pathsToCommit)
     if (remotePlan.allowed) {
+      logEvent(config, { type: 'autoflow.remote_write_started', cycle, mode: remotePlan.mode, commitSha })
       const remoteWrite = await runRemoteWriteStage(config, runner, cycle, cycleDir, commitSha)
+      logEvent(config, { type: 'autoflow.remote_write_completed', cycle, exitCode: remoteWrite.exitCode, durationMs: remoteWrite.durationMs })
       if (remoteWrite.exitCode !== 0) {
         return await hold(config, cycle, 'REMOTE_WRITE_FAILED', remoteWrite.stderr || remoteWrite.stdout || `Remote write failed: ${remoteWrite.command}`, cycleDir, state)
       }
