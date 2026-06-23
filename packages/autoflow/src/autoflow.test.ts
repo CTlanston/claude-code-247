@@ -19,11 +19,12 @@ import {
   SpawnCommandRunner,
   type AutoflowConfig,
   type CommandResult,
+  type CommandRunOptions,
   type CommandRunner,
 } from './index.js'
 
 class FakeRunner implements CommandRunner {
-  calls: Array<{ command: string; args: string[]; stdin?: string }> = []
+  calls: Array<{ command: string; args: string[]; stdin?: string; env?: NodeJS.ProcessEnv }> = []
   codexCalls = 0
   claudeCalls = 0
   revParseCalls = 0
@@ -47,8 +48,8 @@ class FakeRunner implements CommandRunner {
     claudeDelayMs?: number
   } = {}) {}
 
-  async run(command: string, args: string[], callOpts: { cwd: string; timeoutMs: number; stdin?: string }): Promise<CommandResult> {
-    this.calls.push({ command, args, stdin: callOpts.stdin })
+  async run(command: string, args: string[], callOpts: CommandRunOptions): Promise<CommandResult> {
+    this.calls.push({ command, args, stdin: callOpts.stdin, env: callOpts.env })
     const rendered = [command, ...args].join(' ')
     if (rendered.includes('rev-parse HEAD')) {
       this.revParseCalls++
@@ -107,13 +108,13 @@ class FakeRunner implements CommandRunner {
 }
 
 class SetupFailRunner implements CommandRunner {
-  async run(command: string, args: string[], callOpts: { cwd: string }): Promise<CommandResult> {
+  async run(command: string, args: string[], callOpts: CommandRunOptions): Promise<CommandResult> {
     return result(command, args, callOpts.cwd, '', 'missing cli\n', 1)
   }
 }
 
 class WorktreeCreateRunner extends FakeRunner {
-  override async run(command: string, args: string[], callOpts: { cwd: string; timeoutMs: number; stdin?: string }): Promise<CommandResult> {
+  override async run(command: string, args: string[], callOpts: CommandRunOptions): Promise<CommandResult> {
     if (command === 'git' && args[0] === 'worktree' && args[1] === 'add' && args[2]) {
       mkdirSync(join(args[2], '.git'), { recursive: true })
     }
@@ -386,7 +387,7 @@ describe('autoflow cycle controls', () => {
     writeFileSync(join(config.repoRoot, '.git', 'refs', 'remotes', 'origin', 'main'), 'base-sha\n')
     let observedState: ReturnType<typeof loadState> | undefined
     class InspectPrepareRunner extends WorktreeCreateRunner {
-      override async run(command: string, args: string[], callOpts: { cwd: string; timeoutMs: number; stdin?: string }): Promise<CommandResult> {
+      override async run(command: string, args: string[], callOpts: CommandRunOptions): Promise<CommandResult> {
         if ([command, ...args].join(' ').includes('fetch origin main')) {
           observedState = loadState(config)
         }
@@ -426,17 +427,25 @@ describe('autoflow cycle controls', () => {
     const events = readFileSync(config.logPath, 'utf8')
       .trim()
       .split('\n')
-      .map((line) => JSON.parse(line) as { type: string; timeoutMs?: number; exitCode?: number; stderr?: string })
+      .map((line) => JSON.parse(line) as { type: string; timeoutMs?: number; exitCode?: number; stderr?: string; nonInteractive?: boolean })
     expect(events).toContainEqual(expect.objectContaining({
       type: 'autoflow.setup_fetch_started',
       timeoutMs: 60_000,
+      nonInteractive: true,
     }))
     expect(events).toContainEqual(expect.objectContaining({
       type: 'autoflow.setup_fetch_completed',
       exitCode: 124,
       timeoutMs: 60_000,
+      nonInteractive: true,
       stderr: 'fetch timed out',
     }))
+    const fetchCall = runner.calls.find((call) => [call.command, ...call.args].join(' ') === 'git fetch origin main')
+    expect(fetchCall?.env).toMatchObject({
+      GCM_INTERACTIVE: 'never',
+      GIT_ASKPASS: '',
+      GIT_TERMINAL_PROMPT: '0',
+    })
     expect(runner.calls.some((call) => call.command === 'claude')).toBe(false)
   })
 
