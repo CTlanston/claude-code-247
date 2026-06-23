@@ -81,15 +81,12 @@ class SetupFailRunner implements CommandRunner {
   }
 }
 
-class WorktreeProbeTimeoutRunner implements CommandRunner {
-  calls: Array<{ command: string; args: string[]; timeoutMs: number }> = []
-
-  async run(command: string, args: string[], callOpts: { cwd: string; timeoutMs: number }): Promise<CommandResult> {
-    this.calls.push({ command, args, timeoutMs: callOpts.timeoutMs })
-    const rendered = [command, ...args].join(' ')
-    if (command === '/usr/bin/which') return result(command, args, callOpts.cwd)
-    if (rendered.includes('show-ref --verify --quiet')) return result(command, args, callOpts.cwd, '', '', 124)
-    return result(command, args, callOpts.cwd)
+class WorktreeCreateRunner extends FakeRunner {
+  override async run(command: string, args: string[], callOpts: { cwd: string; timeoutMs: number; stdin?: string }): Promise<CommandResult> {
+    if (command === 'git' && args[0] === 'worktree' && args[1] === 'add' && args[2]) {
+      mkdirSync(join(args[2], '.git'), { recursive: true })
+    }
+    return super.run(command, args, callOpts)
   }
 }
 
@@ -215,18 +212,18 @@ describe('autoflow cycle controls', () => {
     expect(eventTypes).toContain('autoflow.setup_command_completed')
   })
 
-  it('holds quickly when the worktree branch probe times out', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'autoflow-worktree-probe-timeout-'))
+  it('prepares missing worktree branches without spawning git show-ref', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-worktree-local-branch-'))
     const config = { ...testConfig(dir), worktreePath: join(dir, 'new-worktree'), commandTimeoutMs: 60_000 }
-    const runner = new WorktreeProbeTimeoutRunner()
+    const runner = new WorktreeCreateRunner({ changedPaths: ['src/example.ts'] })
 
     const results = await runAutoflow(config, runner)
+    const commands = runner.calls.map((call) => [call.command, ...call.args].join(' '))
 
-    const showRef = runner.calls.find((call) => call.args.includes('show-ref'))
-    expect(results[0]?.status).toBe('hold')
-    expect(results[0]?.hold?.code).toBe('SETUP_FAILED')
-    expect(results[0]?.hold?.reason).toContain('git show-ref timed out')
-    expect(showRef?.timeoutMs).toBe(30_000)
+    expect(results[0]?.status).toBe('completed')
+    expect(commands.some((command) => command.includes('show-ref'))).toBe(false)
+    expect(commands).toContain('git branch codex/autoflow-workbook HEAD')
+    expect(commands).toContain(`git worktree add ${config.worktreePath} codex/autoflow-workbook`)
   })
 
   it('retries Codex up to the configured limit before committing', async () => {
