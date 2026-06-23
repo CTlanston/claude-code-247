@@ -426,6 +426,34 @@ describe('autoflow cycle controls', () => {
     expect(cycleSummary.cycle).toBe(3)
   })
 
+  it('signals when recent cycles are test-heavy even with some source changes', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-test-heavy-summary-'))
+    const config = seededConfig(dir)
+    const priorPaths = [
+      ['src/lib/calculations.test.ts'],
+      ['src/lib/category.test.ts'],
+      ['src/lib/calculations.test.ts'],
+      ['src/lib/category.ts'],
+      ['src/lib/category.test.ts'],
+    ]
+    priorPaths.forEach((productivePaths, index) => {
+      const cycleDir = join(config.evidenceDir, `cycle-00000${index + 1}`)
+      mkdirSync(cycleDir, { recursive: true })
+      writeFileSync(join(cycleDir, 'changed-paths.json'), JSON.stringify({ productivePaths }) + '\n')
+    })
+    const state = { ...loadState(config), nextCycle: 6 }
+    saveState(config, state)
+
+    await runOneCycle(config, new FakeRunner({ changedPaths: ['src/lib/calculations.test.ts'] }), state)
+
+    const latestSummary = JSON.parse(readFileSync(config.summaryPath, 'utf8')) as {
+      plannerSignals: string[]
+      repetition: { categoryCounts: Record<string, number> }
+    }
+    expect(latestSummary.repetition.categoryCounts).toEqual({ test: 5, source: 1 })
+    expect(latestSummary.plannerSignals).toContain('test_heavy_window')
+  })
+
   it('passes previous cycle evidence and state into the Claude planning prompt', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'autoflow-prompt-evidence-'))
     const config = seededConfig(dir)
