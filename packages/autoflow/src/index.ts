@@ -991,6 +991,7 @@ function buildClaudePrompt(config: AutoflowConfig, state: AutoflowState, cycleDi
     '1. Read WORKBOOK_v4.md, especially §0 next_action.',
     '2. Review the previous cycle evidence dir when present and record the result in WORKBOOK_v4.md.',
     '3. Read the latest autoflow summary when present; if it reports repeated productive paths, choose a different product/harness slice or record a HOLD rationale instead of continuing the same narrow pattern.',
+    '   If latest planner signals include test_heavy_window, prefer a tiny source-facing product improvement with matching tests instead of another test-only slice, unless the workbook identifies a higher-risk gap that must be tested first.',
     '4. Choose the next bounded product/harness slice from the current workbook state.',
     '5. Update WORKBOOK_v4.md only when it improves machine-readable next_action/state.',
     '6. Emit concise JSON-compatible guidance for Codex: goal, constraints, acceptance checks, and risks.',
@@ -1207,8 +1208,13 @@ function buildPlannerSignals(
   if (repetition.sameProductivePathStreak >= 3) {
     signals.push(`repeated_productive_paths:${repetition.sameProductivePathStreak}`)
   }
-  if ((repetition.categoryCounts.test ?? 0) >= 4 && Object.keys(repetition.categoryCounts).length === 1) {
+  const testCount = repetition.categoryCounts.test ?? 0
+  const sourceCount = repetition.categoryCounts.source ?? 0
+  if (testCount >= 4 && sourceCount === 0 && Object.keys(repetition.categoryCounts).length === 1) {
     signals.push('test_only_window')
+  }
+  if (testCount >= 4 && testCount >= Math.max(1, sourceCount) * 2) {
+    signals.push('test_heavy_window')
   }
   return signals
 }
