@@ -606,6 +606,27 @@ describe('autoflow cycle controls', () => {
     expect(events.map((event) => event.type)).not.toContain('autoflow.codex_started')
   })
 
+  it('writes provider-aware prompts and summary fields for Claude Code coder runs', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-claude-coder-evidence-'))
+    const config = { ...seededConfig(dir), coderProvider: 'claude' as const }
+
+    await runOneCycle(config, new FakeRunner({ changedPaths: ['src/example.ts'] }), loadState(config))
+
+    const cycleDir = join(config.evidenceDir, 'cycle-000001')
+    const plannerPrompt = readFileSync(join(cycleDir, 'claude-prompt.md'), 'utf8')
+    const summary = JSON.parse(readFileSync(config.summaryPath, 'utf8')) as {
+      coderProvider?: string
+      stageDurationsMs: { coder?: number; codex?: number }
+    }
+
+    expect(plannerPrompt).toContain('guidance for Claude Code coder')
+    expect(plannerPrompt).not.toContain('guidance for Codex')
+    expect(plannerPrompt).not.toContain('ask Codex to edit')
+    expect(summary.coderProvider).toBe('claude')
+    expect(summary.stageDurationsMs.coder).toBeGreaterThanOrEqual(0)
+    expect(summary.stageDurationsMs.codex).toBeUndefined()
+  })
+
   it('adopts an existing coder commit when the worktree is already clean', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'autoflow-adopt-coder-commit-'))
     const config = { ...seededConfig(dir), coderProvider: 'claude' as const }

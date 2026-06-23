@@ -124,8 +124,10 @@ export interface AutoflowSummary {
   changedPaths: string[]
   productivePaths: string[]
   gates: Array<{ command: string; exitCode: number }>
+  coderProvider?: CoderProvider
   stageDurationsMs: {
     claude?: number
+    coder?: number
     codex?: number
     remoteWrite?: number
   }
@@ -345,7 +347,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
       if (coder.exitCode !== 0) {
         if (isCoderUsageLimit(config, coder)) {
           return await hold(config, cycle, coderUsageLimitCode(config), coder.stdout || coder.stderr || `${config.coderProvider} usage limit reached`, cycleDir, state, {
-            stageDurationsMs: { claude: claude.durationMs, codex: coder.durationMs },
+            stageDurationsMs: coderStageDurations(config, claude.durationMs, coder.durationMs),
             resumeAfter: inferCoderUsageLimitResumeAfter(config, coder),
           })
         }
@@ -381,7 +383,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
         changedPaths,
         productivePaths,
         gates,
-        stageDurationsMs: { claude: claude.durationMs, codex: coder.durationMs },
+        stageDurationsMs: coderStageDurations(config, claude.durationMs, coder.durationMs),
       })
     }
     if (changedPaths.length === 0) {
@@ -411,7 +413,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
         changedPaths,
         productivePaths,
         gates,
-        stageDurationsMs: { claude: claude.durationMs, codex: coder.durationMs },
+        stageDurationsMs: coderStageDurations(config, claude.durationMs, coder.durationMs),
       })
       logEvent(config, { type: 'autoflow.cycle_empty_diff', cycle, streak: emptyState.consecutiveEmptyDiffs })
       return { cycle, status: 'completed', evidenceDir: cycleDir }
@@ -450,7 +452,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
         changedPaths,
         productivePaths,
         gates,
-        stageDurationsMs: { claude: claude.durationMs, codex: coder.durationMs },
+        stageDurationsMs: coderStageDurations(config, claude.durationMs, coder.durationMs),
       })
       logEvent(config, {
         type: 'autoflow.cycle_no_productive_change',
@@ -475,7 +477,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
         changedPaths,
         productivePaths,
         gates,
-        stageDurationsMs: { claude: claude.durationMs, codex: coder.durationMs },
+        stageDurationsMs: coderStageDurations(config, claude.durationMs, coder.durationMs),
       })
     }
 
@@ -492,7 +494,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
           changedPaths,
           productivePaths,
           gates,
-          stageDurationsMs: { claude: claude.durationMs, codex: coder.durationMs, remoteWrite: remoteWrite.durationMs },
+          stageDurationsMs: coderStageDurations(config, claude.durationMs, coder.durationMs, remoteWrite.durationMs),
         })
       }
     }
@@ -527,7 +529,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
       changedPaths,
       productivePaths,
       gates,
-      stageDurationsMs: { claude: claude.durationMs, codex: coder.durationMs, remoteWrite: remoteWriteDurationMs },
+      stageDurationsMs: coderStageDurations(config, claude.durationMs, coder.durationMs, remoteWriteDurationMs),
     })
     logEvent(config, { type: 'autoflow.cycle_completed', cycle, commitSha, changedPaths })
     return { cycle, status: 'completed', evidenceDir: cycleDir, commitSha }
@@ -1045,6 +1047,7 @@ async function hold(
 function buildClaudePrompt(config: AutoflowConfig, state: AutoflowState, cycleDir: string): string {
   const previousCycle = state.nextCycle > 1 ? state.nextCycle - 1 : null
   const previousEvidenceDir = previousCycle === null ? null : join(config.evidenceDir, cycleIdFor(previousCycle))
+  const coderRoleName = config.coderProvider === 'claude' ? 'Claude Code coder' : 'Codex'
   return [
     'You are Claude Code acting as the planner/reviewer side of a 24/7 local autoflow.',
     '',
@@ -1062,7 +1065,7 @@ function buildClaudePrompt(config: AutoflowConfig, state: AutoflowState, cycleDi
     'Forbidden: git push, PR creation, merge, editing .env*, secrets/**, .github/**, AGENTS.md.',
     config.remoteMode === 'off'
       ? 'Remote stage is disabled for this run.'
-      : 'Remote stage is supervisor-owned. For an auto-merge smoke, choose only a tiny source/test change; do not ask Codex to edit package files, lockfiles, scripts, docs, .github, secrets, or env files.',
+      : `Remote stage is supervisor-owned. For an auto-merge smoke, choose only a tiny source/test change; do not ask ${coderRoleName} to edit package files, lockfiles, scripts, docs, .github, secrets, or env files.`,
     'Task:',
     '1. Read WORKBOOK_v4.md, especially §0 next_action.',
     '2. Review the previous cycle evidence dir when present and record the result in WORKBOOK_v4.md.',
@@ -1070,7 +1073,7 @@ function buildClaudePrompt(config: AutoflowConfig, state: AutoflowState, cycleDi
     '   If latest planner signals include test_heavy_window, prefer a tiny source-facing product improvement with matching tests instead of another test-only slice, unless the workbook identifies a higher-risk gap that must be tested first.',
     '4. Choose the next bounded product/harness slice from the current workbook state.',
     '5. Update WORKBOOK_v4.md only when it improves machine-readable next_action/state.',
-    '6. Emit concise JSON-compatible guidance for Codex: goal, constraints, acceptance checks, and risks.',
+    `6. Emit concise JSON-compatible guidance for ${coderRoleName}: goal, constraints, acceptance checks, and risks.`,
   ].join('\n')
 }
 
@@ -1262,6 +1265,7 @@ function writeAutoflowSummary(config: AutoflowConfig, input: WriteSummaryInput):
     changedPaths: input.changedPaths,
     productivePaths: input.productivePaths,
     gates: input.gates.map((gate) => ({ command: gate.command, exitCode: gate.exitCode })),
+    coderProvider: config.coderProvider,
     stageDurationsMs: input.stageDurationsMs,
     repetition,
     plannerSignals,
@@ -1276,6 +1280,15 @@ function writeAutoflowSummary(config: AutoflowConfig, input: WriteSummaryInput):
     summaryPath: config.summaryPath,
     plannerSignals,
   })
+}
+
+function coderStageDurations(config: Pick<AutoflowConfig, 'coderProvider'>, claudeMs: number, coderMs: number, remoteWriteMs?: number): AutoflowSummary['stageDurationsMs'] {
+  return {
+    claude: claudeMs,
+    coder: coderMs,
+    codex: config.coderProvider === 'codex' ? coderMs : undefined,
+    remoteWrite: remoteWriteMs,
+  }
 }
 
 function analyzeRepetition(
