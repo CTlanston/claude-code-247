@@ -16,7 +16,7 @@
   <dict>
     <key>SuccessfulExit</key><false/>
   </dict>
-  <key>StartInterval</key><integer>900</integer>
+  <key>StartInterval</key><integer>@@START_INTERVAL@@</integer>
   <key>RunAtLoad</key><true/>
   <key>StandardOutPath</key><string>@@LOG_DIR@@/autoflow.out.log</string>
   <key>StandardErrorPath</key><string>@@LOG_DIR@@/autoflow.err.log</string>

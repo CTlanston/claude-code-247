@@ -237,6 +237,7 @@ describe('autoflow launchd installer', () => {
         ...process.env,
         HOME: home,
         AEDEV_AUTOFLOW_LABEL: label,
+        AEDEV_AUTOFLOW_START_INTERVAL: '123',
         AEDEV_AUTOFLOW_CODER_PROVIDER: 'claude',
         AEDEV_AUTOFLOW_CODER_RETRIES: '2',
         AEDEV_AUTOFLOW_WORKTREE_FETCH_TIMEOUT_MS: '12345',
@@ -249,6 +250,8 @@ describe('autoflow launchd installer', () => {
     })
 
     const plist = readFileSync(join(home, 'Library', 'LaunchAgents', `${label}.plist`), 'utf8')
+    expect(plist).toContain('<key>StartInterval</key><integer>123</integer>')
+    expect(plist).toContain('<key>AEDEV_AUTOFLOW_START_INTERVAL</key><string>123</string>')
     expect(plist).toContain('<key>AEDEV_AUTOFLOW_CODER_PROVIDER</key><string>claude</string>')
     expect(plist).toContain('<key>AEDEV_AUTOFLOW_CODER_RETRIES</key><string>2</string>')
     expect(plist).toContain('<key>AEDEV_AUTOFLOW_WORKTREE_FETCH_TIMEOUT_MS</key><string>12345</string>')

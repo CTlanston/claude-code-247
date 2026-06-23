@@ -9,6 +9,7 @@ AUTOFLOW_HOME="${AEDEV_AUTOFLOW_HOME:-$HOME/.claude-code-247/autoflow}"
 TARGET_REPO_ROOT="${AEDEV_AUTOFLOW_REPO_ROOT:-$REPO_ROOT}"
 WORKBOOK="${AEDEV_AUTOFLOW_WORKBOOK:-$TARGET_REPO_ROOT/WORKBOOK_v4.md}"
 AUTOFLOW_BRANCH="${AEDEV_AUTOFLOW_BRANCH:-codex/autoflow-workbook}"
+START_INTERVAL="${AEDEV_AUTOFLOW_START_INTERVAL:-900}"
 LOG_DIR="$AUTOFLOW_HOME/logs"
 TPL="$REPO_ROOT/scripts/launchd/com.claude247.autoflow.plist.tpl"
 LA_DIR="$HOME/Library/LaunchAgents"
@@ -22,6 +23,7 @@ MODE="${1:-}"
 [ -f "$REPO_ROOT/scripts/autoflow-loop.ts" ] || { echo "error: scripts/autoflow-loop.ts missing" >&2; exit 1; }
 [ -d "$REPO_ROOT/node_modules" ] || { echo "error: run 'pnpm install' first" >&2; exit 1; }
 [[ "$LABEL" =~ ^[A-Za-z0-9_.-]+$ ]] || { echo "error: invalid AEDEV_AUTOFLOW_LABEL: $LABEL" >&2; exit 1; }
+[[ "$START_INTERVAL" =~ ^[1-9][0-9]*$ ]] || { echo "error: invalid AEDEV_AUTOFLOW_START_INTERVAL: $START_INTERVAL" >&2; exit 1; }
 if [ "$MODE" != "" ] && [ "$MODE" != "--reload" ] && [ "$MODE" != "--render-only" ]; then
   echo "error: unsupported mode: $MODE" >&2
   exit 1
@@ -55,6 +57,7 @@ EXTRA_ENV="$(
     AEDEV_AUTOFLOW_LOG \
     AEDEV_AUTOFLOW_EVIDENCE_DIR \
     AEDEV_AUTOFLOW_WORKTREE \
+    AEDEV_AUTOFLOW_START_INTERVAL \
     AEDEV_AUTOFLOW_REMOTE_MODE \
     AEDEV_AUTOFLOW_ALLOW_REMOTE_WRITES \
     AEDEV_AUTOFLOW_REMOTE_NAME \
@@ -103,6 +106,7 @@ sed -e "s#@@PNPM@@#$(sed_escape "$PNPM_BIN")#g" \
     -e "s#@@PATH@@#$(sed_escape "$PATH_VAL")#g" \
     -e "s#@@LABEL@@#$(sed_escape "$LABEL")#g" \
     -e "s#@@AUTOFLOW_BRANCH@@#$(sed_escape "$AUTOFLOW_BRANCH")#g" \
+    -e "s#@@START_INTERVAL@@#$(sed_escape "$START_INTERVAL")#g" \
     -e "s#@@AUTOFLOW_HOME@@#$(sed_escape "$AUTOFLOW_HOME")#g" \
     "$TPL" > "$TMP_PLIST"
 awk -v extra_file="$EXTRA_ENV_FILE" '
