@@ -153,6 +153,53 @@ export interface AutoflowSummary {
   plannerSignals: string[]
 }
 
+export interface AutoflowDoctorReport {
+  version: 1
+  status: 'pass' | 'warn' | 'fail'
+  generatedAt: string
+  config: {
+    coderProvider: CoderProvider
+    remoteMode: RemoteWriteMode
+    allowRemoteWrites: boolean
+    branch: string
+    prBaseBranch: string
+    maxCycles: number | null
+    setupCommands: string[]
+    gateCommands: string[]
+    setupFetchAttempts: number
+    retainedCycleWorktrees: number
+    runningStateTtlMs: number
+    stageHeartbeatIntervalMs: number
+  }
+  paths: Record<string, { path: string; exists: boolean }>
+  state?: Pick<AutoflowState,
+    | 'status'
+    | 'nextCycle'
+    | 'currentCycle'
+    | 'branch'
+    | 'worktreePath'
+    | 'lastStartedAt'
+    | 'lastCompletedAt'
+    | 'lastCommitSha'
+    | 'hold'
+  >
+  summary?: Pick<AutoflowSummary,
+    | 'status'
+    | 'cycle'
+    | 'nextCycle'
+    | 'coderProvider'
+    | 'updatedAt'
+    | 'commitSha'
+    | 'plannerSignals'
+    | 'changedPaths'
+    | 'gates'
+  >
+  checks: Array<{ code: string; status: 'pass' | 'warn' | 'fail'; message: string }>
+}
+
+type AutoflowDoctorState = NonNullable<AutoflowDoctorReport['state']>
+type AutoflowDoctorSummary = NonNullable<AutoflowDoctorReport['summary']>
+
 export interface CommandRunner {
   run(command: string, args: string[], opts: CommandRunOptions): Promise<CommandResult>
 }
@@ -221,6 +268,10 @@ export function defaultConfig(env: NodeJS.ProcessEnv = process.env, argv: string
 
 export async function runAutoflowCli(env: NodeJS.ProcessEnv = process.env, argv: string[] = process.argv.slice(2)): Promise<void> {
   const config = defaultConfig(env, argv)
+  if (argv[0] === 'doctor' || argv.includes('--doctor')) {
+    console.log(JSON.stringify(buildAutoflowDoctorReport(config), null, 2))
+    return
+  }
   logEvent(config, {
     type: 'autoflow.cli_started',
     argv,
@@ -232,6 +283,100 @@ export async function runAutoflowCli(env: NodeJS.ProcessEnv = process.env, argv:
   const runner = new SpawnCommandRunner({ allowRemoteWrites: config.allowRemoteWrites })
   await runAutoflow(config, runner)
   logEvent(config, { type: 'autoflow.cli_completed' })
+}
+
+export function buildAutoflowDoctorReport(config: AutoflowConfig, now = new Date()): AutoflowDoctorReport {
+  const paths = {
+    repoRoot: pathStatus(config.repoRoot),
+    workbookPath: pathStatus(config.workbookPath),
+    statePath: pathStatus(config.statePath),
+    summaryPath: pathStatus(config.summaryPath),
+    logPath: pathStatus(config.logPath),
+    evidenceDir: pathStatus(config.evidenceDir),
+    worktreePath: pathStatus(config.worktreePath),
+  }
+  const checks: AutoflowDoctorReport['checks'] = [
+    paths.repoRoot.exists
+      ? { code: 'repo_root_exists', status: 'pass', message: `repo root found: ${config.repoRoot}` }
+      : { code: 'repo_root_exists', status: 'fail', message: `repo root missing: ${config.repoRoot}` },
+    paths.workbookPath.exists
+      ? { code: 'workbook_exists', status: 'pass', message: `workbook found: ${config.workbookPath}` }
+      : { code: 'workbook_exists', status: 'fail', message: `workbook missing: ${config.workbookPath}` },
+    config.gateCommands.length > 0
+      ? { code: 'gates_configured', status: 'pass', message: `${config.gateCommands.length} gate command(s) configured` }
+      : { code: 'gates_configured', status: 'fail', message: 'no gate commands configured' },
+    config.remoteMode !== 'off' && config.allowRemoteWrites
+      ? { code: 'remote_writes_enabled', status: 'pass', message: `remote mode ${config.remoteMode} is enabled` }
+      : { code: 'remote_writes_enabled', status: 'warn', message: 'remote writes are disabled or remote mode is off' },
+    { code: 'coder_provider', status: 'pass', message: `coder provider is ${config.coderProvider}` },
+  ]
+
+  let state: AutoflowDoctorReport['state']
+  if (paths.statePath.exists) {
+    try {
+      const parsedState = pickDoctorState(loadState(config))
+      state = parsedState
+      checks.push({ code: 'state_readable', status: 'pass', message: `state is ${parsedState.status}` })
+      if (parsedState.status === 'running' && isRunningStateStaleAt(config, parsedState, now)) {
+        checks.push({
+          code: 'running_state_stale',
+          status: 'warn',
+          message: `running state is older than ttl ${config.runningStateTtlMs}ms`,
+        })
+      }
+      if (parsedState.status === 'hold' && parsedState.hold) {
+        checks.push({ code: 'state_hold', status: 'warn', message: `loop is on HOLD: ${parsedState.hold.code}` })
+      }
+    } catch (error) {
+      checks.push({ code: 'state_readable', status: 'warn', message: `state could not be parsed: ${String(error)}` })
+    }
+  } else {
+    checks.push({ code: 'state_readable', status: 'warn', message: `state file missing: ${config.statePath}` })
+  }
+
+  let summary: AutoflowDoctorReport['summary']
+  if (paths.summaryPath.exists) {
+    try {
+      const parsedSummary = pickDoctorSummary(JSON.parse(readFileSync(config.summaryPath, 'utf8')) as AutoflowSummary)
+      summary = parsedSummary
+      checks.push({ code: 'summary_readable', status: 'pass', message: `latest summary is cycle ${parsedSummary.cycle}` })
+      if (parsedSummary.coderProvider && parsedSummary.coderProvider !== config.coderProvider) {
+        checks.push({
+          code: 'summary_provider_mismatch',
+          status: 'warn',
+          message: `latest summary used ${parsedSummary.coderProvider}, current config uses ${config.coderProvider}`,
+        })
+      }
+    } catch (error) {
+      checks.push({ code: 'summary_readable', status: 'warn', message: `summary could not be parsed: ${String(error)}` })
+    }
+  } else {
+    checks.push({ code: 'summary_readable', status: 'warn', message: `summary file missing: ${config.summaryPath}` })
+  }
+
+  return {
+    version: 1,
+    status: overallDoctorStatus(checks),
+    generatedAt: now.toISOString(),
+    config: {
+      coderProvider: config.coderProvider,
+      remoteMode: config.remoteMode,
+      allowRemoteWrites: config.allowRemoteWrites,
+      branch: config.branch,
+      prBaseBranch: config.prBaseBranch,
+      maxCycles: config.maxCycles,
+      setupCommands: config.setupCommands,
+      gateCommands: config.gateCommands,
+      setupFetchAttempts: config.setupFetchAttempts,
+      retainedCycleWorktrees: config.retainedCycleWorktrees,
+      runningStateTtlMs: config.runningStateTtlMs,
+      stageHeartbeatIntervalMs: config.stageHeartbeatIntervalMs,
+    },
+    paths,
+    state,
+    summary,
+    checks,
+  }
 }
 
 export async function runAutoflow(config: AutoflowConfig, runner: CommandRunner = new SpawnCommandRunner()): Promise<CycleResult[]> {
@@ -1675,6 +1820,55 @@ function worktreeFetchTimeoutMs(config: Pick<AutoflowConfig, 'commandTimeoutMs'>
 function setupFetchAttempts(config: Partial<Pick<AutoflowConfig, 'setupFetchAttempts'>>): number {
   const attempts = Math.floor(config.setupFetchAttempts ?? 1)
   return Number.isFinite(attempts) && attempts > 0 ? attempts : 1
+}
+
+function pathStatus(path: string): { path: string; exists: boolean } {
+  return { path, exists: existsSync(path) }
+}
+
+function pickDoctorState(state: AutoflowState): AutoflowDoctorState {
+  return {
+    status: state.status,
+    nextCycle: state.nextCycle,
+    currentCycle: state.currentCycle,
+    branch: state.branch,
+    worktreePath: state.worktreePath,
+    lastStartedAt: state.lastStartedAt,
+    lastCompletedAt: state.lastCompletedAt,
+    lastCommitSha: state.lastCommitSha,
+    hold: state.hold,
+  }
+}
+
+function pickDoctorSummary(summary: AutoflowSummary): AutoflowDoctorSummary {
+  return {
+    status: summary.status,
+    cycle: summary.cycle,
+    nextCycle: summary.nextCycle,
+    coderProvider: summary.coderProvider,
+    updatedAt: summary.updatedAt,
+    commitSha: summary.commitSha,
+    plannerSignals: summary.plannerSignals,
+    changedPaths: summary.changedPaths,
+    gates: summary.gates,
+  }
+}
+
+function isRunningStateStaleAt(
+  config: Pick<AutoflowConfig, 'runningStateTtlMs'>,
+  state: Pick<AutoflowState, 'lastStartedAt'>,
+  now: Date,
+): boolean {
+  if (!state.lastStartedAt) return true
+  const startedMs = Date.parse(state.lastStartedAt)
+  if (!Number.isFinite(startedMs)) return true
+  return now.getTime() - startedMs > config.runningStateTtlMs
+}
+
+function overallDoctorStatus(checks: AutoflowDoctorReport['checks']): AutoflowDoctorReport['status'] {
+  if (checks.some((check) => check.status === 'fail')) return 'fail'
+  if (checks.some((check) => check.status === 'warn')) return 'warn'
+  return 'pass'
 }
 
 function summarizeCommandOutput(output: string, maxLength = 500): string | undefined {

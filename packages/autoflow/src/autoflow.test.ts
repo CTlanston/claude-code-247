@@ -1,10 +1,11 @@
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { describe, expect, it } from 'vitest'
 import {
+  buildAutoflowDoctorReport,
   buildClaudeArgs,
   buildCodexArgs,
   commandContainsRemoteWrite,
@@ -13,12 +14,15 @@ import {
   pathMatches,
   planRemoteWriteStage,
   runAutoflow,
+  runAutoflowCli,
   runOneCycle,
   saveState,
   scrubRemoteWriteEnv,
   shouldBlockRemoteWrite,
   SpawnCommandRunner,
   type AutoflowConfig,
+  type AutoflowDoctorReport,
+  type AutoflowSummary,
   type CommandResult,
   type CommandRunOptions,
   type CommandRunner,
@@ -195,6 +199,96 @@ describe('autoflow command builders', () => {
     expect(pathMatches('secrets/**', 'secrets/prod/key')).toBe(true)
     expect(pathMatches('AGENTS.md', 'AGENTS.md')).toBe(true)
     expect(pathMatches('.github/**', 'src/index.ts')).toBe(false)
+  })
+})
+
+describe('autoflow doctor', () => {
+  it('reports Claude coder, remote write, state, and summary health', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-doctor-pass-'))
+    const config = {
+      ...testConfig(dir),
+      coderProvider: 'claude' as const,
+      allowRemoteWrites: true,
+      remoteMode: 'pr-merge' as const,
+      gateCommands: ['npm test', 'npm run build'],
+    }
+    saveState(config, {
+      ...loadState(config),
+      nextCycle: 12,
+      lastCompletedAt: '2026-06-23T21:26:18.160Z',
+      lastCommitSha: 'abc123',
+    })
+    writeFileSync(config.summaryPath, JSON.stringify({
+      version: 1,
+      updatedAt: '2026-06-23T21:26:18.160Z',
+      status: 'completed',
+      cycle: 11,
+      nextCycle: 12,
+      branch: config.branch,
+      worktreePath: config.worktreePath,
+      evidenceDir: join(config.evidenceDir, 'cycle-000011'),
+      commitSha: 'abc123',
+      changedPaths: ['src/example.ts'],
+      productivePaths: ['src/example.ts'],
+      gates: [{ command: 'npm test', exitCode: 0 }],
+      coderProvider: 'claude',
+      stageDurationsMs: { claude: 1, coder: 2, remoteWrite: 3 },
+      repetition: { windowSize: 1, sameProductivePathStreak: 1, repeatedProductivePaths: [], categoryCounts: { source: 1 } },
+      plannerSignals: [],
+    } satisfies AutoflowSummary) + '\n')
+
+    const report = buildAutoflowDoctorReport(config, new Date('2026-06-23T21:30:00.000Z'))
+
+    expect(report.status).toBe('pass')
+    expect(report.config.coderProvider).toBe('claude')
+    expect(report.config.remoteMode).toBe('pr-merge')
+    expect(report.config.gateCommands).toEqual(['npm test', 'npm run build'])
+    expect(report.state?.nextCycle).toBe(12)
+    expect(report.summary?.coderProvider).toBe('claude')
+    expect(report.checks).toContainEqual(expect.objectContaining({ code: 'remote_writes_enabled', status: 'pass' }))
+  })
+
+  it('warns when the persisted running state is stale', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-doctor-stale-'))
+    const config = { ...testConfig(dir), runningStateTtlMs: 1000 }
+    saveState(config, {
+      ...loadState(config),
+      status: 'running',
+      currentCycle: 7,
+      lastStartedAt: '2026-06-23T21:00:00.000Z',
+    })
+
+    const report = buildAutoflowDoctorReport(config, new Date('2026-06-23T21:01:01.000Z'))
+
+    expect(report.status).toBe('warn')
+    expect(report.checks).toContainEqual(expect.objectContaining({ code: 'running_state_stale', status: 'warn' }))
+  })
+
+  it('prints JSON from the CLI doctor mode without starting a cycle', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-doctor-cli-'))
+    const config = testConfig(dir)
+    const lines: string[] = []
+    const originalLog = console.log
+    console.log = (line?: unknown) => { lines.push(String(line)) }
+    try {
+      await runAutoflowCli({
+        AEDEV_AUTOFLOW_REPO_ROOT: config.repoRoot,
+        AEDEV_AUTOFLOW_WORKBOOK: config.workbookPath,
+        AEDEV_AUTOFLOW_HOME: config.homeDir,
+        AEDEV_AUTOFLOW_STATE: config.statePath,
+        AEDEV_AUTOFLOW_LOG: config.logPath,
+        AEDEV_AUTOFLOW_EVIDENCE_DIR: config.evidenceDir,
+        AEDEV_AUTOFLOW_WORKTREE: config.worktreePath,
+        AEDEV_AUTOFLOW_CODER_PROVIDER: 'claude',
+      }, ['doctor', '--json'])
+    } finally {
+      console.log = originalLog
+    }
+
+    const parsed = JSON.parse(lines.join('\n')) as AutoflowDoctorReport
+    expect(parsed.config.coderProvider).toBe('claude')
+    expect(parsed.checks.map((check) => check.code)).toContain('state_readable')
+    expect(existsSync(config.logPath)).toBe(false)
   })
 })
 
