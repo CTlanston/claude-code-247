@@ -1755,13 +1755,11 @@ function autoResumeHoldIfReady(config: AutoflowConfig, state: AutoflowState): Au
   return resumed
 }
 
-function isRunningStateStale(config: Pick<AutoflowConfig, 'runningStateTtlMs'>, state: Pick<AutoflowState, 'lastStartedAt'>): boolean {
-  if (!state.lastStartedAt) return false
-  const startedAtMs = Date.parse(state.lastStartedAt)
-  if (Number.isNaN(startedAtMs)) return false
-  const ttlMs = Math.floor(config.runningStateTtlMs)
-  if (!Number.isFinite(ttlMs) || ttlMs <= 0) return false
-  return Date.now() - startedAtMs > ttlMs
+function isRunningStateStale(
+  config: Pick<AutoflowConfig, 'commandTimeoutMs' | 'logPath' | 'runningStateTtlMs' | 'stageHeartbeatIntervalMs'>,
+  state: Pick<AutoflowState, 'currentCycle' | 'lastStartedAt' | 'nextCycle'>,
+): boolean {
+  return isRunningStateStaleAt(config, state, new Date())
 }
 
 function isAutoResumableHold(hold: HoldRecord): boolean {
@@ -2608,14 +2606,35 @@ function pickDoctorSummary(summary: AutoflowSummary): AutoflowDoctorSummary {
 }
 
 function isRunningStateStaleAt(
-  config: Pick<AutoflowConfig, 'runningStateTtlMs'>,
-  state: Pick<AutoflowState, 'lastStartedAt'>,
+  config: Pick<AutoflowConfig, 'commandTimeoutMs' | 'logPath' | 'runningStateTtlMs' | 'stageHeartbeatIntervalMs'>,
+  state: Pick<AutoflowState, 'currentCycle' | 'lastStartedAt' | 'nextCycle'>,
   now: Date,
 ): boolean {
   if (!state.lastStartedAt) return true
   const startedMs = Date.parse(state.lastStartedAt)
   if (!Number.isFinite(startedMs)) return true
-  return now.getTime() - startedMs > config.runningStateTtlMs
+  const ageMs = now.getTime() - startedMs
+  if (ageMs > config.runningStateTtlMs) return true
+
+  const cycle = state.currentCycle ?? state.nextCycle
+  const heartbeat = latestStageHeartbeatForCycle(config.logPath, cycle)
+  const heartbeatMs = heartbeat ? Date.parse(heartbeat.ts) : undefined
+  if (heartbeatMs !== undefined && Number.isFinite(heartbeatMs)) {
+    return now.getTime() - heartbeatMs > config.stageHeartbeatIntervalMs * 3
+  }
+
+  const setupGraceMs = Math.max(config.commandTimeoutMs * 2, config.stageHeartbeatIntervalMs * 3, 60_000)
+  return ageMs > setupGraceMs
+}
+
+function latestStageHeartbeatForCycle(logPath: string, cycle: number | undefined): AutoflowLogEvent | undefined {
+  if (!cycle) return undefined
+  const events = readAutoflowLogEvents(logPath)
+  for (let index = events.length - 1; index >= 0; index--) {
+    const event = events[index]
+    if (event?.type === 'autoflow.stage_heartbeat' && event.cycle === cycle) return event
+  }
+  return undefined
 }
 
 function overallDoctorStatus(checks: AutoflowDoctorReport['checks']): AutoflowDoctorReport['status'] {

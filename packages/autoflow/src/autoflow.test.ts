@@ -392,6 +392,32 @@ gui/501/com.claude247.autoflow.test = {
     expect(report.checks).toContainEqual(expect.objectContaining({ code: 'running_state_stale', status: 'warn' }))
   })
 
+  it('warns when a running setup phase has no heartbeat past the recovery window', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-doctor-stale-setup-'))
+    const config = {
+      ...testConfig(dir),
+      commandTimeoutMs: 60_000,
+      runningStateTtlMs: 6 * 60 * 60_000,
+      stageHeartbeatIntervalMs: 120_000,
+    }
+    saveState(config, {
+      ...loadState(config),
+      status: 'running',
+      currentCycle: 45,
+      lastStartedAt: '2026-06-24T17:04:57.117Z',
+    })
+    mkdirSync(join(dir, 'logs'), { recursive: true })
+    writeFileSync(config.logPath, [
+      { ts: '2026-06-24T17:04:57.117Z', type: 'autoflow.prepare_worktree_started', cycle: 45 },
+      { ts: '2026-06-24T17:04:57.118Z', type: 'autoflow.setup_fetch_started', cycle: 45, timeoutMs: 60000 },
+    ].map((event) => JSON.stringify(event)).join('\n') + '\n')
+
+    const report = buildAutoflowDoctorReport(config, new Date('2026-06-24T17:12:00.000Z'))
+
+    expect(report.status).toBe('warn')
+    expect(report.checks).toContainEqual(expect.objectContaining({ code: 'running_state_stale', status: 'warn' }))
+  })
+
   it('reports an active run before suggesting the next scheduled run', () => {
     const dir = mkdtempSync(join(tmpdir(), 'autoflow-doctor-running-action-'))
     const config = {
@@ -1134,6 +1160,44 @@ describe('autoflow cycle controls', () => {
     expect(loadState(config).hold).toBeUndefined()
     expect(loadState(config).consecutiveSetupFetchTimeouts).toBe(0)
     expect(runner.calls.map((call) => [call.command, ...call.args].join(' '))).toContain('git fetch origin main')
+  })
+
+  it('recovers a stale running setup phase on the next tick', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-worktree-stale-running-'))
+    const config = {
+      ...testConfig(dir),
+      worktreePath: join(dir, 'new-worktree'),
+      commandTimeoutMs: 60_000,
+      runningStateTtlMs: 6 * 60 * 60_000,
+      stageHeartbeatIntervalMs: 120_000,
+    }
+    saveState(config, {
+      ...loadState(config),
+      seeded: true,
+      status: 'running',
+      currentCycle: 1,
+      lastStartedAt: '2026-06-24T17:04:57.117Z',
+    })
+    mkdirSync(join(dir, 'logs'), { recursive: true })
+    writeFileSync(config.logPath, [
+      { ts: '2026-06-24T17:04:57.117Z', type: 'autoflow.prepare_worktree_started', cycle: 1 },
+      { ts: '2026-06-24T17:04:57.118Z', type: 'autoflow.setup_fetch_started', cycle: 1, timeoutMs: 60000 },
+    ].map((event) => JSON.stringify(event)).join('\n') + '\n')
+    const originalDateNow = Date.now
+    Date.now = () => Date.parse('2026-06-24T17:12:00.000Z')
+    const runner = new WorktreeCreateRunner({ changedPaths: ['src/example.ts'], committedChangedPaths: ['src/example.ts'] })
+
+    try {
+      const results = await runAutoflow(config, runner)
+
+      expect(results[0]?.status).toBe('completed')
+      expect(loadState(config).status).toBe('idle')
+      const events = readFileSync(config.logPath, 'utf8')
+      expect(events).toContain('autoflow.stale_running_recovered')
+      expect(runner.claudeCalls).toBe(1)
+    } finally {
+      Date.now = originalDateNow
+    }
   })
 
   it('retries Codex up to the configured limit before committing', async () => {
