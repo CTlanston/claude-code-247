@@ -1056,6 +1056,34 @@ describe('autoflow cycle controls', () => {
     }))
   })
 
+  it('uses the cached remote base when setup fetch keeps timing out', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-worktree-fetch-cached-base-'))
+    const config = {
+      ...testConfig(dir),
+      worktreePath: join(dir, 'new-worktree'),
+      allowRemoteWrites: true,
+      remoteMode: 'pr' as const,
+      commandTimeoutMs: 1800_000,
+      setupFetchAttempts: 2,
+    }
+    mkdirSync(join(config.repoRoot, '.git', 'refs', 'remotes', 'origin'), { recursive: true })
+    writeFileSync(join(config.repoRoot, '.git', 'refs', 'remotes', 'origin', 'main'), 'cached-sha\n')
+    const runner = new WorktreeCreateRunner({ fetchTimeouts: 2, changedPaths: ['src/example.ts'] })
+
+    const results = await runAutoflow(config, runner)
+    const events = readFileSync(config.logPath, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as { type: string; cycle?: number })
+
+    expect(results[0]?.status).toBe('completed')
+    expect(events).toContainEqual(expect.objectContaining({
+      type: 'autoflow.setup_fetch_cached_base_used',
+      cycle: 1,
+    }))
+    expect(runner.calls.some((call) => [call.command, ...call.args].join(' ') === 'git branch codex/autoflow-workbook origin/main')).toBe(true)
+  })
+
   it('uses the configured worktree fetch timeout when preparing remote worktrees', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'autoflow-worktree-fetch-timeout-config-'))
     const config = {

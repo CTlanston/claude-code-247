@@ -1215,10 +1215,24 @@ async function ensureWorktree(
         if (fetch.exitCode !== 124 || attempt === maxAttempts) break
       }
       if (!fetch) throw new Error(`git fetch did not run while preparing base ${config.remoteName}/${config.prBaseBranch}`)
+      let usingCachedBase = false
       if (fetch.exitCode === 124) {
-        throw new Error(`git fetch timed out after ${timeoutMs}ms while preparing base ${config.remoteName}/${config.prBaseBranch} after ${maxAttempts} attempt(s)`)
+        if (localGitRefExists(config.repoRoot, `refs/remotes/${config.remoteName}/${config.prBaseBranch}`)) {
+          usingCachedBase = true
+          if (stateConfig && cycle !== undefined) {
+            logEvent(stateConfig, {
+              type: 'autoflow.setup_fetch_cached_base_used',
+              cycle,
+              remoteName: config.remoteName,
+              baseBranch: config.prBaseBranch,
+              reason: `git fetch timed out after ${timeoutMs}ms; using cached ${config.remoteName}/${config.prBaseBranch}`,
+            })
+          }
+        } else {
+          throw new Error(`git fetch timed out after ${timeoutMs}ms while preparing base ${config.remoteName}/${config.prBaseBranch} after ${maxAttempts} attempt(s)`)
+        }
       }
-      if (fetch.exitCode !== 0) {
+      if (fetch.exitCode !== 0 && !usingCachedBase) {
         throw new Error(`git fetch failed while preparing base ${config.remoteName}/${config.prBaseBranch}: ${fetch.stderr || fetch.stdout || `exit ${fetch.exitCode}`}`)
       }
       await runner.run('git', ['branch', config.branch, `${config.remoteName}/${config.prBaseBranch}`], { cwd: config.repoRoot, timeoutMs: config.commandTimeoutMs })
