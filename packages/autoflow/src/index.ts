@@ -709,13 +709,28 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
     }
 
     logEvent(config, { type: 'autoflow.post_claude_diff_started', cycle, baseSha })
-    const claudeChanged = await listChangedPaths(config, runner, baseSha)
+    let claudeChanged = await listChangedPaths(config, runner, baseSha)
     logEvent(config, { type: 'autoflow.post_claude_diff_completed', cycle, changedPaths: claudeChanged })
     const badClaudePaths = claudeChanged.filter((path) => !isWorkbookOrAutoflowArtifact(path))
     if (badClaudePaths.length > 0) {
-      return await hold(config, cycle, 'CLAUDE_SCOPE_VIOLATION', `Claude touched non-workbook paths: ${badClaudePaths.join(', ')}`, cycleDir, state, {
-        usage: latestUsage,
+      logEvent(config, { type: 'autoflow.claude_scope_revert_started', cycle, paths: badClaudePaths })
+      const scopeRevert = await revertPlannerScopeViolations(config, runner, badClaudePaths, baseSha)
+      writeFileSync(join(cycleDir, 'planner-scope-revert.json'), JSON.stringify(scopeRevert, null, 2) + '\n')
+      logEvent(config, {
+        type: 'autoflow.claude_scope_revert_completed',
+        cycle,
+        paths: badClaudePaths,
+        restoreExitCode: scopeRevert.restore.exitCode,
+        cleanExitCode: scopeRevert.clean.exitCode,
+        remainingBadPaths: scopeRevert.remainingBadPaths,
       })
+      if (scopeRevert.remainingBadPaths.length > 0) {
+        return await hold(config, cycle, 'CLAUDE_SCOPE_VIOLATION', `Claude touched non-workbook paths: ${scopeRevert.remainingBadPaths.join(', ')}`, cycleDir, state, {
+          usage: latestUsage,
+        })
+      }
+      claudeChanged = scopeRevert.remainingChangedPaths
+      logEvent(config, { type: 'autoflow.post_claude_diff_rechecked', cycle, changedPaths: claudeChanged })
     }
     logEvent(config, { type: 'autoflow.workbook_sync_started', cycle })
     persistWorkbookSeed(config, cycleDir)
@@ -1539,6 +1554,34 @@ async function listRemoteWriteCandidatePaths(config: AutoflowConfig, runner: Com
   })
   const remotePaths = remoteDiff.stdout.split('\n').filter(Boolean)
   return [...new Set([...changedPaths, ...remotePaths])].sort()
+}
+
+async function revertPlannerScopeViolations(
+  config: AutoflowConfig,
+  runner: CommandRunner,
+  paths: string[],
+  baseSha: string,
+): Promise<{
+  restore: CommandResult
+  clean: CommandResult
+  remainingChangedPaths: string[]
+  remainingBadPaths: string[]
+}> {
+  const restore = await runner.run('git', ['restore', '--staged', '--worktree', '--', ...paths], {
+    cwd: config.worktreePath,
+    timeoutMs: config.commandTimeoutMs,
+  })
+  const clean = await runner.run('git', ['clean', '-f', '--', ...paths], {
+    cwd: config.worktreePath,
+    timeoutMs: config.commandTimeoutMs,
+  })
+  const remainingChangedPaths = await listChangedPaths(config, runner, baseSha)
+  return {
+    restore,
+    clean,
+    remainingChangedPaths,
+    remainingBadPaths: remainingChangedPaths.filter((path) => !isWorkbookOrAutoflowArtifact(path)),
+  }
 }
 
 async function commitCycle(config: AutoflowConfig, runner: CommandRunner, cycle: number, changedPaths: string[], baseSha: string): Promise<string> {

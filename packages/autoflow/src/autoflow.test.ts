@@ -53,6 +53,7 @@ class FakeRunner implements CommandRunner {
     fetchFailureStderr?: string
     postClaudeDiffFailureStderr?: string
     statusFailureStderr?: string
+    plannerChangedPaths?: string[]
     claudeDelayMs?: number
     claudePlannerExitCode?: number
   } = {}) {}
@@ -89,9 +90,14 @@ class FakeRunner implements CommandRunner {
       const paths = this.coderDone && this.opts.committedChangedPaths
         ? this.opts.unstagedChangedPathsAfterCoder ?? []
         : !this.coderDone && this.claudeDone
-        ? ['WORKBOOK_v4.md']
+        ? this.opts.plannerChangedPaths ?? ['WORKBOOK_v4.md']
         : this.opts.changedPaths ?? ['src/example.ts']
       return result(command, args, callOpts.cwd, paths.map((p) => ` M ${p}`).join('\n') + '\n')
+    }
+    if (rendered.includes('git restore --staged --worktree')) return result(command, args, callOpts.cwd)
+    if (rendered.includes('git clean -f')) {
+      this.opts.plannerChangedPaths = (this.opts.plannerChangedPaths ?? []).filter((path) => path === 'WORKBOOK_v4.md' || path.startsWith('.aedev/'))
+      return result(command, args, callOpts.cwd)
     }
     if (command === 'claude') {
       this.claudeCalls++
@@ -1451,6 +1457,37 @@ describe('autoflow cycle controls', () => {
     expect(events).toContainEqual(expect.objectContaining({ type: 'autoflow.coder_started', provider: 'claude' }))
     expect(events).toContainEqual(expect.objectContaining({ type: 'autoflow.coder_completed', provider: 'claude' }))
     expect(events.map((event) => event.type)).not.toContain('autoflow.codex_started')
+  })
+
+  it('reverts out-of-scope planner file changes before continuing to the coder', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-claude-planner-scope-revert-'))
+    const config = { ...seededConfig(dir), coderProvider: 'claude' as const }
+    const runner = new FakeRunner({
+      plannerChangedPaths: ['WORKBOOK_v4.md', 'src/lib/calculations.ts'],
+      changedPaths: ['src/example.ts'],
+    })
+
+    const result = await runOneCycle(config, runner, loadState(config))
+    const cycleDir = join(config.evidenceDir, 'cycle-000001')
+    const events = readFileSync(config.logPath, 'utf8')
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as { type: string; remainingBadPaths?: string[] })
+    const revertEvidence = JSON.parse(readFileSync(join(cycleDir, 'planner-scope-revert.json'), 'utf8')) as {
+      remainingChangedPaths: string[]
+      remainingBadPaths: string[]
+    }
+    const commands = runner.calls.map((call) => [call.command, ...call.args].join(' '))
+
+    expect(result.status).toBe('completed')
+    expect(runner.claudeCalls).toBe(2)
+    expect(commands).toContain('git restore --staged --worktree -- src/lib/calculations.ts')
+    expect(commands).toContain('git clean -f -- src/lib/calculations.ts')
+    expect(revertEvidence.remainingChangedPaths).toEqual(['WORKBOOK_v4.md'])
+    expect(revertEvidence.remainingBadPaths).toEqual([])
+    expect(events).toContainEqual(expect.objectContaining({ type: 'autoflow.claude_scope_revert_started' }))
+    expect(events).toContainEqual(expect.objectContaining({ type: 'autoflow.claude_scope_revert_completed', remainingBadPaths: [] }))
+    expect(events.map((event) => event.type)).not.toContain('autoflow.hold')
   })
 
   it('writes provider-aware prompts and summary fields for Claude Code coder runs', async () => {
