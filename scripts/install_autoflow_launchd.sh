@@ -10,6 +10,7 @@ TARGET_REPO_ROOT="${AEDEV_AUTOFLOW_REPO_ROOT:-$REPO_ROOT}"
 WORKBOOK="${AEDEV_AUTOFLOW_WORKBOOK:-$TARGET_REPO_ROOT/WORKBOOK_v4.md}"
 AUTOFLOW_BRANCH="${AEDEV_AUTOFLOW_BRANCH:-codex/autoflow-workbook}"
 START_INTERVAL="${AEDEV_AUTOFLOW_START_INTERVAL:-900}"
+MAX_CYCLES="${AEDEV_AUTOFLOW_MAX_CYCLES:-1}"
 LOG_DIR="$AUTOFLOW_HOME/logs"
 TPL="$REPO_ROOT/scripts/launchd/com.claude247.autoflow.plist.tpl"
 LA_DIR="$HOME/Library/LaunchAgents"
@@ -24,6 +25,10 @@ MODE="${1:-}"
 [ -d "$REPO_ROOT/node_modules" ] || { echo "error: run 'pnpm install' first" >&2; exit 1; }
 [[ "$LABEL" =~ ^[A-Za-z0-9_.-]+$ ]] || { echo "error: invalid AEDEV_AUTOFLOW_LABEL: $LABEL" >&2; exit 1; }
 [[ "$START_INTERVAL" =~ ^[1-9][0-9]*$ ]] || { echo "error: invalid AEDEV_AUTOFLOW_START_INTERVAL: $START_INTERVAL" >&2; exit 1; }
+if [ "$MAX_CYCLES" != "infinite" ] && [ "$MAX_CYCLES" != "continuous" ] && ! [[ "$MAX_CYCLES" =~ ^[1-9][0-9]*$ ]]; then
+  echo "error: invalid AEDEV_AUTOFLOW_MAX_CYCLES: $MAX_CYCLES (use a positive integer, infinite, or continuous)" >&2
+  exit 1
+fi
 if [ "$MODE" != "" ] && [ "$MODE" != "--reload" ] && [ "$MODE" != "--render-only" ]; then
   echo "error: unsupported mode: $MODE" >&2
   exit 1
@@ -33,7 +38,7 @@ mkdir -p "$LOG_DIR" "$AUTOFLOW_HOME/evidence" "$LA_DIR"
 PNPM_DIR="$(dirname "$PNPM_BIN")"
 NODE_DIR="$(dirname "$NODE_BIN")"
 NODE_REAL_DIR="$(dirname "$("$NODE_BIN" -p 'process.execPath' 2>/dev/null)")"
-PATH_VAL="$PNPM_DIR:$NODE_DIR:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+PATH_VAL="$PNPM_DIR:$NODE_DIR:$HOME/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 [ -n "$NODE_REAL_DIR" ] && [ "$NODE_REAL_DIR" != "." ] && PATH_VAL="$NODE_REAL_DIR:$PATH_VAL"
 
 xml_escape() {
@@ -57,6 +62,7 @@ EXTRA_ENV="$(
     AEDEV_AUTOFLOW_LOG \
     AEDEV_AUTOFLOW_EVIDENCE_DIR \
     AEDEV_AUTOFLOW_WORKTREE \
+    AEDEV_AUTOFLOW_MAX_CYCLES \
     AEDEV_AUTOFLOW_START_INTERVAL \
     AEDEV_AUTOFLOW_REMOTE_MODE \
     AEDEV_AUTOFLOW_ALLOW_REMOTE_WRITES \
@@ -94,8 +100,16 @@ EXTRA_ENV="$(
 
 TMP_PLIST="$(mktemp "${TMPDIR:-/tmp}/claude247-autoflow.XXXXXX")"
 EXTRA_ENV_FILE="$(mktemp "${TMPDIR:-/tmp}/claude247-autoflow-env.XXXXXX")"
-trap 'rm -f "$TMP_PLIST" "$EXTRA_ENV_FILE"' EXIT
+MAX_CYCLES_ARGS_FILE="$(mktemp "${TMPDIR:-/tmp}/claude247-autoflow-max-cycles.XXXXXX")"
+trap 'rm -f "$TMP_PLIST" "$EXTRA_ENV_FILE" "$MAX_CYCLES_ARGS_FILE"' EXIT
 printf '%s' "$EXTRA_ENV" > "$EXTRA_ENV_FILE"
+
+MAX_CYCLES_ARGS=''
+if [ "$MAX_CYCLES" != "infinite" ] && [ "$MAX_CYCLES" != "continuous" ]; then
+  MAX_CYCLES_ARGS="    <string>--max-cycles</string>
+    <string>$(xml_escape "$MAX_CYCLES")</string>"
+fi
+printf '%s' "$MAX_CYCLES_ARGS" > "$MAX_CYCLES_ARGS_FILE"
 
 sed -e "s#@@PNPM@@#$(sed_escape "$PNPM_BIN")#g" \
     -e "s#@@REPO_ROOT@@#$(sed_escape "$REPO_ROOT")#g" \
@@ -109,7 +123,12 @@ sed -e "s#@@PNPM@@#$(sed_escape "$PNPM_BIN")#g" \
     -e "s#@@START_INTERVAL@@#$(sed_escape "$START_INTERVAL")#g" \
     -e "s#@@AUTOFLOW_HOME@@#$(sed_escape "$AUTOFLOW_HOME")#g" \
     "$TPL" > "$TMP_PLIST"
-awk -v extra_file="$EXTRA_ENV_FILE" '
+awk -v extra_file="$EXTRA_ENV_FILE" -v max_cycles_file="$MAX_CYCLES_ARGS_FILE" '
+  /@@MAX_CYCLES_ARGS@@/ {
+    while ((getline line < max_cycles_file) > 0) print line
+    close(max_cycles_file)
+    next
+  }
   /@@EXTRA_ENV@@/ {
     while ((getline line < extra_file) > 0) print line
     close(extra_file)

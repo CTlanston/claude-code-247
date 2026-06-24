@@ -8,8 +8,7 @@
     <string>@@PNPM@@</string>
     <string>tsx</string>
     <string>scripts/autoflow-loop.ts</string>
-    <string>--max-cycles</string>
-    <string>1</string>
+@@MAX_CYCLES_ARGS@@
   </array>
   <key>WorkingDirectory</key><string>@@REPO_ROOT@@</string>
   <key>KeepAlive</key>

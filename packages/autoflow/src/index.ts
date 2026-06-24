@@ -916,7 +916,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
     }
 
     const nextCycle = cycle + 1
-    const nextLocation = remotePlan.allowed && config.remoteMode === 'pr-merge' && config.rotateRemoteBranches
+    const nextLocation = remotePlan.allowed && config.remoteMode === 'pr-merge' && shouldRotateRemoteBranches(config)
       ? rotatedRemoteCycleLocation(config, nextCycle)
       : { branch: state.branch, worktreePath: state.worktreePath }
     const completed = {
@@ -1469,6 +1469,10 @@ function rotatedRemoteCycleLocation(config: Pick<AutoflowConfig, 'branch' | 'wor
     branch: `${branchBase}-${suffix}`,
     worktreePath: `${worktreeBase}-${suffix}`,
   }
+}
+
+function shouldRotateRemoteBranches(config: Pick<AutoflowConfig, 'maxCycles' | 'rotateRemoteBranches'>): boolean {
+  return config.rotateRemoteBranches || config.maxCycles === null
 }
 
 async function pruneOldCycleWorktrees(
@@ -2659,7 +2663,7 @@ function parseList(raw: string | undefined, fallback: string[] = []): string[] {
 }
 
 function parseMaxCycles(raw: string | undefined): number | null {
-  if (!raw || raw === 'infinite') return null
+  if (!raw || raw === 'infinite' || raw === 'continuous') return null
   const parsed = Number(raw)
   return Number.isFinite(parsed) ? parsed : null
 }
