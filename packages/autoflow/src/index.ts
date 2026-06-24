@@ -214,6 +214,7 @@ export interface AutoflowDoctorReport {
     stageHeartbeatIntervalMs: number
   }
   paths: Record<string, { path: string; exists: boolean }>
+  soak?: AutoflowSoakStatus
   state?: Pick<AutoflowState,
     | 'status'
     | 'nextCycle'
@@ -242,6 +243,27 @@ export interface AutoflowDoctorReport {
 
 type AutoflowDoctorState = NonNullable<AutoflowDoctorReport['state']>
 type AutoflowDoctorSummary = NonNullable<AutoflowDoctorReport['summary']>
+
+export interface AutoflowSoakStatus {
+  checked: boolean
+  active: boolean
+  runStartedAt?: string
+  runAgeMs?: number
+  latestHeartbeatAt?: string
+  latestHeartbeatAgeMs?: number
+  currentCycle?: number
+  completedCycles: number[]
+  completedCycleCount: number
+  latestCompletedCycle?: number
+  lastCompletedAt?: string
+  holdCount: number
+  autoResumeCount: number
+  claudeStartedCount: number
+  coderStartedCount: number
+  cyclesWithUsage: number
+  usage: AutoflowUsageSummary['total']
+  notes: string[]
+}
 
 export interface AutoflowOperatorAction {
   severity: 'info' | 'warn' | 'fail'
@@ -453,6 +475,43 @@ export function buildAutoflowDoctorReport(config: AutoflowConfig, now = new Date
     checks.push({ code: 'summary_readable', status: 'warn', message: `summary file missing: ${config.summaryPath}` })
   }
 
+  const soak = buildSoakStatus(config, state, summary, now)
+  if (soak.checked) {
+    const heartbeatGraceMs = config.stageHeartbeatIntervalMs * 3
+    if (soak.active && soak.latestHeartbeatAgeMs !== undefined) {
+      checks.push(soak.latestHeartbeatAgeMs <= heartbeatGraceMs
+        ? {
+          code: 'soak_recent_heartbeat',
+          status: 'pass',
+          message: `active soak heartbeat is recent (${soak.latestHeartbeatAgeMs}ms old)`,
+        }
+        : {
+          code: 'soak_recent_heartbeat',
+          status: 'warn',
+          message: `active soak heartbeat is stale (${soak.latestHeartbeatAgeMs}ms old)`,
+        })
+    }
+    if (config.coderProvider === 'claude' && (soak.cyclesWithUsage > 0 || soak.completedCycleCount > 0 || soak.claudeStartedCount > 0)) {
+      const burnedTokens = soak.usage.outputTokens + soak.usage.cacheCreationInputTokens + soak.usage.cacheReadInputTokens
+      checks.push(burnedTokens > 0
+        ? {
+          code: 'soak_claude_usage_observed',
+          status: 'pass',
+          message: `observed Claude usage across ${soak.cyclesWithUsage} cycle(s): output=${soak.usage.outputTokens}, cacheRead=${soak.usage.cacheReadInputTokens}, cost=${soak.usage.costUsd ?? 'unknown'}`,
+        }
+        : {
+          code: 'soak_claude_usage_observed',
+          status: 'warn',
+          message: 'Claude activity was observed but no Claude usage evidence was found yet',
+        })
+    }
+    if (soak.runStartedAt || soak.completedCycleCount > 0 || soak.claudeStartedCount > 0) {
+      checks.push(config.maxCycles === null
+        ? { code: 'soak_continuous_mode', status: 'pass', message: 'autoflow is configured for continuous cycles' }
+        : { code: 'soak_continuous_mode', status: 'warn', message: `autoflow is limited to maxCycles=${config.maxCycles}` })
+    }
+  }
+
   const cadence = buildCadenceStatus(launchd, state, now)
   if (cadence?.checked) {
     checks.push(cadence.overdue
@@ -472,7 +531,7 @@ export function buildAutoflowDoctorReport(config: AutoflowConfig, now = new Date
     version: 1,
     status: overallDoctorStatus(checks),
     generatedAt: now.toISOString(),
-    operatorAction: buildOperatorAction(config, launchd, state, summary, cadence, checks),
+    operatorAction: buildOperatorAction(config, launchd, state, summary, cadence, checks, soak),
     launchd: launchd ? {
       label: launchd.label,
       plistPath: launchd.plistPath,
@@ -498,6 +557,7 @@ export function buildAutoflowDoctorReport(config: AutoflowConfig, now = new Date
       stageHeartbeatIntervalMs: config.stageHeartbeatIntervalMs,
     },
     paths,
+    soak,
     state,
     summary,
     checks,
@@ -1293,11 +1353,23 @@ async function runGates(config: AutoflowConfig, runner: CommandRunner, cycleDir:
 }
 
 async function listChangedPaths(config: AutoflowConfig, runner: CommandRunner, baseSha: string): Promise<string[]> {
-  const committed = await git(config, runner, ['diff', '--name-only', `${baseSha}..HEAD`])
-  const status = await git(config, runner, ['status', '--porcelain=v1'])
+  const committed = await runner.run('git', ['diff', '--name-only', `${baseSha}..HEAD`], {
+    cwd: config.worktreePath,
+    timeoutMs: config.commandTimeoutMs,
+  })
+  const status = await runner.run('git', ['status', '--porcelain=v1'], {
+    cwd: config.worktreePath,
+    timeoutMs: config.commandTimeoutMs,
+  })
+  if (committed.exitCode !== 0 && status.exitCode !== 0) {
+    throw new Error([
+      `git diff --name-only ${baseSha}..HEAD failed (exit ${committed.exitCode}): ${summarizeCommandOutput(committed.stderr || committed.stdout) ?? 'no output'}`,
+      `git status --porcelain=v1 failed (exit ${status.exitCode}): ${summarizeCommandOutput(status.stderr || status.stdout) ?? 'no output'}`,
+    ].join('; '))
+  }
   const paths = [
-    ...committed.stdout.split('\n').filter(Boolean),
-    ...status.stdout.split('\n').filter(Boolean).map((line) => line.slice(3).replace(/^"|"$/g, '')),
+    ...(committed.exitCode === 0 ? committed.stdout.split('\n').filter(Boolean) : []),
+    ...(status.exitCode === 0 ? status.stdout.split('\n').filter(Boolean).map((line) => line.slice(3).replace(/^"|"$/g, '')) : []),
   ]
   return [...new Set(paths)].sort()
 }
@@ -2180,6 +2252,130 @@ function firstLaunchdNumber(output: string, pattern: RegExp): number | undefined
   return Number.isFinite(parsed) ? parsed : undefined
 }
 
+function buildSoakStatus(
+  config: Pick<AutoflowConfig, 'logPath' | 'evidenceDir'>,
+  state: AutoflowDoctorReport['state'],
+  summary: AutoflowDoctorReport['summary'],
+  now: Date,
+): AutoflowSoakStatus {
+  const events = readAutoflowLogEvents(config.logPath)
+  const completedCycles = sortedUnique(events
+    .filter((event) => event.type === 'autoflow.cycle_completed')
+    .map((event) => event.cycle)
+    .filter(isFiniteNumber))
+  const latestCliStarted = lastEventOfType(events, 'autoflow.cli_started')
+  const latestHeartbeat = lastEventOfType(events, 'autoflow.stage_heartbeat')
+  const latestCompleted = lastEventOfType(events, 'autoflow.cycle_completed')
+  const usageFromEvidence = readUsageTotalsFromEvidence(config.evidenceDir)
+  const usage = usageFromEvidence.cyclesWithUsage > 0
+    ? usageFromEvidence.total
+    : summary?.usage?.total ?? emptyUsageTotal()
+  const latestHeartbeatMs = latestHeartbeat ? Date.parse(latestHeartbeat.ts) : undefined
+  const runStartedMs = latestCliStarted ? Date.parse(latestCliStarted.ts) : undefined
+
+  const notes: string[] = []
+  if (usageFromEvidence.cyclesWithUsage === 0 && summary?.usage) notes.push('usage fell back to latest summary because no cycle model-usage files were found')
+  if (!latestHeartbeat) notes.push('no stage heartbeat has been logged yet')
+  if (state?.status === 'running' && !latestCliStarted) notes.push('state is running but no cli_started event was found')
+
+  return {
+    checked: true,
+    active: state?.status === 'running',
+    runStartedAt: latestCliStarted?.ts,
+    runAgeMs: runStartedMs !== undefined && Number.isFinite(runStartedMs) ? Math.max(0, now.getTime() - runStartedMs) : undefined,
+    latestHeartbeatAt: latestHeartbeat?.ts,
+    latestHeartbeatAgeMs: latestHeartbeatMs !== undefined && Number.isFinite(latestHeartbeatMs) ? Math.max(0, now.getTime() - latestHeartbeatMs) : undefined,
+    currentCycle: state?.currentCycle ?? (isFiniteNumber(latestHeartbeat?.cycle) ? latestHeartbeat?.cycle : undefined),
+    completedCycles,
+    completedCycleCount: completedCycles.length,
+    latestCompletedCycle: completedCycles[completedCycles.length - 1],
+    lastCompletedAt: latestCompleted?.ts ?? state?.lastCompletedAt,
+    holdCount: events.filter((event) => event.type === 'autoflow.hold').length,
+    autoResumeCount: events.filter((event) => event.type === 'autoflow.hold_auto_resumed').length,
+    claudeStartedCount: events.filter((event) => event.type === 'autoflow.claude_started').length,
+    coderStartedCount: events.filter((event) => event.type === 'autoflow.coder_started').length,
+    cyclesWithUsage: usageFromEvidence.cyclesWithUsage || (summary?.usage ? 1 : 0),
+    usage,
+    notes,
+  }
+}
+
+interface AutoflowLogEvent {
+  ts: string
+  type?: string
+  cycle?: unknown
+  [key: string]: unknown
+}
+
+function readAutoflowLogEvents(logPath: string): AutoflowLogEvent[] {
+  if (!existsSync(logPath)) return []
+  return readFileSync(logPath, 'utf8')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      try {
+        return JSON.parse(line) as AutoflowLogEvent
+      } catch {
+        return undefined
+      }
+    })
+    .filter((event): event is AutoflowLogEvent => !!event && typeof event.ts === 'string')
+}
+
+function lastEventOfType(events: AutoflowLogEvent[], type: string): AutoflowLogEvent | undefined {
+  for (let index = events.length - 1; index >= 0; index--) {
+    if (events[index]?.type === type) return events[index]
+  }
+  return undefined
+}
+
+function readUsageTotalsFromEvidence(evidenceDir: string): { cyclesWithUsage: number; total: AutoflowUsageSummary['total'] } {
+  const total = emptyUsageTotal()
+  if (!existsSync(evidenceDir)) return { cyclesWithUsage: 0, total }
+  let cyclesWithUsage = 0
+  for (const entry of readdirSync(evidenceDir, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !/^cycle-\d{6}$/.test(entry.name)) continue
+    const usagePath = join(evidenceDir, entry.name, 'model-usage.json')
+    if (!existsSync(usagePath)) continue
+    try {
+      const parsed = JSON.parse(readFileSync(usagePath, 'utf8')) as Partial<AutoflowUsageSummary>
+      if (!parsed.total) continue
+      cyclesWithUsage++
+      addUsageTotal(total, parsed.total)
+    } catch {
+      // Ignore malformed historical evidence and keep doctor read-only.
+    }
+  }
+  return { cyclesWithUsage, total }
+}
+
+function emptyUsageTotal(): AutoflowUsageSummary['total'] {
+  return {
+    costUsd: null,
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheCreationInputTokens: 0,
+    cacheReadInputTokens: 0,
+  }
+}
+
+function addUsageTotal(target: AutoflowUsageSummary['total'], next: AutoflowUsageSummary['total']): void {
+  target.inputTokens += next.inputTokens
+  target.outputTokens += next.outputTokens
+  target.cacheCreationInputTokens += next.cacheCreationInputTokens
+  target.cacheReadInputTokens += next.cacheReadInputTokens
+  if (typeof next.costUsd === 'number') target.costUsd = (target.costUsd ?? 0) + next.costUsd
+}
+
+function sortedUnique(values: number[]): number[] {
+  return [...new Set(values)].sort((a, b) => a - b)
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
 function buildCadenceStatus(
   launchd: LaunchdRegistration | undefined,
   state: AutoflowDoctorReport['state'],
@@ -2231,6 +2427,7 @@ function buildOperatorAction(
   summary: AutoflowDoctorReport['summary'],
   cadence: AutoflowCadenceStatus | undefined,
   checks: AutoflowDoctorReport['checks'],
+  soak?: AutoflowSoakStatus,
 ): AutoflowOperatorAction {
   if (launchd && !launchd.exists) {
     return {
@@ -2277,6 +2474,9 @@ function buildOperatorAction(
       summary: `Autoflow cycle ${state.currentCycle ?? state.nextCycle} is currently running.`,
       details: [
         ...(state.lastStartedAt ? [`Started at: ${state.lastStartedAt}`] : []),
+        ...(soak?.runAgeMs !== undefined ? [`Current run age: ${soak.runAgeMs}ms`] : []),
+        ...(soak?.latestHeartbeatAt ? [`Latest heartbeat: ${soak.latestHeartbeatAt}`] : []),
+        ...(soak?.usage ? [`Observed Claude output/cache tokens: ${soak.usage.outputTokens}/${soak.usage.cacheReadInputTokens}`] : []),
         ...(launchd?.runtime?.pid ? [`launchd pid: ${launchd.runtime.pid}`] : []),
         `Log path: ${config.logPath}`,
       ],

@@ -52,6 +52,7 @@ class FakeRunner implements CommandRunner {
     fetchTimeouts?: number
     fetchFailureStderr?: string
     postClaudeDiffFailureStderr?: string
+    statusFailureStderr?: string
     claudeDelayMs?: number
     claudePlannerExitCode?: number
   } = {}) {}
@@ -81,6 +82,7 @@ class FakeRunner implements CommandRunner {
       return result(command, args, callOpts.cwd, paths.join('\n') + (paths.length > 0 ? '\n' : ''))
     }
     if (rendered.includes('status --porcelain')) {
+      if (this.opts.statusFailureStderr) return result(command, args, callOpts.cwd, '', this.opts.statusFailureStderr, 1)
       const paths = this.coderDone && this.opts.committedChangedPaths
         ? this.opts.unstagedChangedPathsAfterCoder ?? []
         : !this.coderDone && this.claudeDone
@@ -286,6 +288,92 @@ gui/501/com.claude247.autoflow.test = {
       summary: 'Autoflow is healthy; wait for the next scheduled run.',
     })
     expect(report.checks).toContainEqual(expect.objectContaining({ code: 'remote_writes_enabled', status: 'pass' }))
+  })
+
+  it('aggregates continuous soak evidence from logs and model usage files', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-doctor-soak-'))
+    const config = {
+      ...testConfig(dir),
+      coderProvider: 'claude' as const,
+      allowRemoteWrites: true,
+      remoteMode: 'pr-merge' as const,
+      stageHeartbeatIntervalMs: 60_000,
+      maxCycles: null,
+    }
+    saveState(config, {
+      ...loadState(config),
+      status: 'running',
+      currentCycle: 42,
+      nextCycle: 42,
+      lastStartedAt: '2026-06-24T06:47:05.094Z',
+      lastCompletedAt: '2026-06-24T06:46:53.230Z',
+    })
+    writeFileSync(config.summaryPath, JSON.stringify({
+      version: 1,
+      updatedAt: '2026-06-24T06:46:53.522Z',
+      status: 'completed',
+      cycle: 41,
+      nextCycle: 42,
+      branch: config.branch,
+      worktreePath: config.worktreePath,
+      evidenceDir: join(config.evidenceDir, 'cycle-000041'),
+      changedPaths: ['src/example.ts'],
+      productivePaths: ['src/example.ts'],
+      gates: [{ command: 'npm test', exitCode: 0 }],
+      coderProvider: 'claude',
+      stageDurationsMs: { claude: 1, coder: 2 },
+      repetition: { windowSize: 1, sameProductivePathStreak: 1, repeatedProductivePaths: [], categoryCounts: { source: 1 } },
+      plannerSignals: [],
+    } satisfies AutoflowSummary) + '\n')
+    mkdirSync(join(dir, 'logs'), { recursive: true })
+    writeFileSync(config.logPath, [
+      { ts: '2026-06-24T06:34:36.920Z', type: 'autoflow.cli_started', argv: [] },
+      { ts: '2026-06-24T06:41:18.163Z', type: 'autoflow.claude_completed', cycle: 40 },
+      { ts: '2026-06-24T06:42:24.979Z', type: 'autoflow.cycle_completed', cycle: 40 },
+      { ts: '2026-06-24T06:42:34.139Z', type: 'autoflow.claude_started', cycle: 41 },
+      { ts: '2026-06-24T06:45:49.371Z', type: 'autoflow.coder_started', cycle: 41, provider: 'claude' },
+      { ts: '2026-06-24T06:46:53.522Z', type: 'autoflow.cycle_completed', cycle: 41 },
+      { ts: '2026-06-24T06:47:05.128Z', type: 'autoflow.claude_started', cycle: 42 },
+      { ts: '2026-06-24T06:49:05.132Z', type: 'autoflow.stage_heartbeat', cycle: 42, stage: 'claude', elapsedMs: 120004 },
+    ].map((event) => JSON.stringify(event)).join('\n') + '\n')
+    mkdirSync(join(config.evidenceDir, 'cycle-000040'), { recursive: true })
+    mkdirSync(join(config.evidenceDir, 'cycle-000041'), { recursive: true })
+    writeFileSync(join(config.evidenceDir, 'cycle-000040', 'model-usage.json'), JSON.stringify({
+      total: { costUsd: 0.9, inputTokens: 10, outputTokens: 100, cacheCreationInputTokens: 200, cacheReadInputTokens: 300 },
+    }) + '\n')
+    writeFileSync(join(config.evidenceDir, 'cycle-000041', 'model-usage.json'), JSON.stringify({
+      total: { costUsd: 0.5, inputTokens: 20, outputTokens: 400, cacheCreationInputTokens: 500, cacheReadInputTokens: 600 },
+    }) + '\n')
+
+    const report = buildAutoflowDoctorReport(config, new Date('2026-06-24T06:50:00.000Z'))
+
+    expect(report.status).toBe('pass')
+    expect(report.soak).toMatchObject({
+      checked: true,
+      active: true,
+      currentCycle: 42,
+      completedCycles: [40, 41],
+      completedCycleCount: 2,
+      latestCompletedCycle: 41,
+      cyclesWithUsage: 2,
+      claudeStartedCount: 2,
+      coderStartedCount: 1,
+    })
+    expect(report.soak?.latestHeartbeatAgeMs).toBe(54868)
+    expect(report.soak?.usage).toMatchObject({
+      costUsd: 1.4,
+      inputTokens: 30,
+      outputTokens: 500,
+      cacheCreationInputTokens: 700,
+      cacheReadInputTokens: 900,
+    })
+    expect(report.checks).toContainEqual(expect.objectContaining({ code: 'soak_recent_heartbeat', status: 'pass' }))
+    expect(report.checks).toContainEqual(expect.objectContaining({ code: 'soak_claude_usage_observed', status: 'pass' }))
+    expect(report.checks).toContainEqual(expect.objectContaining({ code: 'soak_continuous_mode', status: 'pass' }))
+    expect(report.operatorAction.details).toEqual(expect.arrayContaining([
+      'Latest heartbeat: 2026-06-24T06:49:05.132Z',
+      'Observed Claude output/cache tokens: 500/900',
+    ]))
   })
 
   it('warns when the persisted running state is stale', () => {
@@ -1226,12 +1314,29 @@ describe('autoflow cycle controls', () => {
     expect(usageEvidence).toEqual(summary.usage)
   })
 
+  it('continues when committed diff fails but worktree status is readable', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-diff-fallback-'))
+    const config = { ...seededConfig(dir), coderProvider: 'claude' as const }
+    const runner = new FakeRunner({
+      postClaudeDiffFailureStderr: 'fatal: ambiguous argument base..HEAD\n',
+      changedPaths: ['src/example.ts'],
+      committedChangedPaths: ['src/example.ts'],
+    })
+
+    const result = await runOneCycle(config, runner, loadState(config))
+
+    expect(result.status).toBe('completed')
+    expect(runner.claudeCalls).toBe(2)
+    const summary = JSON.parse(readFileSync(config.summaryPath, 'utf8')) as AutoflowSummary
+    expect(summary.changedPaths).toContain('src/example.ts')
+  })
+
   it('preserves Claude usage evidence when a post-planner cycle error holds the loop', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'autoflow-cycle-error-usage-'))
     const config = { ...seededConfig(dir), coderProvider: 'claude' as const }
     const state = { ...loadState(config), consecutiveFailures: 2 }
     saveState(config, state)
-    const runner = new FakeRunner({ postClaudeDiffFailureStderr: 'fatal: not a git repository\n' })
+    const runner = new FakeRunner({ postClaudeDiffFailureStderr: 'fatal: not a git repository\n', statusFailureStderr: 'fatal: not a git repository\n' })
 
     const result = await runOneCycle(
       config,
