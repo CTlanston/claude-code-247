@@ -486,6 +486,43 @@ gui/501/com.claude247.autoflow.test = {
     })
   })
 
+  it('does not warn for cadence while a cycle is actively running', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-doctor-running-cadence-'))
+    const config = testConfig(dir)
+    saveState(config, {
+      ...loadState(config),
+      status: 'running',
+      currentCycle: 12,
+      lastStartedAt: '2026-06-23T21:55:00.000Z',
+      lastCompletedAt: '2026-06-23T21:00:00.000Z',
+    })
+
+    const report = buildAutoflowDoctorReport(
+      config,
+      new Date('2026-06-23T22:00:00.000Z'),
+      {
+        label: 'com.claude247.autoflow.test',
+        plistPath: join(dir, 'home', 'Library', 'LaunchAgents', 'com.claude247.autoflow.test.plist'),
+        exists: true,
+        environment: {},
+        programArguments: [],
+        startInterval: 900,
+        runtime: { checked: true, loaded: true, state: 'running', pid: 1234 },
+      },
+    )
+
+    expect(report.cadence).toMatchObject({
+      checked: true,
+      overdue: false,
+      reason: 'cycle 12 is currently running',
+    })
+    expect(report.checks).toContainEqual(expect.objectContaining({
+      code: 'launchd_cadence_recent',
+      status: 'pass',
+      message: 'cycle 12 is currently running',
+    }))
+  })
+
   it('prints JSON from the CLI doctor mode without starting a cycle', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'autoflow-doctor-cli-'))
     const config = testConfig(dir)
@@ -1356,6 +1393,24 @@ describe('autoflow cycle controls', () => {
     const result = await runOneCycle(config, runner, loadState(config))
     expect(result.status).toBe('completed')
     expect(runner.codexCalls).toBe(3)
+  })
+
+  it('clears stale hold evidence when a cycle is retried', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-stale-hold-evidence-'))
+    const config = seededConfig(dir)
+    const cycleDir = join(config.evidenceDir, 'cycle-000001')
+    mkdirSync(cycleDir, { recursive: true })
+    writeFileSync(join(cycleDir, 'HOLD.json'), '{"code":"SETUP_FAILED"}\n')
+    writeFileSync(join(cycleDir, 'HOLD.md'), '# old hold\n')
+    writeFileSync(join(cycleDir, 'autoflow-summary.json'), '{"status":"hold"}\n')
+
+    const result = await runOneCycle(config, new FakeRunner({ changedPaths: ['src/example.ts'] }), loadState(config))
+
+    expect(result.status).toBe('completed')
+    expect(existsSync(join(cycleDir, 'HOLD.json'))).toBe(false)
+    expect(existsSync(join(cycleDir, 'HOLD.md'))).toBe(false)
+    const summary = JSON.parse(readFileSync(join(cycleDir, 'autoflow-summary.json'), 'utf8')) as AutoflowSummary
+    expect(summary.status).toBe('completed')
   })
 
   it('skips gates for failed Codex attempts and runs gates after a successful retry', async () => {
