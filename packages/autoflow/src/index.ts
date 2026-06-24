@@ -8,6 +8,7 @@ import {
   readdirSync,
   readFileSync,
   renameSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { homedir } from 'node:os'
@@ -523,7 +524,7 @@ export function buildAutoflowDoctorReport(config: AutoflowConfig, now = new Date
       : {
         code: 'launchd_cadence_recent',
         status: 'pass',
-        message: cadence.nextExpectedAt ? `next run expected around ${cadence.nextExpectedAt}` : 'cadence is configured',
+        message: cadence.reason ?? (cadence.nextExpectedAt ? `next run expected around ${cadence.nextExpectedAt}` : 'cadence is configured'),
       })
   }
 
@@ -673,6 +674,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
   const cycleId = cycleIdFor(cycle)
   const cycleDir = join(config.evidenceDir, cycleId)
   ensureDir(cycleDir)
+  clearStaleHoldEvidence(cycleDir)
   const startedAt = new Date().toISOString()
   const baseSha = (await git(config, runner, ['rev-parse', 'HEAD'])).stdout.trim()
   const workingBefore = await listChangedPaths(config, runner, baseSha)
@@ -2044,6 +2046,18 @@ function renderHoldMarkdown(record: HoldRecord): string {
   return lines.join('\n')
 }
 
+function clearStaleHoldEvidence(cycleDir: string): void {
+  for (const filename of ['HOLD.json', 'HOLD.md', 'autoflow-summary.json']) {
+    const path = join(cycleDir, filename)
+    if (!existsSync(path)) continue
+    try {
+      unlinkSync(path)
+    } catch {
+      // Best effort cleanup only; the new attempt should not fail because stale evidence was locked.
+    }
+  }
+}
+
 function transientSetupFetchHold(code: string, state: Pick<AutoflowState, 'consecutiveSetupFetchTimeouts'>): { code: string; resumeAfter: string; retryCount: number } {
   const retryCount = state.consecutiveSetupFetchTimeouts + 1
   return {
@@ -2615,6 +2629,16 @@ function buildCadenceStatus(
   now: Date,
 ): AutoflowCadenceStatus | undefined {
   if (!launchd?.startInterval) return undefined
+  if (state?.status === 'running') {
+    return {
+      checked: true,
+      intervalSeconds: launchd.startInterval,
+      lastCompletedAt: state.lastCompletedAt,
+      overdue: false,
+      overdueMs: 0,
+      reason: `cycle ${state.currentCycle ?? state.nextCycle} is currently running`,
+    }
+  }
   if (!state?.lastCompletedAt) {
     return {
       checked: false,
