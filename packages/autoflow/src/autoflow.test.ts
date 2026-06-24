@@ -8,6 +8,7 @@ import {
   buildAutoflowDoctorReport,
   buildClaudeArgs,
   buildCodexArgs,
+  claudeWorktreeCachePaths,
   commandContainsRemoteWrite,
   defaultConfig,
   loadState,
@@ -197,6 +198,16 @@ describe('autoflow command builders', () => {
     expect(commandContainsRemoteWrite('codex', buildCodexArgs(config))).toBe(false)
     expect(commandContainsRemoteWrite('git', ['push', 'origin', 'main'])).toBe(true)
     expect(commandContainsRemoteWrite('gh', ['pr', 'create'])).toBe(true)
+  })
+
+  it('derives Claude cache paths for a cycle worktree', () => {
+    expect(claudeWorktreeCachePaths(
+      '/Users/lanston/.claude-code-247/autoflow-fairshare/worktrees/fairshare-fs-a1c-cycle-000051',
+      '/tmp/home',
+    )).toEqual([
+      '/tmp/home/.claude/projects/-Users-lanston--claude-code-247-autoflow-fairshare-worktrees-fairshare-fs-a1c-cycle-000051',
+      '/tmp/home/Library/Caches/claude-cli-nodejs/-Users-lanston--claude-code-247-autoflow-fairshare-worktrees-fairshare-fs-a1c-cycle-000051',
+    ])
   })
 
   it('blocks remote-write commands unless the supervisor enables them', () => {
