@@ -64,6 +64,9 @@ class FakeRunner implements CommandRunner {
       this.revParseCalls++
       return result(command, args, callOpts.cwd, this.revParseCalls === 1 ? 'base-sha\n' : `${this.opts.headSha ?? 'commit-sha'}\n`)
     }
+    if (rendered.includes('branch --show-current')) {
+      return result(command, args, callOpts.cwd, readTestWorktreeBranch(callOpts.cwd) ? `${readTestWorktreeBranch(callOpts.cwd)}\n` : '')
+    }
     if (rendered.includes('fetch origin main')) {
       const fetchCalls = this.calls.filter((call) => [call.command, ...call.args].join(' ').includes('fetch origin main')).length
       if (this.opts.fetchFailureStderr) return result(command, args, callOpts.cwd, '', this.opts.fetchFailureStderr, 1)
@@ -910,7 +913,7 @@ describe('autoflow cycle controls', () => {
     const commands = runner.calls.map((call) => [call.command, ...call.args].join(' '))
 
     expect(results[0]?.status).toBe('completed')
-    expect(commands).not.toContain('git branch --show-current')
+    expect(commands).toContain('git branch --show-current')
     expect(commands).not.toContain(`git switch ${config.branch}`)
   })
 
@@ -1986,6 +1989,14 @@ describe('autoflow cycle controls', () => {
 
 function result(command: string, args: string[], cwd: string, stdout = '', stderr = '', exitCode = 0): CommandResult {
   return { command, args, cwd, stdout, stderr, exitCode, durationMs: 1 }
+}
+
+function readTestWorktreeBranch(cwd: string): string | undefined {
+  const headPath = join(cwd, '.git', 'HEAD')
+  if (!existsSync(headPath)) return undefined
+  const head = readFileSync(headPath, 'utf8').trim()
+  const prefix = 'ref: refs/heads/'
+  return head.startsWith(prefix) ? head.slice(prefix.length) : undefined
 }
 
 function fakeClaudeOutput(costUsd: number, inputTokens: number, outputTokens: number): string {
