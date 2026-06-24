@@ -176,6 +176,9 @@ describe('autoflow command builders', () => {
     expect(defaultConfig({ AEDEV_AUTOFLOW_SETUP_FETCH_ATTEMPTS: '3' }, []).setupFetchAttempts).toBe(3)
     expect(defaultConfig({ AEDEV_AUTOFLOW_RETAIN_CYCLE_WORKTREES: '4' }, []).retainedCycleWorktrees).toBe(4)
     expect(defaultConfig({ AEDEV_AUTOFLOW_RUNNING_STATE_TTL_MS: '1000' }, []).runningStateTtlMs).toBe(1000)
+    expect(defaultConfig({ AEDEV_AUTOFLOW_MAX_CYCLES: 'continuous' }, []).maxCycles).toBeNull()
+    expect(defaultConfig({ AEDEV_AUTOFLOW_MAX_CYCLES: 'infinite' }, []).maxCycles).toBeNull()
+    expect(defaultConfig({ AEDEV_AUTOFLOW_MAX_CYCLES: '7' }, []).maxCycles).toBe(7)
   })
 
   it('builds Claude and Codex commands without remote-write operations', () => {
@@ -744,6 +747,9 @@ describe('autoflow launchd installer', () => {
     })
 
     const plist = readFileSync(join(home, 'Library', 'LaunchAgents', `${label}.plist`), 'utf8')
+    expect(plist).toContain('<string>--max-cycles</string>')
+    expect(plist).toContain('<string>1</string>')
+    expect(plist).toContain(`${home}/bin`)
     expect(plist).toContain('<key>StartInterval</key><integer>123</integer>')
     expect(plist).toContain('<key>AEDEV_AUTOFLOW_START_INTERVAL</key><string>123</string>')
     expect(plist).toContain('<key>AEDEV_AUTOFLOW_CODER_PROVIDER</key><string>claude</string>')
@@ -753,6 +759,27 @@ describe('autoflow launchd installer', () => {
     expect(plist).toContain('<key>AEDEV_AUTOFLOW_RETAIN_CYCLE_WORKTREES</key><string>7</string>')
     expect(plist).toContain('<key>AEDEV_AUTOFLOW_RUNNING_STATE_TTL_MS</key><string>8888</string>')
     expect(plist).toContain('<key>AEDEV_AUTOFLOW_STAGE_HEARTBEAT_MS</key><string>9999</string>')
+  })
+
+  it('renders continuous mode without a single-cycle launchd argument', () => {
+    const home = mkdtempSync(join(tmpdir(), 'autoflow-launchd-continuous-home-'))
+    const label = 'com.claude247.autoflow.continuous.test'
+    const script = join(process.cwd(), 'scripts', 'install_autoflow_launchd.sh')
+
+    execFileSync('/bin/bash', [script, '--render-only'], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        HOME: home,
+        AEDEV_AUTOFLOW_LABEL: label,
+        AEDEV_AUTOFLOW_MAX_CYCLES: 'continuous',
+      },
+      stdio: 'pipe',
+    })
+
+    const plist = readFileSync(join(home, 'Library', 'LaunchAgents', `${label}.plist`), 'utf8')
+    expect(plist).not.toContain('<string>--max-cycles</string>')
+    expect(plist).toContain('<key>AEDEV_AUTOFLOW_MAX_CYCLES</key><string>continuous</string>')
   })
 })
 
@@ -1705,6 +1732,23 @@ describe('autoflow cycle controls', () => {
       allowRemoteWrites: true,
       remoteMode: 'pr-merge' as const,
       rotateRemoteBranches: true,
+    }
+    const result = await runOneCycle(config, new FakeRunner({ changedPaths: ['src/example.ts'] }), loadState(config))
+    const nextState = loadState(config)
+    expect(result.status).toBe('completed')
+    expect(nextState.nextCycle).toBe(2)
+    expect(nextState.branch).toBe('codex/autoflow-workbook-cycle-000002')
+    expect(nextState.worktreePath).toBe(join(dir, 'worktree-cycle-000002'))
+  })
+
+  it('rotates remote branches by default in continuous pr-merge mode', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-remote-continuous-rotate-'))
+    const config = {
+      ...seededConfig(dir),
+      allowRemoteWrites: true,
+      remoteMode: 'pr-merge' as const,
+      maxCycles: null,
+      rotateRemoteBranches: false,
     }
     const result = await runOneCycle(config, new FakeRunner({ changedPaths: ['src/example.ts'] }), loadState(config))
     const nextState = loadState(config)
