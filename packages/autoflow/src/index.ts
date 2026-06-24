@@ -571,7 +571,7 @@ export async function runAutoflow(config: AutoflowConfig, runner: CommandRunner 
 
   let state = loadState(config)
   if (state.status === 'hold') {
-    const resumed = autoResumeHoldIfReady(config, state)
+    const resumed = await autoResumeHoldIfReady(config, state, runner)
     if (resumed) {
       state = resumed
     } else {
@@ -1938,9 +1938,41 @@ function monthIndex(monthName: string): number | undefined {
   return months.get(monthName.slice(0, 3).toLowerCase())
 }
 
-function autoResumeHoldIfReady(config: AutoflowConfig, state: AutoflowState): AutoflowState | null {
+async function autoResumeHoldIfReady(config: AutoflowConfig, state: AutoflowState, runner: CommandRunner): Promise<AutoflowState | null> {
   const hold = state.hold
-  if (!hold || !isAutoResumableHold(hold) || !hold.resumeAfter) return null
+  if (!hold) return null
+  if (isRecoverableWorktreeSetupHold(hold) && existsSync(join(config.worktreePath, '.git'))) {
+    const branchRead = await readWorktreeCurrentBranch(config.worktreePath, runner, worktreeSetupCommandTimeoutMs(config))
+    if (branchRead.currentBranch === config.branch) {
+      const resumed = {
+        ...state,
+        status: 'idle' as const,
+        hold: undefined,
+        consecutiveFailures: 0,
+      }
+      saveState(config, resumed)
+      logEvent(config, {
+        type: 'autoflow.hold_auto_resumed',
+        hold,
+        reason: 'worktree setup hold recovered because target worktree exists on requested branch',
+        worktreePath: config.worktreePath,
+        branch: config.branch,
+      })
+      return resumed
+    }
+    logEvent(config, {
+      type: 'autoflow.worktree_setup_hold_recovery_skipped',
+      hold,
+      worktreePath: config.worktreePath,
+      branch: config.branch,
+      currentBranch: branchRead.currentBranch,
+      exitCode: branchRead.result.exitCode,
+      durationMs: branchRead.result.durationMs,
+      stderr: summarizeCommandOutput(branchRead.result.stderr),
+      stdout: summarizeCommandOutput(branchRead.result.stdout),
+    })
+  }
+  if (!isAutoResumableHold(hold) || !hold.resumeAfter) return null
   const resumeAfterMs = Date.parse(hold.resumeAfter)
   if (Number.isNaN(resumeAfterMs) || resumeAfterMs > Date.now()) return null
   const resumed = {
@@ -1966,6 +1998,10 @@ function isAutoResumableHold(hold: HoldRecord): boolean {
     || hold.code === 'SETUP_FETCH_TIMEOUT'
     || hold.code === 'SETUP_FETCH_TRANSIENT'
     || hold.code === 'CLAUDE_TIMEOUT'
+}
+
+function isRecoverableWorktreeSetupHold(hold: HoldRecord): boolean {
+  return hold.code === 'SETUP_FAILED' && /git worktree add failed:[\s\S]*exit 124/i.test(hold.reason)
 }
 
 function classifySetupHold(error: Error, state: Pick<AutoflowState, 'consecutiveSetupFetchTimeouts'>): { code: string; resumeAfter?: string; retryCount?: number } {

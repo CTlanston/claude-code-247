@@ -970,6 +970,39 @@ describe('autoflow cycle controls', () => {
     }))
   })
 
+  it('auto-recovers a worktree add timeout hold when the target worktree is ready', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-worktree-add-timeout-recover-'))
+    const config = { ...testConfig(dir), worktreePath: join(dir, 'new-worktree') }
+    mkdirSync(join(config.worktreePath, '.git'), { recursive: true })
+    writeFileSync(join(config.worktreePath, '.git', 'HEAD'), `ref: refs/heads/${config.branch}\n`)
+    saveState(config, {
+      ...loadState(config),
+      seeded: true,
+      status: 'hold',
+      hold: {
+        code: 'SETUP_FAILED',
+        reason: 'git worktree add failed: exit 124',
+        cycle: 1,
+        createdAt: '2026-06-24T21:33:28.876Z',
+      },
+    })
+    const runner = new FakeRunner({ changedPaths: ['src/example.ts'] })
+
+    const results = await runAutoflow(config, runner)
+    const events = readFileSync(config.logPath, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as { type: string; reason?: string })
+
+    expect(results[0]?.status).toBe('completed')
+    expect(loadState(config).status).toBe('idle')
+    expect(loadState(config).hold).toBeUndefined()
+    expect(events).toContainEqual(expect.objectContaining({
+      type: 'autoflow.hold_auto_resumed',
+      reason: 'worktree setup hold recovered because target worktree exists on requested branch',
+    }))
+  })
+
   it('uses the worktree fetch timeout for branch creation and worktree add setup commands', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'autoflow-worktree-setup-timeout-'))
     const config = {
