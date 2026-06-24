@@ -1176,13 +1176,20 @@ async function ensureWorktree(
       type: 'autoflow.worktree_branch_read_started',
       branch: config.branch,
       worktreePath: config.worktreePath,
+      timeoutMs: commandTimeoutMs,
     })
-    const currentBranch = readWorktreeHeadBranch(config.worktreePath)
+    const branchRead = await readWorktreeCurrentBranch(config.worktreePath, runner, commandTimeoutMs)
+    const currentBranch = branchRead.currentBranch
     log({
       type: 'autoflow.worktree_branch_read_completed',
       branch: config.branch,
       currentBranch,
       worktreePath: config.worktreePath,
+      exitCode: branchRead.result.exitCode,
+      durationMs: branchRead.result.durationMs,
+      timeoutMs: commandTimeoutMs,
+      stderr: summarizeCommandOutput(branchRead.result.stderr),
+      stdout: summarizeCommandOutput(branchRead.result.stdout),
     })
     if (currentBranch !== config.branch) {
       log({
@@ -1357,9 +1364,10 @@ async function ensureWorktree(
     stdout: summarizeCommandOutput(added.stdout),
   })
   if (added.exitCode !== 0) {
-    const currentBranch = existsSync(join(config.worktreePath, '.git'))
-      ? readWorktreeHeadBranch(config.worktreePath)
+    const branchRead = existsSync(join(config.worktreePath, '.git'))
+      ? await readWorktreeCurrentBranch(config.worktreePath, runner, commandTimeoutMs)
       : undefined
+    const currentBranch = branchRead?.currentBranch
     if (currentBranch === config.branch) {
       log({
         type: 'autoflow.worktree_add_existing_used',
@@ -1374,21 +1382,19 @@ async function ensureWorktree(
   }
 }
 
-function readWorktreeHeadBranch(worktreePath: string): string | undefined {
-  const gitPath = join(worktreePath, '.git')
-  try {
-    let gitDir = gitPath
-    if (lstatSync(gitPath).isFile()) {
-      const gitFile = readFileSync(gitPath, 'utf8').trim()
-      const match = /^gitdir:\s*(.+)$/i.exec(gitFile)
-      if (!match) return undefined
-      gitDir = resolve(dirname(gitPath), match[1])
-    }
-    const head = readFileSync(join(gitDir, 'HEAD'), 'utf8').trim()
-    const refPrefix = 'ref: refs/heads/'
-    return head.startsWith(refPrefix) ? head.slice(refPrefix.length) : undefined
-  } catch {
-    return undefined
+async function readWorktreeCurrentBranch(
+  worktreePath: string,
+  runner: CommandRunner,
+  timeoutMs: number,
+): Promise<{ currentBranch: string | undefined; result: CommandResult }> {
+  const result = await runner.run('git', ['branch', '--show-current'], {
+    cwd: worktreePath,
+    timeoutMs,
+    env: nonInteractiveGitEnv(),
+  })
+  return {
+    currentBranch: result.exitCode === 0 ? result.stdout.trim() || undefined : undefined,
+    result,
   }
 }
 
