@@ -1162,10 +1162,49 @@ async function ensureWorktree(
   cycle?: number,
 ): Promise<void> {
   ensureDir(dirname(config.worktreePath))
+  const log = (event: Record<string, unknown>): void => {
+    if (stateConfig && cycle !== undefined) logEvent(stateConfig, { ...event, cycle })
+  }
+  const commandTimeoutMs = worktreeSetupCommandTimeoutMs(config)
   if (existsSync(join(config.worktreePath, '.git'))) {
+    log({
+      type: 'autoflow.worktree_existing_detected',
+      branch: config.branch,
+      worktreePath: config.worktreePath,
+    })
+    log({
+      type: 'autoflow.worktree_branch_read_started',
+      branch: config.branch,
+      worktreePath: config.worktreePath,
+    })
     const currentBranch = readWorktreeHeadBranch(config.worktreePath)
+    log({
+      type: 'autoflow.worktree_branch_read_completed',
+      branch: config.branch,
+      currentBranch,
+      worktreePath: config.worktreePath,
+    })
     if (currentBranch !== config.branch) {
-      await gitIn(config.worktreePath, runner, ['switch', config.branch], config.commandTimeoutMs)
+      log({
+        type: 'autoflow.worktree_switch_started',
+        branch: config.branch,
+        currentBranch,
+        worktreePath: config.worktreePath,
+        timeoutMs: commandTimeoutMs,
+      })
+      const switched = await gitIn(config.worktreePath, runner, ['switch', config.branch], commandTimeoutMs)
+      log({
+        type: 'autoflow.worktree_switch_completed',
+        branch: config.branch,
+        currentBranch,
+        worktreePath: config.worktreePath,
+        exitCode: switched.exitCode,
+        durationMs: switched.durationMs,
+        timeoutMs: commandTimeoutMs,
+        stderr: summarizeCommandOutput(switched.stderr),
+        stdout: summarizeCommandOutput(switched.stdout),
+      })
+      if (switched.exitCode !== 0) throw new Error(`git switch failed: ${switched.stderr || switched.stdout || `exit ${switched.exitCode}`}`)
     }
     return
   }
@@ -1235,16 +1274,104 @@ async function ensureWorktree(
       if (fetch.exitCode !== 0 && !usingCachedBase) {
         throw new Error(`git fetch failed while preparing base ${config.remoteName}/${config.prBaseBranch}: ${fetch.stderr || fetch.stdout || `exit ${fetch.exitCode}`}`)
       }
-      await runner.run('git', ['branch', config.branch, `${config.remoteName}/${config.prBaseBranch}`], { cwd: config.repoRoot, timeoutMs: config.commandTimeoutMs })
+      const baseRef = `${config.remoteName}/${config.prBaseBranch}`
+      log({
+        type: 'autoflow.branch_create_started',
+        branch: config.branch,
+        baseRef,
+        timeoutMs: commandTimeoutMs,
+      })
+      const branch = await runner.run('git', ['branch', config.branch, baseRef], { cwd: config.repoRoot, timeoutMs: commandTimeoutMs })
+      log({
+        type: 'autoflow.branch_create_completed',
+        branch: config.branch,
+        baseRef,
+        exitCode: branch.exitCode,
+        durationMs: branch.durationMs,
+        timeoutMs: commandTimeoutMs,
+        stderr: summarizeCommandOutput(branch.stderr),
+        stdout: summarizeCommandOutput(branch.stdout),
+      })
+      if (branch.exitCode !== 0) {
+        if (localGitRefExists(config.repoRoot, `refs/heads/${config.branch}`)) {
+          log({
+            type: 'autoflow.branch_create_existing_used',
+            branch: config.branch,
+            baseRef,
+            reason: `git branch failed but refs/heads/${config.branch} exists`,
+          })
+        } else {
+          throw new Error(`git branch failed: ${branch.stderr || branch.stdout || `exit ${branch.exitCode}`}`)
+        }
+      }
     } else {
-      await runner.run('git', ['branch', config.branch, 'HEAD'], { cwd: config.repoRoot, timeoutMs: config.commandTimeoutMs })
+      log({
+        type: 'autoflow.branch_create_started',
+        branch: config.branch,
+        baseRef: 'HEAD',
+        timeoutMs: commandTimeoutMs,
+      })
+      const branch = await runner.run('git', ['branch', config.branch, 'HEAD'], { cwd: config.repoRoot, timeoutMs: commandTimeoutMs })
+      log({
+        type: 'autoflow.branch_create_completed',
+        branch: config.branch,
+        baseRef: 'HEAD',
+        exitCode: branch.exitCode,
+        durationMs: branch.durationMs,
+        timeoutMs: commandTimeoutMs,
+        stderr: summarizeCommandOutput(branch.stderr),
+        stdout: summarizeCommandOutput(branch.stdout),
+      })
+      if (branch.exitCode !== 0) {
+        if (localGitRefExists(config.repoRoot, `refs/heads/${config.branch}`)) {
+          log({
+            type: 'autoflow.branch_create_existing_used',
+            branch: config.branch,
+            baseRef: 'HEAD',
+            reason: `git branch failed but refs/heads/${config.branch} exists`,
+          })
+        } else {
+          throw new Error(`git branch failed: ${branch.stderr || branch.stdout || `exit ${branch.exitCode}`}`)
+        }
+      }
     }
   }
+  log({
+    type: 'autoflow.worktree_add_started',
+    branch: config.branch,
+    worktreePath: config.worktreePath,
+    timeoutMs: commandTimeoutMs,
+  })
   const added = await runner.run('git', ['worktree', 'add', config.worktreePath, config.branch], {
     cwd: config.repoRoot,
-    timeoutMs: config.commandTimeoutMs,
+    timeoutMs: commandTimeoutMs,
   })
-  if (added.exitCode !== 0) throw new Error(`git worktree add failed: ${added.stderr || added.stdout}`)
+  log({
+    type: 'autoflow.worktree_add_completed',
+    branch: config.branch,
+    worktreePath: config.worktreePath,
+    exitCode: added.exitCode,
+    durationMs: added.durationMs,
+    timeoutMs: commandTimeoutMs,
+    stderr: summarizeCommandOutput(added.stderr),
+    stdout: summarizeCommandOutput(added.stdout),
+  })
+  if (added.exitCode !== 0) {
+    const currentBranch = existsSync(join(config.worktreePath, '.git'))
+      ? readWorktreeHeadBranch(config.worktreePath)
+      : undefined
+    if (currentBranch === config.branch) {
+      log({
+        type: 'autoflow.worktree_add_existing_used',
+        branch: config.branch,
+        currentBranch,
+        worktreePath: config.worktreePath,
+        reason: 'git worktree add failed but target worktree already exists on the requested branch',
+      })
+      return
+    }
+    throw new Error(`git worktree add failed: ${added.stderr || added.stdout || `exit ${added.exitCode}`}`)
+  }
 }
 
 function readWorktreeHeadBranch(worktreePath: string): string | undefined {
@@ -1263,6 +1390,11 @@ function readWorktreeHeadBranch(worktreePath: string): string | undefined {
   } catch {
     return undefined
   }
+}
+
+function worktreeSetupCommandTimeoutMs(config: Pick<AutoflowConfig, 'commandTimeoutMs' | 'worktreeFetchTimeoutMs'>): number {
+  const fetchTimeout = worktreeFetchTimeoutMs(config)
+  return Math.min(config.commandTimeoutMs, fetchTimeout)
 }
 
 async function prepareWorktree(

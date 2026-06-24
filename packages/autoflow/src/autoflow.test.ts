@@ -30,7 +30,7 @@ import {
 } from './index.js'
 
 class FakeRunner implements CommandRunner {
-  calls: Array<{ command: string; args: string[]; stdin?: string; env?: NodeJS.ProcessEnv }> = []
+  calls: Array<{ command: string; args: string[]; stdin?: string; env?: NodeJS.ProcessEnv; timeoutMs: number }> = []
   codexCalls = 0
   claudeCalls = 0
   revParseCalls = 0
@@ -58,7 +58,7 @@ class FakeRunner implements CommandRunner {
   } = {}) {}
 
   async run(command: string, args: string[], callOpts: CommandRunOptions): Promise<CommandResult> {
-    this.calls.push({ command, args, stdin: callOpts.stdin, env: callOpts.env })
+    this.calls.push({ command, args, stdin: callOpts.stdin, env: callOpts.env, timeoutMs: callOpts.timeoutMs })
     const rendered = [command, ...args].join(' ')
     if (rendered.includes('rev-parse HEAD')) {
       this.revParseCalls++
@@ -926,6 +926,58 @@ describe('autoflow cycle controls', () => {
     expect(commands.some((command) => command.includes('show-ref'))).toBe(false)
     expect(commands).toContain('git branch codex/autoflow-workbook HEAD')
     expect(commands).toContain(`git worktree add ${config.worktreePath} codex/autoflow-workbook`)
+  })
+
+  it('continues when worktree add fails after the target worktree already exists on the requested branch', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-worktree-add-race-'))
+    const config = { ...testConfig(dir), worktreePath: join(dir, 'new-worktree') }
+    class WorktreeAddRaceRunner extends FakeRunner {
+      override async run(command: string, args: string[], callOpts: CommandRunOptions): Promise<CommandResult> {
+        if (command === 'git' && args[0] === 'worktree' && args[1] === 'add' && args[2]) {
+          mkdirSync(join(args[2], '.git'), { recursive: true })
+          writeFileSync(join(args[2], '.git', 'HEAD'), `ref: refs/heads/${config.branch}\n`)
+          this.calls.push({ command, args, stdin: callOpts.stdin, env: callOpts.env, timeoutMs: callOpts.timeoutMs })
+          return result(command, args, callOpts.cwd, '', '', 1)
+        }
+        return super.run(command, args, callOpts)
+      }
+    }
+    const runner = new WorktreeAddRaceRunner({ changedPaths: ['src/example.ts'] })
+
+    const results = await runAutoflow(config, runner)
+    const events = readFileSync(config.logPath, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as { type: string; exitCode?: number; currentBranch?: string })
+
+    expect(results[0]?.status).toBe('completed')
+    expect(events).toContainEqual(expect.objectContaining({
+      type: 'autoflow.worktree_add_completed',
+      exitCode: 1,
+    }))
+    expect(events).toContainEqual(expect.objectContaining({
+      type: 'autoflow.worktree_add_existing_used',
+      currentBranch: config.branch,
+    }))
+  })
+
+  it('uses the worktree fetch timeout for branch creation and worktree add setup commands', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-worktree-setup-timeout-'))
+    const config = {
+      ...testConfig(dir),
+      worktreePath: join(dir, 'new-worktree'),
+      commandTimeoutMs: 1800_000,
+      worktreeFetchTimeoutMs: 30_000,
+    }
+    const runner = new WorktreeCreateRunner({ changedPaths: ['src/example.ts'] })
+
+    const results = await runAutoflow(config, runner)
+    const branchCall = runner.calls.find((call) => [call.command, ...call.args].join(' ') === 'git branch codex/autoflow-workbook HEAD')
+    const addCall = runner.calls.find((call) => [call.command, ...call.args].join(' ') === `git worktree add ${config.worktreePath} codex/autoflow-workbook`)
+
+    expect(results[0]?.status).toBe('completed')
+    expect(branchCall?.timeoutMs).toBe(30_000)
+    expect(addCall?.timeoutMs).toBe(30_000)
   })
 
   it('refreshes the remote base ref during worktree preparation', async () => {
