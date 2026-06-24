@@ -8,6 +8,7 @@ import {
   readdirSync,
   readFileSync,
   renameSync,
+  rmSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs'
@@ -1715,6 +1716,7 @@ async function pruneOldCycleWorktrees(
       })
       if (result.exitCode === 0) {
         removed++
+        removeClaudeWorktreeCaches(config, entry.path, completedCycle)
         continue
       }
       logEvent(config, {
@@ -1740,6 +1742,41 @@ async function pruneOldCycleWorktrees(
       reason: (error as Error).message,
     })
   }
+}
+
+function removeClaudeWorktreeCaches(
+  config: Pick<AutoflowConfig, 'logPath'>,
+  worktreePath: string,
+  completedCycle: number,
+): void {
+  for (const cachePath of claudeWorktreeCachePaths(worktreePath)) {
+    if (!existsSync(cachePath)) continue
+    try {
+      rmSync(cachePath, { recursive: true, force: true })
+      logEvent(config, {
+        type: 'autoflow.claude_worktree_cache_pruned',
+        completedCycle,
+        worktreePath,
+        cachePath,
+      })
+    } catch (error) {
+      logEvent(config, {
+        type: 'autoflow.claude_worktree_cache_prune_failed',
+        completedCycle,
+        worktreePath,
+        cachePath,
+        error: (error as Error).message,
+      })
+    }
+  }
+}
+
+export function claudeWorktreeCachePaths(worktreePath: string, homeDir = homedir()): string[] {
+  const encoded = worktreePath.replace(/[^A-Za-z0-9_-]/g, '-')
+  return [
+    join(homeDir, '.claude', 'projects', encoded),
+    join(homeDir, 'Library', 'Caches', 'claude-cli-nodejs', encoded),
+  ]
 }
 
 async function git(config: AutoflowConfig, runner: CommandRunner, args: string[]): Promise<CommandResult> {
