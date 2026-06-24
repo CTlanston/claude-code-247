@@ -68,6 +68,7 @@ export interface AutoflowState {
   consecutiveEmptyDiffs: number
   consecutiveNoProductiveChanges: number
   consecutiveSetupFetchTimeouts: number
+  consecutiveClaudeTimeouts: number
   currentCycle?: number
   lastCommitSha?: string
   lastStartedAt?: string
@@ -297,6 +298,8 @@ const DEFAULT_STAGE_HEARTBEAT_INTERVAL_MS = 60_000
 const DEFAULT_RUNNING_STATE_TTL_MS = 6 * 60 * 60_000
 const TRANSIENT_SETUP_RESUME_DELAY_MS = 5 * 60_000
 const MAX_TRANSIENT_SETUP_RESUME_DELAY_MS = 60 * 60_000
+const TRANSIENT_CLAUDE_TIMEOUT_RESUME_DELAY_MS = 10 * 60_000
+const MAX_TRANSIENT_CLAUDE_TIMEOUT_RESUME_DELAY_MS = 2 * 60 * 60_000
 
 export function defaultConfig(env: NodeJS.ProcessEnv = process.env, argv: string[] = process.argv.slice(2)): AutoflowConfig {
   const repoRoot = resolve(env['AEDEV_AUTOFLOW_REPO_ROOT'] ?? DEFAULT_REPO_ROOT)
@@ -628,6 +631,18 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
     latestUsage = buildUsageSummary(extractClaudeUsage(claude))
     if (latestUsage) writeFileSync(join(cycleDir, 'model-usage.json'), JSON.stringify(latestUsage, null, 2) + '\n')
     if (claude.exitCode !== 0) {
+      if (claude.exitCode === 124) {
+        const timeoutHold = transientClaudeTimeoutHold(state)
+        return await hold(config, cycle, 'CLAUDE_TIMEOUT', `Claude planner timed out after ${claude.durationMs}ms`, cycleDir, {
+          ...state,
+          consecutiveClaudeTimeouts: timeoutHold.retryCount,
+        }, {
+          usage: latestUsage,
+          resumeAfter: timeoutHold.resumeAfter,
+          retryCount: timeoutHold.retryCount,
+          operatorHint: buildClaudeTimeoutOperatorHint(config, timeoutHold),
+        })
+      }
       return await hold(config, cycle, 'CLAUDE_FAILED', `Claude exited ${claude.exitCode}`, cycleDir, state, {
         usage: latestUsage,
       })
@@ -725,6 +740,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
         consecutiveNoProductiveChanges: state.consecutiveNoProductiveChanges + 1,
         consecutiveSetupFetchTimeouts: 0,
         consecutiveFailures: 0,
+        consecutiveClaudeTimeouts: 0,
       }
       if (emptyState.consecutiveEmptyDiffs >= config.holdAfterConsecutiveEmptyDiffs) {
         return await hold(config, cycle, 'EMPTY_DIFF_STREAK', `No changed paths for ${emptyState.consecutiveEmptyDiffs} consecutive cycle(s)`, cycleDir, emptyState, {
@@ -760,6 +776,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
         consecutiveEmptyDiffs: 0,
         consecutiveNoProductiveChanges: state.consecutiveNoProductiveChanges + 1,
         consecutiveSetupFetchTimeouts: 0,
+        consecutiveClaudeTimeouts: 0,
       }
       if (noProductiveState.consecutiveNoProductiveChanges >= config.holdAfterConsecutiveEmptyDiffs) {
         return await hold(
@@ -851,6 +868,7 @@ export async function runOneCycle(config: AutoflowConfig, runner: CommandRunner,
       consecutiveEmptyDiffs: 0,
       consecutiveNoProductiveChanges: 0,
       consecutiveSetupFetchTimeouts: 0,
+      consecutiveClaudeTimeouts: 0,
       branch: nextLocation.branch,
       worktreePath: nextLocation.worktreePath,
       lastCommitSha: commitSha,
@@ -894,6 +912,7 @@ export function loadState(config: Pick<AutoflowConfig, 'statePath' | 'branch' | 
       consecutiveEmptyDiffs: 0,
       consecutiveNoProductiveChanges: 0,
       consecutiveSetupFetchTimeouts: 0,
+      consecutiveClaudeTimeouts: 0,
     }
   }
   const parsed = JSON.parse(readFileSync(config.statePath, 'utf8')) as AutoflowState
@@ -905,8 +924,9 @@ export function loadState(config: Pick<AutoflowConfig, 'statePath' | 'branch' | 
     status: normalizedStatus,
     branch: parsed.branch || config.branch,
     worktreePath: parsed.worktreePath || config.worktreePath,
-      consecutiveNoProductiveChanges: parsed.consecutiveNoProductiveChanges ?? 0,
-      consecutiveSetupFetchTimeouts: parsed.consecutiveSetupFetchTimeouts ?? 0,
+    consecutiveNoProductiveChanges: parsed.consecutiveNoProductiveChanges ?? 0,
+    consecutiveSetupFetchTimeouts: parsed.consecutiveSetupFetchTimeouts ?? 0,
+    consecutiveClaudeTimeouts: parsed.consecutiveClaudeTimeouts ?? 0,
   }
 }
 
@@ -1673,7 +1693,10 @@ function isRunningStateStale(config: Pick<AutoflowConfig, 'runningStateTtlMs'>, 
 }
 
 function isAutoResumableHold(hold: HoldRecord): boolean {
-  return hold.code === 'CODEX_USAGE_LIMIT' || hold.code === 'SETUP_FETCH_TIMEOUT' || hold.code === 'SETUP_FETCH_TRANSIENT'
+  return hold.code === 'CODEX_USAGE_LIMIT'
+    || hold.code === 'SETUP_FETCH_TIMEOUT'
+    || hold.code === 'SETUP_FETCH_TRANSIENT'
+    || hold.code === 'CLAUDE_TIMEOUT'
 }
 
 function classifySetupHold(error: Error, state: Pick<AutoflowState, 'consecutiveSetupFetchTimeouts'>): { code: string; resumeAfter?: string; retryCount?: number } {
@@ -1698,6 +1721,16 @@ function buildSetupHoldOperatorHint(
   return `${retryLabel}; verify repository fetch health with: ${fetchCommand}. If it succeeds, wait for resumeAfter or move hold.resumeAfter into the past and kick the launchd job.`
 }
 
+function buildClaudeTimeoutOperatorHint(
+  config: Pick<AutoflowConfig, 'commandTimeoutMs' | 'stageHeartbeatIntervalMs'>,
+  hold: Pick<HoldRecord, 'retryCount'>,
+): string {
+  const retryLabel = hold.retryCount && hold.retryCount >= 3
+    ? `repeated Claude planner timeout after ${hold.retryCount} retries`
+    : 'transient Claude planner timeout'
+  return `${retryLabel}; command timeout is ${config.commandTimeoutMs}ms and heartbeat interval is ${config.stageHeartbeatIntervalMs}ms. Wait for resumeAfter or move hold.resumeAfter into the past and kick the launchd job.`
+}
+
 function renderHoldMarkdown(record: HoldRecord): string {
   const lines = [`# HOLD ${record.code}`, '', record.reason, '']
   if (record.retryCount) lines.push(`Retry count: ${record.retryCount}`, '')
@@ -1715,10 +1748,26 @@ function transientSetupFetchHold(code: string, state: Pick<AutoflowState, 'conse
   }
 }
 
+function transientClaudeTimeoutHold(state: Pick<AutoflowState, 'consecutiveClaudeTimeouts'>): { code: string; resumeAfter: string; retryCount: number } {
+  const retryCount = state.consecutiveClaudeTimeouts + 1
+  return {
+    code: 'CLAUDE_TIMEOUT',
+    resumeAfter: new Date(Date.now() + claudeTimeoutResumeDelayMs(retryCount)).toISOString(),
+    retryCount,
+  }
+}
+
 function setupFetchTimeoutResumeDelayMs(retryCount: number): number {
   return Math.min(
     TRANSIENT_SETUP_RESUME_DELAY_MS * 2 ** Math.max(0, retryCount - 1),
     MAX_TRANSIENT_SETUP_RESUME_DELAY_MS,
+  )
+}
+
+function claudeTimeoutResumeDelayMs(retryCount: number): number {
+  return Math.min(
+    TRANSIENT_CLAUDE_TIMEOUT_RESUME_DELAY_MS * 2 ** Math.max(0, retryCount - 1),
+    MAX_TRANSIENT_CLAUDE_TIMEOUT_RESUME_DELAY_MS,
   )
 }
 
@@ -1939,6 +1988,12 @@ function buildPlannerSignals(
     }
     if ((input.hold.code === 'SETUP_FETCH_TIMEOUT' || input.hold.code === 'SETUP_FETCH_TRANSIENT') && setupFetchTimeoutResumeDelayMs(input.hold.retryCount ?? 0) >= MAX_TRANSIENT_SETUP_RESUME_DELAY_MS) {
       signals.push('setup_fetch_max_backoff')
+    }
+    if (input.hold.code === 'CLAUDE_TIMEOUT' && (input.hold.retryCount ?? 0) >= 3) {
+      signals.push(`claude_timeout_repeated:${input.hold.retryCount}`)
+    }
+    if (input.hold.code === 'CLAUDE_TIMEOUT' && claudeTimeoutResumeDelayMs(input.hold.retryCount ?? 0) >= MAX_TRANSIENT_CLAUDE_TIMEOUT_RESUME_DELAY_MS) {
+      signals.push('claude_timeout_max_backoff')
     }
   }
   if (input.productivePaths.length === 0) {

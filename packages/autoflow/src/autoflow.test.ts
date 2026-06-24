@@ -53,6 +53,7 @@ class FakeRunner implements CommandRunner {
     fetchFailureStderr?: string
     postClaudeDiffFailureStderr?: string
     claudeDelayMs?: number
+    claudePlannerExitCode?: number
   } = {}) {}
 
   async run(command: string, args: string[], callOpts: CommandRunOptions): Promise<CommandResult> {
@@ -96,6 +97,9 @@ class FakeRunner implements CommandRunner {
       }
       if (!isPlanner) this.coderDone = true
       if (this.opts.claudeDelayMs) await delay(this.opts.claudeDelayMs)
+      if (isPlanner && this.opts.claudePlannerExitCode) {
+        return result(command, args, callOpts.cwd, '', '', this.opts.claudePlannerExitCode)
+      }
       return result(command, args, callOpts.cwd, fakeClaudeOutput(isPlanner ? 0.12 : 0.03, isPlanner ? 100 : 20, isPlanner ? 40 : 10))
     }
     if (command === 'codex') {
@@ -396,10 +400,10 @@ gui/501/com.claude247.autoflow.test = {
       gateCommands: ['npm test', 'npm run build'],
       maxCycles: 1,
     }
-    saveState(config, { ...loadState(config), nextCycle: 4, lastCompletedAt: '2026-06-23T21:41:47.817Z' })
+    saveState(config, { ...loadState(config), nextCycle: 4, lastCompletedAt: '2999-01-01T00:00:00.000Z' })
     writeFileSync(config.summaryPath, JSON.stringify({
       version: 1,
-      updatedAt: '2026-06-23T21:41:47.817Z',
+      updatedAt: '2999-01-01T00:00:00.000Z',
       status: 'completed',
       cycle: 3,
       nextCycle: 4,
@@ -460,7 +464,7 @@ gui/501/com.claude247.autoflow.test = {
     expect(parsed.cadence).toMatchObject({
       checked: true,
       intervalSeconds: 3600,
-      lastCompletedAt: '2026-06-23T21:41:47.817Z',
+      lastCompletedAt: '2999-01-01T00:00:00.000Z',
       overdue: false,
     })
     expect(parsed.config.coderProvider).toBe('claude')
@@ -1276,6 +1280,55 @@ describe('autoflow cycle controls', () => {
 
     expect(heartbeats).toContainEqual(expect.objectContaining({ stage: 'claude' }))
     expect(heartbeats).toContainEqual(expect.objectContaining({ stage: 'coder', provider: 'claude' }))
+  })
+
+  it('holds Claude planner timeouts with an automatic resume time', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-claude-timeout-'))
+    const config = seededConfig(dir)
+
+    const result = await runOneCycle(config, new FakeRunner({ claudePlannerExitCode: 124 }), loadState(config))
+    const state = loadState(config)
+    const summary = JSON.parse(readFileSync(config.summaryPath, 'utf8')) as AutoflowSummary
+
+    expect(result.status).toBe('hold')
+    expect(result.hold?.code).toBe('CLAUDE_TIMEOUT')
+    expect(result.hold?.resumeAfter).toBeTruthy()
+    expect(result.hold?.retryCount).toBe(1)
+    expect(result.hold?.operatorHint).toContain('transient Claude planner timeout')
+    expect(state.consecutiveClaudeTimeouts).toBe(1)
+    expect(summary.plannerSignals).toContain('hold:CLAUDE_TIMEOUT')
+  })
+
+  it('auto-resumes an expired Claude timeout hold on the next tick', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autoflow-claude-timeout-resume-'))
+    const config = seededConfig(dir)
+    mkdirSync(join(config.worktreePath, '.git'), { recursive: true })
+    writeFileSync(join(config.worktreePath, '.git', 'HEAD'), `ref: refs/heads/${config.branch}\n`)
+    saveState(config, {
+      ...loadState(config),
+      status: 'hold',
+      hold: {
+        code: 'CLAUDE_TIMEOUT',
+        reason: 'Claude planner timed out after 1800000ms',
+        cycle: 1,
+        createdAt: '2026-06-23T00:00:00.000Z',
+        resumeAfter: '1970-01-01T00:00:00.000Z',
+        retryCount: 1,
+      },
+      consecutiveClaudeTimeouts: 1,
+    })
+
+    const results = await runAutoflow(config, new FakeRunner({ changedPaths: ['src/example.ts'] }))
+    const eventTypes = readFileSync(config.logPath, 'utf8')
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as { type: string })
+      .map((event) => event.type)
+
+    expect(results[0]?.status).toBe('completed')
+    expect(loadState(config).hold).toBeUndefined()
+    expect(loadState(config).consecutiveClaudeTimeouts).toBe(0)
+    expect(eventTypes).toContain('autoflow.hold_auto_resumed')
   })
 
   it('adopts an existing coder commit when the worktree is already clean', async () => {
